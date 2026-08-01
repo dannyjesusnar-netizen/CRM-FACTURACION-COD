@@ -278,6 +278,8 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--b
 }
 .modal-lg { width: 720px; }
 .modal h2 { margin: 0 0 4px; font-size: 17px; }
+.modal-header-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+.modal-header-row h2 { margin: 0; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
 .modal-actions .btn-primary, .modal-actions .btn-secondary { width: auto; margin-top: 0; }
 

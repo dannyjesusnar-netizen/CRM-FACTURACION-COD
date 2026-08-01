@@ -4,9 +4,44 @@ import api from '../api';
 import { useToast } from '../context/ToastContext';
 
 const EMPTY_FORM = {
-  codigo: '', nombre: '', descripcion: '', tipo: 'producto', categoria: 'General',
-  unidad: 'NIU', precio_unitario: '', stock: '', stock_minimo: '',
+  codigo: '', codigo_barras: '', nombre: '', descripcion: '', categoria: 'General',
+  unidad: 'NIU', afectacion_igv: 'gravado', control: 'ninguno', tipo_inventario: 'MERCADERIAS',
+  tipo_clasificacion: 'Otros', subtipo_clasificacion: 'Otros', peso: '', favorito: false,
+  precio_compra: '', precio_unitario: '', stock: '', stock_minimo: '', palabras_clave: '',
 };
+
+const UNIDADES = [
+  { value: 'NIU', label: 'UNIDAD' },
+  { value: 'ZZ', label: 'SERVICIO' },
+  { value: 'KGM', label: 'KILOGRAMO' },
+  { value: 'LTR', label: 'LITRO' },
+  { value: 'MTR', label: 'METRO' },
+  { value: 'GLL', label: 'GALÓN' },
+  { value: 'CJA', label: 'CAJA' },
+  { value: 'PAR', label: 'PAR' },
+  { value: 'DOC', label: 'DOCENA' },
+];
+
+const AFECTACIONES_IGV = [
+  { value: 'gravado', label: 'Gravado - Operación Onerosa' },
+  { value: 'exonerado', label: 'Exonerado - Operación Onerosa' },
+  { value: 'inafecto', label: 'Inafecto - Operación Onerosa' },
+  { value: 'gratuito', label: 'Gravado - Operación Gratuita' },
+];
+
+const CONTROLES = [
+  { value: 'ninguno', label: 'Ninguno' },
+  { value: 'lote', label: 'Lote' },
+  { value: 'serie', label: 'Serie' },
+];
+
+const TIPOS_INVENTARIO = [
+  { value: 'MERCADERIAS', label: 'MERCADERÍAS' },
+  { value: 'MATERIA_PRIMA', label: 'MATERIA PRIMA' },
+  { value: 'PRODUCTO_TERMINADO', label: 'PRODUCTO TERMINADO' },
+  { value: 'ACTIVO_FIJO', label: 'ACTIVO FIJO' },
+  { value: 'SUMINISTROS', label: 'SUMINISTROS' },
+];
 
 export default function Products() {
   const toast = useToast();
@@ -18,6 +53,7 @@ export default function Products() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [editingId, setEditingId] = useState(null);
   const [showForm, setShowForm] = useState(false);
+  const [showMore, setShowMore] = useState(false);
   const [error, setError] = useState('');
 
   const [equivalencias, setEquivalencias] = useState([]);
@@ -59,23 +95,34 @@ export default function Products() {
     setForm(EMPTY_FORM);
     setEditingId(null);
     setError('');
+    setShowMore(false);
     setShowForm(true);
   }
 
   function openEdit(p) {
     setForm({
       codigo: p.codigo,
+      codigo_barras: p.codigo_barras || '',
       nombre: p.nombre,
       descripcion: p.descripcion || '',
-      tipo: p.tipo,
       categoria: p.categoria || 'General',
       unidad: p.unidad,
+      afectacion_igv: p.afectacion_igv || 'gravado',
+      control: p.control || 'ninguno',
+      tipo_inventario: p.tipo_inventario || 'MERCADERIAS',
+      tipo_clasificacion: p.tipo_clasificacion || 'Otros',
+      subtipo_clasificacion: p.subtipo_clasificacion || 'Otros',
+      peso: p.peso ?? '',
+      favorito: !!p.favorito,
+      precio_compra: p.precio_compra ?? '',
       precio_unitario: p.precio_unitario,
       stock: p.stock ?? '',
       stock_minimo: p.stock_minimo ?? '',
+      palabras_clave: p.palabras_clave || '',
     });
     setEditingId(p.id);
     setError('');
+    setShowMore(false);
     loadEquivalencias(p.id);
     resetEquivForm();
     setShowForm(true);
@@ -153,6 +200,8 @@ export default function Products() {
       toast.error(err.response?.data?.error || 'No se pudo desactivar el producto.');
     }
   }
+
+  const esServicio = form.unidad === 'ZZ';
 
   return (
     <div>
@@ -245,51 +294,130 @@ export default function Products() {
 
       {showForm && (
         <div className="modal-overlay" onClick={() => setShowForm(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h2>{editingId ? 'Editar producto' : 'Nuevo producto'}</h2>
+          <div className="modal modal-lg" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header-row">
+              <h2>Producto</h2>
+              <button type="button" className="btn-link" onClick={() => setShowMore((v) => !v)}>
+                {showMore ? 'Mostrar menos' : 'Mostrar Más'}
+              </button>
+            </div>
             <form onSubmit={handleSubmit}>
               <div className="form-row">
                 <div>
-                  <label>Código</label>
+                  <label>Código producto</label>
                   <input required value={form.codigo} onChange={(e) => setForm({ ...form, codigo: e.target.value })} />
                 </div>
                 <div>
-                  <label>Tipo</label>
-                  <select value={form.tipo} onChange={(e) => setForm({ ...form, tipo: e.target.value })}>
-                    <option value="producto">Producto</option>
-                    <option value="servicio">Servicio</option>
-                  </select>
+                  <label>Código barras</label>
+                  <input value={form.codigo_barras} onChange={(e) => setForm({ ...form, codigo_barras: e.target.value })} />
                 </div>
               </div>
-              <label>Nombre</label>
-              <input required value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} />
-              <label>Descripción</label>
-              <textarea rows={2} value={form.descripcion} onChange={(e) => setForm({ ...form, descripcion: e.target.value })} />
+
               <div className="form-row">
                 <div>
-                  <label>Categoría</label>
+                  <label>Unidad medida</label>
+                  <select value={form.unidad} onChange={(e) => setForm({ ...form, unidad: e.target.value })}>
+                    {UNIDADES.map((u) => <option key={u.value} value={u.value}>{u.label}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label>Categoria</label>
                   <input value={form.categoria} onChange={(e) => setForm({ ...form, categoria: e.target.value })} list="categorias-list" />
                   <datalist id="categorias-list">
                     {categorias.map((c) => <option key={c} value={c} />)}
                   </datalist>
                 </div>
+              </div>
+
+              <div className="form-row">
                 <div>
-                  <label>Precio unitario (incl. IGV)</label>
+                  <label>Afectación IGV</label>
+                  <select value={form.afectacion_igv} onChange={(e) => setForm({ ...form, afectacion_igv: e.target.value })}>
+                    {AFECTACIONES_IGV.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label>Tipo</label>
+                  <input value={form.tipo_clasificacion} onChange={(e) => setForm({ ...form, tipo_clasificacion: e.target.value })} />
+                </div>
+              </div>
+
+              <div className="form-row">
+                <div>
+                  <label>Control</label>
+                  <select value={form.control} onChange={(e) => setForm({ ...form, control: e.target.value })}>
+                    {CONTROLES.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label>Subtipo</label>
+                  <input value={form.subtipo_clasificacion} onChange={(e) => setForm({ ...form, subtipo_clasificacion: e.target.value })} />
+                </div>
+              </div>
+
+              <div className="form-row">
+                <div>
+                  <label>Tipo inventario</label>
+                  <select value={form.tipo_inventario} onChange={(e) => setForm({ ...form, tipo_inventario: e.target.value })}>
+                    {TIPOS_INVENTARIO.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label>Peso</label>
+                  <input type="number" step="0.01" value={form.peso} onChange={(e) => setForm({ ...form, peso: e.target.value })} />
+                </div>
+              </div>
+
+              <div className="form-row">
+                <div>
+                  <label>Favorito</label>
+                  <select value={form.favorito ? '1' : '0'} onChange={(e) => setForm({ ...form, favorito: e.target.value === '1' })}>
+                    <option value="0">No</option>
+                    <option value="1">Sí</option>
+                  </select>
+                </div>
+                {esServicio ? <div /> : (
+                  <div>
+                    <label>Stock inicial</label>
+                    <input type="number" step="1" value={form.stock} onChange={(e) => setForm({ ...form, stock: e.target.value })} />
+                  </div>
+                )}
+              </div>
+
+              <div className="form-row">
+                <div>
+                  <label>Precio Compra S/</label>
+                  <input type="number" step="0.01" value={form.precio_compra} onChange={(e) => setForm({ ...form, precio_compra: e.target.value })} />
+                </div>
+                <div>
+                  <label>Precio venta S/</label>
                   <input required type="number" step="0.01" value={form.precio_unitario} onChange={(e) => setForm({ ...form, precio_unitario: e.target.value })} />
                 </div>
               </div>
-              {form.tipo === 'producto' && (
-                <div className="form-row">
-                  <div>
-                    <label>Stock actual</label>
-                    <input type="number" step="1" value={form.stock} onChange={(e) => setForm({ ...form, stock: e.target.value })} />
-                  </div>
-                  <div>
-                    <label>Stock mínimo</label>
-                    <input type="number" step="1" value={form.stock_minimo} onChange={(e) => setForm({ ...form, stock_minimo: e.target.value })} />
-                  </div>
-                </div>
+
+              <label>Producto</label>
+              <input required value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} />
+
+              <label>Palabra clave</label>
+              <input
+                value={form.palabras_clave}
+                onChange={(e) => setForm({ ...form, palabras_clave: e.target.value })}
+                placeholder="Agrega tags o palabras con las que deseas buscar el producto"
+              />
+
+              {showMore && (
+                <>
+                  <label>Descripción</label>
+                  <textarea rows={2} value={form.descripcion} onChange={(e) => setForm({ ...form, descripcion: e.target.value })} />
+                  {!esServicio && (
+                    <>
+                      <label>Stock mínimo</label>
+                      <input type="number" step="1" value={form.stock_minimo} onChange={(e) => setForm({ ...form, stock_minimo: e.target.value })} />
+                    </>
+                  )}
+                </>
               )}
+
               {error && <div className="form-error">{error}</div>}
               <div className="modal-actions">
                 <button type="button" className="btn-secondary" onClick={() => setShowForm(false)}>Cancelar</button>
@@ -297,7 +425,7 @@ export default function Products() {
               </div>
             </form>
 
-            {editingId && form.tipo === 'producto' && (
+            {editingId && !esServicio && (
               <div className="equiv-section">
                 <h3>Equivalencias</h3>
                 {equivalencias.length > 0 && (

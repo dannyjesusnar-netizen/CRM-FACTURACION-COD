@@ -258,6 +258,23 @@ if (!movementColumns.includes('lote_id')) {
 if (!invoiceColumns.includes('forma_pago')) {
   db.exec("ALTER TABLE invoices ADD COLUMN forma_pago TEXT DEFAULT 'efectivo'");
 }
+const PRODUCT_NEW_COLUMNS = [
+  ['codigo_barras', "TEXT"],
+  ['afectacion_igv', "TEXT DEFAULT 'gravado'"],
+  ['control', "TEXT DEFAULT 'ninguno'"],
+  ['tipo_inventario', "TEXT DEFAULT 'MERCADERIAS'"],
+  ['tipo_clasificacion', "TEXT DEFAULT 'Otros'"],
+  ['subtipo_clasificacion', "TEXT DEFAULT 'Otros'"],
+  ['peso', "REAL"],
+  ['favorito', "INTEGER DEFAULT 0"],
+  ['precio_compra', "REAL"],
+  ['palabras_clave', "TEXT"],
+];
+for (const [col, def] of PRODUCT_NEW_COLUMNS) {
+  if (!productColumns.includes(col)) {
+    db.exec(`ALTER TABLE products ADD COLUMN ${col} ${def}`);
+  }
+}
 
 // --- Seed inicial ---
 const userCount = db.prepare('SELECT COUNT(*) AS n FROM users').get().n;
