@@ -36,25 +36,49 @@ router.get('/:id', (req, res) => {
   res.json(row);
 });
 
+// La unidad "ZZ" (Servicio) determina si el producto es un servicio (sin stock);
+// cualquier otra unidad se trata como un bien físico con stock.
+function tipoDesdeUnidad(unidad) {
+  return unidad === 'ZZ' ? 'servicio' : 'producto';
+}
+
 router.post('/', (req, res) => {
-  const { codigo, nombre, descripcion, tipo, categoria, unidad, precio_unitario, stock, stock_minimo } = req.body || {};
+  const {
+    codigo, codigo_barras, nombre, descripcion, categoria, unidad,
+    afectacion_igv, control, tipo_inventario, tipo_clasificacion, subtipo_clasificacion,
+    peso, favorito, precio_compra, precio_unitario, stock, stock_minimo, palabras_clave,
+  } = req.body || {};
   if (!codigo || !nombre || precio_unitario === undefined) {
     return res.status(400).json({ error: 'codigo, nombre y precio_unitario son requeridos.' });
   }
+  const tipo = tipoDesdeUnidad(unidad || 'NIU');
   try {
     const info = db.prepare(
-      `INSERT INTO products (codigo, nombre, descripcion, tipo, categoria, unidad, precio_unitario, stock, stock_minimo)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO products (
+         codigo, codigo_barras, nombre, descripcion, tipo, categoria, unidad,
+         afectacion_igv, control, tipo_inventario, tipo_clasificacion, subtipo_clasificacion,
+         peso, favorito, precio_compra, precio_unitario, stock, stock_minimo, palabras_clave
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       codigo,
+      codigo_barras || null,
       nombre,
       descripcion || null,
-      tipo || 'producto',
+      tipo,
       categoria || 'General',
       unidad || 'NIU',
+      afectacion_igv || 'gravado',
+      control || 'ninguno',
+      tipo_inventario || 'MERCADERIAS',
+      tipo_clasificacion || 'Otros',
+      subtipo_clasificacion || 'Otros',
+      peso === undefined || peso === '' ? null : Number(peso),
+      favorito ? 1 : 0,
+      precio_compra === undefined || precio_compra === '' ? null : Number(precio_compra),
       Number(precio_unitario),
       tipo === 'servicio' ? null : Number(stock || 0),
-      tipo === 'servicio' ? null : Number(stock_minimo || 0)
+      tipo === 'servicio' ? null : Number(stock_minimo || 0),
+      palabras_clave || null
     );
     const row = db.prepare('SELECT * FROM products WHERE id = ?').get(info.lastInsertRowid);
     res.status(201).json(row);
@@ -69,21 +93,38 @@ router.post('/', (req, res) => {
 router.put('/:id', (req, res) => {
   const existing = db.prepare('SELECT * FROM products WHERE id = ?').get(req.params.id);
   if (!existing) return res.status(404).json({ error: 'Producto no encontrado.' });
-  const { codigo, nombre, descripcion, tipo, categoria, unidad, precio_unitario, stock, stock_minimo, activo } = req.body || {};
+  const {
+    codigo, codigo_barras, nombre, descripcion, categoria, unidad,
+    afectacion_igv, control, tipo_inventario, tipo_clasificacion, subtipo_clasificacion,
+    peso, favorito, precio_compra, precio_unitario, stock, stock_minimo, palabras_clave, activo,
+  } = req.body || {};
+  const unidadFinal = unidad ?? existing.unidad;
+  const tipo = tipoDesdeUnidad(unidadFinal);
   db.prepare(
-    `UPDATE products SET codigo = ?, nombre = ?, descripcion = ?, tipo = ?, categoria = ?, unidad = ?,
-     precio_unitario = ?, stock = ?, stock_minimo = ?, activo = ?
+    `UPDATE products SET codigo = ?, codigo_barras = ?, nombre = ?, descripcion = ?, tipo = ?, categoria = ?, unidad = ?,
+     afectacion_igv = ?, control = ?, tipo_inventario = ?, tipo_clasificacion = ?, subtipo_clasificacion = ?,
+     peso = ?, favorito = ?, precio_compra = ?, precio_unitario = ?, stock = ?, stock_minimo = ?, palabras_clave = ?, activo = ?
      WHERE id = ?`
   ).run(
     codigo ?? existing.codigo,
+    codigo_barras ?? existing.codigo_barras,
     nombre ?? existing.nombre,
     descripcion ?? existing.descripcion,
-    tipo ?? existing.tipo,
+    tipo,
     categoria ?? existing.categoria,
-    unidad ?? existing.unidad,
+    unidadFinal,
+    afectacion_igv ?? existing.afectacion_igv,
+    control ?? existing.control,
+    tipo_inventario ?? existing.tipo_inventario,
+    tipo_clasificacion ?? existing.tipo_clasificacion,
+    subtipo_clasificacion ?? existing.subtipo_clasificacion,
+    peso === undefined ? existing.peso : (peso === '' ? null : Number(peso)),
+    favorito === undefined ? existing.favorito : (favorito ? 1 : 0),
+    precio_compra === undefined ? existing.precio_compra : (precio_compra === '' ? null : Number(precio_compra)),
     precio_unitario !== undefined ? Number(precio_unitario) : existing.precio_unitario,
-    stock !== undefined ? Number(stock) : existing.stock,
-    stock_minimo !== undefined ? Number(stock_minimo) : existing.stock_minimo,
+    tipo === 'servicio' ? null : (stock !== undefined ? Number(stock) : existing.stock),
+    tipo === 'servicio' ? null : (stock_minimo !== undefined ? Number(stock_minimo) : existing.stock_minimo),
+    palabras_clave ?? existing.palabras_clave,
     activo !== undefined ? Number(activo) : existing.activo,
     req.params.id
   );
