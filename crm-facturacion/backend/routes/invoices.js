@@ -26,6 +26,28 @@ function nextNumero(tipo_comprobante, serie) {
   return (row.maxNum || 0) + 1;
 }
 
+// GET /api/invoices/siguiente-numero?tipo=factura -> { serie, numero } sugerido para el formulario
+router.get('/siguiente-numero', (req, res) => {
+  const tipo = req.query.tipo;
+  if (!SERIES_BY_TIPO[tipo]) return res.status(400).json({ error: 'tipo invalido.' });
+  const serie = SERIES_BY_TIPO[tipo];
+  res.json({ serie, numero: nextNumero(tipo, serie) });
+});
+
+// GET /api/invoices/buscar?tipo=&serie=&numero= -> comprobante original (para Nota de Credito -> Recuperar)
+router.get('/buscar', (req, res) => {
+  const { tipo, serie, numero } = req.query;
+  const invoice = db.prepare(
+    `SELECT i.*, c.nombre AS cliente_nombre, c.numero_documento AS cliente_documento,
+            c.tipo_documento AS cliente_tipo_documento, c.direccion AS cliente_direccion
+     FROM invoices i JOIN clients c ON c.id = i.client_id
+     WHERE i.tipo_comprobante = ? AND i.serie = ? AND i.numero = ?`
+  ).get(tipo, serie, Number(numero));
+  if (!invoice) return res.status(404).json({ error: 'No se encontró un comprobante con esos datos.' });
+  const items = db.prepare('SELECT * FROM invoice_items WHERE invoice_id = ?').all(invoice.id);
+  res.json({ ...invoice, items });
+});
+
 // GET /api/invoices?tipo=&estado=&client_id=&from=&to=&q=
 router.get('/', (req, res) => {
   const { tipo, estado, client_id, from, to, q } = req.query;
@@ -66,7 +88,11 @@ router.get('/:id', (req, res) => {
 const FORMAS_PAGO = ['efectivo', 'tarjeta', 'banco'];
 
 router.post('/', (req, res) => {
-  const { tipo_comprobante, client_id, items, moneda, observaciones, fecha_emision, forma_pago } = req.body || {};
+  const {
+    tipo_comprobante, client_id, items, moneda, observaciones, fecha_emision, forma_pago,
+    numero: numeroManual, descuento_global_pct,
+    modifica_tipo, modifica_serie, modifica_numero, tipo_nota,
+  } = req.body || {};
 
   if (!['factura', 'boleta', 'nota_credito'].includes(tipo_comprobante)) {
     return res.status(400).json({ error: 'tipo_comprobante invalido. Use factura, boleta o nota_credito.' });
@@ -86,32 +112,53 @@ router.post('/', (req, res) => {
     return res.status(400).json({ error: 'Para emitir factura el cliente debe tener RUC.' });
   }
 
-  let totalConIgv = 0;
+  const descuentoGlobalPct = Math.min(100, Math.max(0, Number(descuento_global_pct || 0)));
+
+  let totalBruto = 0;
+  let igvBruto = 0;
   const preparedItems = items.map((it) => {
     const cantidad = Number(it.cantidad || 1);
     const precio_unitario = Number(it.precio_unitario || 0);
-    const lineTotal = round2(cantidad * precio_unitario);
-    totalConIgv += lineTotal;
+    const descuentoPct = Math.min(100, Math.max(0, Number(it.descuento_pct || 0)));
+    const lineBruta = cantidad * precio_unitario;
+    const lineNeta = round2(lineBruta - lineBruta * (descuentoPct / 100));
+
+    const prod = it.product_id ? db.prepare('SELECT afectacion_igv FROM products WHERE id = ?').get(it.product_id) : null;
+    const gravado = !prod || prod.afectacion_igv === 'gravado' || prod.afectacion_igv === 'gratuito';
+    const subtotalLinea = gravado ? round2(lineNeta / (1 + IGV_RATE)) : lineNeta;
+    const igvLinea = gravado ? round2(lineNeta - subtotalLinea) : 0;
+
+    totalBruto += lineNeta;
+    igvBruto += igvLinea;
+
     return {
       product_id: it.product_id || null,
       descripcion: it.descripcion || '',
       cantidad,
       precio_unitario,
-      subtotal: lineTotal,
+      descuento_pct: descuentoPct,
+      subtotal: lineNeta,
+      igv_item: igvLinea,
     };
   });
 
-  const total = round2(totalConIgv);
-  const subtotal = round2(total / (1 + IGV_RATE));
-  const igv = round2(total - subtotal);
+  totalBruto = round2(totalBruto);
+  igvBruto = round2(igvBruto);
+  const total = round2(totalBruto * (1 - descuentoGlobalPct / 100));
+  const ratio = totalBruto > 0 ? total / totalBruto : 1;
+  const igv = round2(igvBruto * ratio);
+  const subtotal = round2(total - igv);
 
   const serie = SERIES_BY_TIPO[tipo_comprobante];
 
   const insertAll = db.transaction(() => {
-    const numero = nextNumero(tipo_comprobante, serie);
+    const numero = numeroManual ? Number(numeroManual) : nextNumero(tipo_comprobante, serie);
     const info = db.prepare(
-      `INSERT INTO invoices (tipo_comprobante, serie, numero, client_id, created_by, fecha_emision, moneda, subtotal, igv, total, estado, observaciones, forma_pago)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'emitido', ?, ?)`
+      `INSERT INTO invoices (
+         tipo_comprobante, serie, numero, client_id, created_by, fecha_emision, moneda,
+         subtotal, igv, descuento_global_pct, total, estado, observaciones, forma_pago,
+         modifica_tipo, modifica_serie, modifica_numero, tipo_nota
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'emitido', ?, ?, ?, ?, ?, ?)`
     ).run(
       tipo_comprobante,
       serie,
@@ -122,19 +169,26 @@ router.post('/', (req, res) => {
       moneda || 'PEN',
       subtotal,
       igv,
+      descuentoGlobalPct,
       total,
       observaciones || null,
-      forma_pago || 'efectivo'
+      forma_pago || 'efectivo',
+      tipo_comprobante === 'nota_credito' ? (modifica_tipo || null) : null,
+      tipo_comprobante === 'nota_credito' ? (modifica_serie || null) : null,
+      tipo_comprobante === 'nota_credito' && modifica_numero ? Number(modifica_numero) : null,
+      tipo_comprobante === 'nota_credito' ? (tipo_nota || null) : null
     );
     const invoiceId = info.lastInsertRowid;
     const insertItem = db.prepare(
-      `INSERT INTO invoice_items (invoice_id, product_id, descripcion, cantidad, precio_unitario, subtotal)
-       VALUES (?, ?, ?, ?, ?, ?)`
+      `INSERT INTO invoice_items (invoice_id, product_id, descripcion, cantidad, precio_unitario, descuento_pct, subtotal, igv_item)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     );
     const referenciaComprobante = `${serie}-${String(numero).padStart(6, '0')}`;
 
     for (const it of preparedItems) {
-      const itemInfo = insertItem.run(invoiceId, it.product_id, it.descripcion, it.cantidad, it.precio_unitario, it.subtotal);
+      const itemInfo = insertItem.run(
+        invoiceId, it.product_id, it.descripcion, it.cantidad, it.precio_unitario, it.descuento_pct, it.subtotal, it.igv_item
+      );
       const invoiceItemId = itemInfo.lastInsertRowid;
 
       if (it.product_id) {

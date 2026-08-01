@@ -421,6 +421,64 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--b
 .equiv-section { border-top: 1px solid var(--border); margin-top: 18px; padding-top: 16px; }
 .equiv-section h3 { margin: 0 0 10px; font-size: 14px; }
 
+/* ---------- Registro de venta (Factura/Boleta/Nota de crédito/Guía/Cotización) ---------- */
+
+.venta-page { max-width: 1300px; }
+.venta-toprow { display: flex; justify-content: flex-end; gap: 10px; margin-bottom: 12px; }
+.venta-toprow select { width: auto; }
+.venta-toprow label { display: flex; align-items: center; gap: 6px; margin: 0; font-weight: 500; }
+
+.venta-panel { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 20px 22px; margin-bottom: 16px; }
+
+.venta-fields-row { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; margin-bottom: 4px; }
+.venta-fields-row .filter-field { min-width: 150px; }
+.venta-fields-row .filter-field.grow { flex: 1; min-width: 240px; }
+.venta-doc-group { display: flex; align-items: flex-end; gap: 6px; }
+.venta-doc-group .filter-field { min-width: 90px; }
+.venta-doc-group span { padding-bottom: 9px; color: var(--ink-muted); }
+
+.client-picker { display: flex; align-items: flex-end; gap: 10px; flex: 1; min-width: 320px; }
+.client-picker-new-btn { white-space: nowrap; }
+.client-picker-selected { display: flex; align-items: center; justify-content: space-between; border: 1px solid var(--border); border-radius: 8px; padding: 9px 10px; font-size: 13px; background: var(--surface-hover); }
+.client-picker-clear { background: none; border: none; color: var(--critical); font-size: 16px; cursor: pointer; line-height: 1; padding: 0 4px; }
+
+.product-search { position: relative; flex: 1; min-width: 280px; }
+.product-search-dropdown {
+  position: absolute; top: 100%; left: 0; right: 0; margin-top: 4px; background: var(--surface);
+  border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 12px 30px rgba(0,0,0,0.14);
+  max-height: 260px; overflow-y: auto; z-index: 50;
+}
+.product-search-item { display: flex; flex-direction: column; padding: 8px 12px; cursor: pointer; gap: 2px; }
+.product-search-item:hover { background: var(--surface-hover); }
+.psi-nombre { font-size: 13px; font-weight: 600; color: var(--ink); }
+.psi-meta { font-size: 11px; color: var(--ink-muted); }
+.product-search-empty { padding: 10px 12px; font-size: 12px; color: var(--ink-muted); }
+
+.venta-table { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-top: 10px; }
+.venta-table th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.02em; color: var(--ink-muted); padding: 8px 6px; border-bottom: 2px solid var(--border); }
+.venta-table td { padding: 6px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.venta-table input, .venta-table select { padding: 6px 8px; font-size: 12.5px; }
+.venta-table input[type="number"] { width: 72px; }
+.venta-table .col-desc { min-width: 200px; }
+.venta-table .num { text-align: right; }
+.venta-table-empty { text-align: center; padding: 30px 0; color: var(--ink-muted); font-size: 13px; }
+
+.venta-bottom-row { display: flex; flex-wrap: wrap; gap: 24px; margin-top: 18px; align-items: flex-start; justify-content: space-between; }
+.venta-bottom-left { flex: 1; min-width: 260px; }
+.venta-bottom-right { display: flex; flex-direction: column; gap: 8px; min-width: 220px; }
+.venta-totals-row { display: flex; justify-content: space-between; gap: 20px; font-size: 13px; }
+.venta-totals-row.final { font-size: 16px; font-weight: 700; }
+.venta-totals-row input { width: 130px; text-align: right; }
+
+.venta-cuenta-row { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); }
+.venta-cuenta-row .filter-field { min-width: 140px; }
+
+.venta-actions-row { display: flex; gap: 10px; margin-top: 20px; }
+.venta-actions-row button { width: auto; margin-top: 0; padding: 11px 24px; }
+
+.venta-nc-recuperar { display: flex; align-items: flex-end; gap: 10px; }
+.venta-nc-recuperar button { white-space: nowrap; }
+
 /* ---------- Modo oscuro: ajustes puntuales sobre colores literales ---------- */
 
 html.dark .user-dropdown-item:hover { background: var(--surface-hover); }

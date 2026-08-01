@@ -1,13 +1,10 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api from '../api';
 import { useToast } from '../context/ToastContext';
 
 const TIPO_LABEL = { factura: 'Factura', boleta: 'Boleta', nota_credito: 'Nota de crédito' };
 const FORMA_PAGO_LABEL = { efectivo: 'Efectivo', tarjeta: 'Tarjeta', banco: 'Transferencia/Banco' };
-
-function emptyItem() {
-  return { product_id: '', descripcion: '', cantidad: 1, precio_unitario: 0 };
-}
 
 function todayStr() {
   return new Date().toISOString().slice(0, 10);
@@ -15,24 +12,14 @@ function todayStr() {
 
 export default function Invoices() {
   const toast = useToast();
+  const navigate = useNavigate();
   const [invoices, setInvoices] = useState([]);
-  const [clients, setClients] = useState([]);
-  const [products, setProducts] = useState([]);
 
   // filtros de busqueda (panel tipo RapiFac)
   const [q, setQ] = useState('');
   const [desde, setDesde] = useState(todayStr().slice(0, 8) + '01');
   const [hasta, setHasta] = useState(todayStr());
   const [documento, setDocumento] = useState('');
-
-  const [showForm, setShowForm] = useState(false);
-  const [error, setError] = useState('');
-
-  const [tipoComprobante, setTipoComprobante] = useState('boleta');
-  const [clientId, setClientId] = useState('');
-  const [items, setItems] = useState([emptyItem()]);
-  const [observaciones, setObservaciones] = useState('');
-  const [formaPago, setFormaPago] = useState('efectivo');
 
   function load() {
     const params = {};
@@ -44,10 +31,6 @@ export default function Invoices() {
   }
 
   useEffect(() => { load(); }, []);
-  useEffect(() => {
-    api.get('/clients').then((res) => setClients(res.data));
-    api.get('/products').then((res) => setProducts(res.data));
-  }, []);
 
   function handleBuscar(e) {
     e.preventDefault();
@@ -80,74 +63,6 @@ export default function Invoices() {
     toast.success('Archivo CSV exportado.');
   }
 
-  function openNew(tipo) {
-    setTipoComprobante(tipo);
-    setClientId('');
-    setItems([emptyItem()]);
-    setObservaciones('');
-    setFormaPago('efectivo');
-    setError('');
-    setShowForm(true);
-  }
-
-  function updateItem(idx, patch) {
-    setItems((prev) => prev.map((it, i) => (i === idx ? { ...it, ...patch } : it)));
-  }
-
-  function handleProductSelect(idx, productId) {
-    const prod = products.find((p) => String(p.id) === String(productId));
-    if (prod) {
-      updateItem(idx, {
-        product_id: prod.id,
-        descripcion: prod.nombre,
-        precio_unitario: prod.precio_unitario,
-      });
-    } else {
-      updateItem(idx, { product_id: '', descripcion: '', precio_unitario: 0 });
-    }
-  }
-
-  function addItem() {
-    setItems((prev) => [...prev, emptyItem()]);
-  }
-
-  function removeItem(idx) {
-    setItems((prev) => prev.filter((_, i) => i !== idx));
-  }
-
-  const total = items.reduce((sum, it) => sum + Number(it.cantidad || 0) * Number(it.precio_unitario || 0), 0);
-  const subtotal = total / 1.18;
-  const igv = total - subtotal;
-
-  async function handleSubmit(e) {
-    e.preventDefault();
-    setError('');
-    if (!clientId) { setError('Selecciona un cliente.'); return; }
-    if (items.length === 0 || items.some((it) => !it.descripcion || !it.cantidad)) {
-      setError('Completa todos los items.');
-      return;
-    }
-    try {
-      await api.post('/invoices', {
-        tipo_comprobante: tipoComprobante,
-        client_id: Number(clientId),
-        items: items.map((it) => ({
-          product_id: it.product_id || null,
-          descripcion: it.descripcion,
-          cantidad: Number(it.cantidad),
-          precio_unitario: Number(it.precio_unitario),
-        })),
-        observaciones,
-        forma_pago: formaPago,
-      });
-      setShowForm(false);
-      toast.success(`${TIPO_LABEL[tipoComprobante]} emitida correctamente.`);
-      load();
-    } catch (err) {
-      setError(err.response?.data?.error || 'Error al emitir el comprobante.');
-    }
-  }
-
   async function handleAnular(id) {
     if (!window.confirm('¿Anular este comprobante? Esta acción no se puede revertir.')) return;
     try {
@@ -168,11 +83,11 @@ export default function Invoices() {
       <h1 className="page-title">Ventas</h1>
 
       <div className="ventas-actions">
-        <button className="ventas-action-btn" onClick={() => openNew('factura')}>Factura</button>
-        <button className="ventas-action-btn" onClick={() => openNew('boleta')}>Boleta</button>
-        <button className="ventas-action-btn" onClick={() => openNew('nota_credito')}>Nota de Crédito</button>
-        <button className="ventas-action-btn disabled" title="Próximamente" onClick={() => toast.info('Guía Remitente estará disponible próximamente.')}>Guía Remitente</button>
-        <button className="ventas-action-btn disabled" title="Próximamente" onClick={() => toast.info('Cotización estará disponible próximamente.')}>Cotización</button>
+        <button className="ventas-action-btn" onClick={() => navigate('/ventas/nuevo/factura')}>Factura</button>
+        <button className="ventas-action-btn" onClick={() => navigate('/ventas/nuevo/boleta')}>Boleta</button>
+        <button className="ventas-action-btn" onClick={() => navigate('/ventas/nota-credito/nueva')}>Nota de Crédito</button>
+        <button className="ventas-action-btn" onClick={() => navigate('/ventas/guia-remitente/nueva')}>Guía Remitente</button>
+        <button className="ventas-action-btn" onClick={() => navigate('/ventas/nuevo/cotizacion')}>Cotización</button>
         <button className="ventas-action-btn disabled" title="Próximamente" onClick={() => toast.info('Órdenes estará disponible próximamente.')}>Órdenes</button>
       </div>
 
@@ -289,103 +204,6 @@ export default function Invoices() {
           </table>
         </div>
       </div>
-
-      {showForm && (
-        <div className="modal-overlay" onClick={() => setShowForm(false)}>
-          <div className="modal modal-lg" onClick={(e) => e.stopPropagation()}>
-            <h2>Nueva venta &mdash; {TIPO_LABEL[tipoComprobante]}</h2>
-            <form onSubmit={handleSubmit}>
-              <div className="form-row">
-                <div>
-                  <label>Tipo de comprobante</label>
-                  <select value={tipoComprobante} onChange={(e) => setTipoComprobante(e.target.value)}>
-                    <option value="boleta">Boleta</option>
-                    <option value="factura">Factura (requiere RUC)</option>
-                    <option value="nota_credito">Nota de crédito</option>
-                  </select>
-                </div>
-                <div>
-                  <label>Cliente</label>
-                  <select required value={clientId} onChange={(e) => setClientId(e.target.value)}>
-                    <option value="">Selecciona un cliente...</option>
-                    {clients.map((c) => (
-                      <option key={c.id} value={c.id}>{c.nombre} ({c.tipo_documento} {c.numero_documento})</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <label>Forma de pago</label>
-              <select value={formaPago} onChange={(e) => setFormaPago(e.target.value)}>
-                <option value="efectivo">Efectivo</option>
-                <option value="tarjeta">Tarjeta</option>
-                <option value="banco">Transferencia / Banco</option>
-              </select>
-
-              <label>Items</label>
-              <table className="items-table">
-                <thead>
-                  <tr>
-                    <th>Producto/Servicio</th>
-                    <th>Descripción</th>
-                    <th>Cant.</th>
-                    <th>P. Unit.</th>
-                    <th>Subtotal</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map((it, idx) => (
-                    <tr key={idx}>
-                      <td>
-                        <select value={it.product_id} onChange={(e) => handleProductSelect(idx, e.target.value)}>
-                          <option value="">Manual...</option>
-                          {products.map((p) => (
-                            <option key={p.id} value={p.id}>{p.nombre}</option>
-                          ))}
-                        </select>
-                      </td>
-                      <td>
-                        <input value={it.descripcion} onChange={(e) => updateItem(idx, { descripcion: e.target.value })} />
-                      </td>
-                      <td>
-                        <input type="number" min="0.01" step="0.01" style={{ width: 70 }} value={it.cantidad}
-                          onChange={(e) => updateItem(idx, { cantidad: e.target.value })} />
-                      </td>
-                      <td>
-                        <input type="number" min="0" step="0.01" style={{ width: 90 }} value={it.precio_unitario}
-                          onChange={(e) => updateItem(idx, { precio_unitario: e.target.value })} />
-                      </td>
-                      <td>S/ {(Number(it.cantidad || 0) * Number(it.precio_unitario || 0)).toFixed(2)}</td>
-                      <td>
-                        {items.length > 1 && (
-                          <button type="button" className="btn-link danger" onClick={() => removeItem(idx)}>x</button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              <button type="button" className="btn-secondary" style={{ marginTop: 8 }} onClick={addItem}>+ Agregar item</button>
-
-              <div className="totals-box">
-                <div><span>Subtotal (sin IGV):</span><span>S/ {subtotal.toFixed(2)}</span></div>
-                <div><span>IGV (18%):</span><span>S/ {igv.toFixed(2)}</span></div>
-                <div className="totals-final"><span>Total:</span><span>S/ {total.toFixed(2)}</span></div>
-              </div>
-
-              <label>Observaciones</label>
-              <textarea rows={2} value={observaciones} onChange={(e) => setObservaciones(e.target.value)} />
-
-              {error && <div className="form-error">{error}</div>}
-              <div className="modal-actions">
-                <button type="button" className="btn-secondary" onClick={() => setShowForm(false)}>Cancelar</button>
-                <button type="submit" className="btn-primary">Emitir comprobante</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

@@ -237,6 +237,62 @@ CREATE TABLE IF NOT EXISTS purchase_items (
   costo_unitario REAL NOT NULL DEFAULT 0,
   subtotal REAL NOT NULL DEFAULT 0
 );
+
+CREATE TABLE IF NOT EXISTS cotizaciones (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  serie TEXT NOT NULL DEFAULT 'CL02',
+  numero INTEGER NOT NULL,
+  client_id INTEGER REFERENCES clients(id),
+  created_by INTEGER REFERENCES users(id),
+  fecha_emision TEXT NOT NULL,
+  moneda TEXT NOT NULL DEFAULT 'PEN',
+  subtotal REAL NOT NULL DEFAULT 0,
+  igv REAL NOT NULL DEFAULT 0,
+  descuento_global_pct REAL NOT NULL DEFAULT 0,
+  total REAL NOT NULL DEFAULT 0,
+  estado TEXT NOT NULL DEFAULT 'vigente',        -- vigente | anulada
+  observaciones TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  UNIQUE(serie, numero)
+);
+
+CREATE TABLE IF NOT EXISTS cotizacion_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  cotizacion_id INTEGER NOT NULL REFERENCES cotizaciones(id) ON DELETE CASCADE,
+  product_id INTEGER REFERENCES products(id),
+  descripcion TEXT NOT NULL,
+  cantidad REAL NOT NULL DEFAULT 1,
+  precio_unitario REAL NOT NULL DEFAULT 0,
+  descuento_pct REAL NOT NULL DEFAULT 0,
+  subtotal REAL NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS guias_remitentes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  serie TEXT NOT NULL DEFAULT 'TL02',
+  numero INTEGER NOT NULL,
+  motivo_traslado TEXT NOT NULL DEFAULT 'venta',
+  client_id INTEGER REFERENCES clients(id),
+  punto_partida TEXT,
+  punto_llegada TEXT,
+  peso_total REAL NOT NULL DEFAULT 0,
+  cantidad_bultos INTEGER NOT NULL DEFAULT 0,
+  estado TEXT NOT NULL DEFAULT 'emitida',        -- emitida | anulada
+  observaciones TEXT,
+  created_by INTEGER REFERENCES users(id),
+  created_at TEXT DEFAULT (datetime('now')),
+  UNIQUE(serie, numero)
+);
+
+CREATE TABLE IF NOT EXISTS guia_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  guia_id INTEGER NOT NULL REFERENCES guias_remitentes(id) ON DELETE CASCADE,
+  product_id INTEGER REFERENCES products(id),
+  descripcion TEXT NOT NULL,
+  cantidad REAL NOT NULL DEFAULT 1,
+  peso_unitario REAL NOT NULL DEFAULT 0,
+  peso_subtotal REAL NOT NULL DEFAULT 0
+);
 `);
 
 // --- Migracion: agregar columnas nuevas a bases de datos ya existentes ---
@@ -257,6 +313,27 @@ if (!movementColumns.includes('lote_id')) {
 }
 if (!invoiceColumns.includes('forma_pago')) {
   db.exec("ALTER TABLE invoices ADD COLUMN forma_pago TEXT DEFAULT 'efectivo'");
+}
+if (!invoiceColumns.includes('descuento_global_pct')) {
+  db.exec('ALTER TABLE invoices ADD COLUMN descuento_global_pct REAL DEFAULT 0');
+}
+const invoiceItemColumns = db.prepare("PRAGMA table_info(invoice_items)").all().map((c) => c.name);
+if (!invoiceItemColumns.includes('descuento_pct')) {
+  db.exec('ALTER TABLE invoice_items ADD COLUMN descuento_pct REAL DEFAULT 0');
+}
+if (!invoiceItemColumns.includes('igv_item')) {
+  db.exec('ALTER TABLE invoice_items ADD COLUMN igv_item REAL DEFAULT 0');
+}
+const INVOICE_NC_COLUMNS = [
+  ['modifica_tipo', "TEXT"],
+  ['modifica_serie', "TEXT"],
+  ['modifica_numero', "INTEGER"],
+  ['tipo_nota', "TEXT"],
+];
+for (const [col, def] of INVOICE_NC_COLUMNS) {
+  if (!invoiceColumns.includes(col)) {
+    db.exec(`ALTER TABLE invoices ADD COLUMN ${col} ${def}`);
+  }
 }
 const PRODUCT_NEW_COLUMNS = [
   ['codigo_barras', "TEXT"],
@@ -292,6 +369,7 @@ if (clientCount === 0) {
   const insertClient = db.prepare(
     'INSERT INTO clients (tipo_documento, numero_documento, nombre, direccion, telefono, email) VALUES (?, ?, ?, ?, ?, ?)'
   );
+  insertClient.run('DNI', '10000000', 'CLIENTES VARIOS', null, null, null);
   insertClient.run('RUC', '20123456789', 'Comercial Los Andes S.A.C.', 'Av. Javier Prado 123, Lima', '014567890', 'contacto@losandes.com');
   insertClient.run('DNI', '45678912', 'Maria Fernanda Torres', 'Jr. Union 456, Lima', '987654321', 'mftorres@gmail.com');
   insertClient.run('RUC', '20456789123', 'Distribuidora Peru Norte E.I.R.L.', 'Calle Los Pinos 789, Trujillo', '044556677', 'ventas@perunorte.com');

@@ -11,8 +11,8 @@ router.get('/', (req, res) => {
   let sql = 'SELECT * FROM products WHERE activo = 1';
   const params = [];
   if (q) {
-    sql += ' AND (nombre LIKE ? OR codigo LIKE ?)';
-    params.push(`%${q}%`, `%${q}%`);
+    sql += ' AND (nombre LIKE ? OR codigo LIKE ? OR codigo_barras LIKE ?)';
+    params.push(`%${q}%`, `%${q}%`, `%${q}%`);
   }
   if (categoria) {
     sql += ' AND categoria = ?';
