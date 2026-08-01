@@ -3,8 +3,8 @@ services:
     name: crm-facturacion
     runtime: node
     plan: free
-    buildCommand: "cd frontend && npm install && npm run build && cd ../backend && npm install"
-    startCommand: "node backend/server.js"
+    buildCommand: "cd crm-facturacion/frontend && npm install && npm run build && cd ../backend && npm install"
+    startCommand: "node crm-facturacion/backend/server.js"
     healthCheckPath: /api/health
     envVars:
       - key: NODE_ENV

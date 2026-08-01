@@ -222,25 +222,22 @@ hace muy simple publicarla gratis en [Render](https://render.com) — no pide
 tarjeta de crédito y te da una URL propia del tipo
 `https://tu-app.onrender.com`.
 
+El repositorio ya incluye `render.yaml` en la raíz, así que no hace falta
+subir nada manualmente: solo conecta este repositorio de GitHub a Render.
+
 Pasos:
 
-1. **Sube el código a GitHub** (si no tienes cuenta, créala gratis en
-   [github.com](https://github.com)):
-   - Crea un repositorio nuevo (puede ser privado).
-   - Sube todo el contenido de esta carpeta (`crm-facturacion/`) — puedes
-     arrastrar los archivos desde la web de GitHub ("Add file → Upload
-     files") o usar `git push` si ya usas Git.
-2. **Crea una cuenta gratis en [render.com](https://render.com)** (puedes
+1. **Crea una cuenta gratis en [render.com](https://render.com)** (puedes
    entrar directamente con tu cuenta de GitHub).
-3. En el dashboard de Render, click en **New → Blueprint** y selecciona el
-   repositorio que subiste. Render va a detectar automáticamente el archivo
-   `render.yaml` incluido en este proyecto y va a configurar solo el
-   servicio (build command, start command, variable `JWT_SECRET` generada
-   de forma segura, etc.).
-4. Click en **Apply** / **Deploy**. El primer build tarda unos minutos
+2. En el dashboard de Render, click en **New → Blueprint** y selecciona
+   este repositorio (`CRM-FACTURACION-COD`) y la rama que quieras publicar.
+   Render va a detectar automáticamente el archivo `render.yaml` en la raíz
+   del repo y va a configurar solo el servicio (build command, start
+   command, variable `JWT_SECRET` generada de forma segura, etc.).
+3. Click en **Apply** / **Deploy**. El primer build tarda unos minutos
    (instala dependencias del frontend, hace el build, instala dependencias
    del backend). Cuando termine, Render te da la URL pública.
-5. Entra a esa URL — vas a ver la pantalla de login. Usuario de prueba:
+4. Entra a esa URL — vas a ver la pantalla de login. Usuario de prueba:
    `admin` / `admin123`.
 
 **Limitaciones del plan gratuito de Render** (importante tenerlas en
