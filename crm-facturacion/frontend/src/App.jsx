@@ -15,6 +15,9 @@ import Caja from './pages/Caja';
 import Traslados from './pages/Traslados';
 import Produccion from './pages/Produccion';
 import Invoices from './pages/Invoices';
+import RegistroVenta from './pages/RegistroVenta';
+import RegistroNotaCredito from './pages/RegistroNotaCredito';
+import GuiaRemitente from './pages/GuiaRemitente';
 import Compras from './pages/Compras';
 import Reports from './pages/Reports';
 
@@ -43,6 +46,9 @@ export default function App() {
             <Route path="/traslados" element={<Traslados />} />
             <Route path="/produccion" element={<Produccion />} />
             <Route path="/ventas" element={<Invoices />} />
+            <Route path="/ventas/nuevo/:tipo" element={<RegistroVenta />} />
+            <Route path="/ventas/nota-credito/nueva" element={<RegistroNotaCredito />} />
+            <Route path="/ventas/guia-remitente/nueva" element={<GuiaRemitente />} />
             <Route path="/compras" element={<Compras />} />
             <Route path="/reportes" element={<Reports />} />
           </Route>
