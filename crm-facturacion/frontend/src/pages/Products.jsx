@@ -174,13 +174,13 @@ export default function Products() {
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar producto por nombre o codigo.." />
         </div>
         <div className="filter-field">
-          <label>Sucursal</label>
+          <label>Categoría</label>
           <select defaultValue="principal">
             <option value="principal">Miraflores</option>
           </select>
         </div>
         <div className="filter-field">
-          <label>Categoría</label>
+          <label>IGV</label>
           <select value={categoriaFiltro} onChange={(e) => setCategoriaFiltro(e.target.value)}>
             <option value="">Todos</option>
             {categorias.map((c) => <option key={c} value={c}>{c}</option>)}
