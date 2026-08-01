@@ -15,6 +15,7 @@ import Caja from './pages/Caja';
 import Traslados from './pages/Traslados';
 import Produccion from './pages/Produccion';
 import Invoices from './pages/Invoices';
+import Compras from './pages/Compras';
 import Reports from './pages/Reports';
 
 export default function App() {
@@ -42,6 +43,7 @@ export default function App() {
             <Route path="/traslados" element={<Traslados />} />
             <Route path="/produccion" element={<Produccion />} />
             <Route path="/ventas" element={<Invoices />} />
+            <Route path="/compras" element={<Compras />} />
             <Route path="/reportes" element={<Reports />} />
           </Route>
           <Route path="*" element={<Navigate to="/menu" replace />} />

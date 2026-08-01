@@ -16,6 +16,8 @@ const sucursalRoutes = require('./routes/sucursales');
 const trasladoRoutes = require('./routes/traslados');
 const recetaRoutes = require('./routes/recetas');
 const equivalenciaRoutes = require('./routes/equivalencias');
+const supplierRoutes = require('./routes/suppliers');
+const purchaseRoutes = require('./routes/purchases');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -37,6 +39,8 @@ app.use('/api/sucursales', sucursalRoutes);
 app.use('/api/traslados', trasladoRoutes);
 app.use('/api/recetas', recetaRoutes);
 app.use('/api/equivalencias', equivalenciaRoutes);
+app.use('/api/suppliers', supplierRoutes);
+app.use('/api/purchases', purchaseRoutes);
 
 // Si existe el build del frontend (frontend/dist), lo servimos desde el mismo
 // servidor. Asi el despliegue queda como un unico servicio (una sola URL).

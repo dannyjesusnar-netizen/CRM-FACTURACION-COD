@@ -203,6 +203,40 @@ CREATE TABLE IF NOT EXISTS equivalencias (
   activo INTEGER NOT NULL DEFAULT 1,
   created_at TEXT DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS suppliers (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ruc TEXT,
+  nombre TEXT NOT NULL,
+  direccion TEXT,
+  telefono TEXT,
+  email TEXT,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS purchases (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  numero INTEGER NOT NULL,
+  supplier_id INTEGER NOT NULL REFERENCES suppliers(id),
+  created_by INTEGER REFERENCES users(id),
+  fecha TEXT NOT NULL,
+  forma_pago TEXT NOT NULL DEFAULT 'efectivo',
+  subtotal REAL NOT NULL DEFAULT 0,
+  igv REAL NOT NULL DEFAULT 0,
+  total REAL NOT NULL DEFAULT 0,
+  estado TEXT NOT NULL DEFAULT 'registrada',    -- registrada | anulada
+  observaciones TEXT,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS purchase_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  purchase_id INTEGER NOT NULL REFERENCES purchases(id) ON DELETE CASCADE,
+  product_id INTEGER NOT NULL REFERENCES products(id),
+  cantidad REAL NOT NULL,
+  costo_unitario REAL NOT NULL DEFAULT 0,
+  subtotal REAL NOT NULL DEFAULT 0
+);
 `);
 
 // --- Migracion: agregar columnas nuevas a bases de datos ya existentes ---
@@ -304,6 +338,16 @@ if (recetaCount === 0) {
     ).run('Envasado Pre-Entreno 30gr', 'Envasa 1kg del mix a granel en 33 unidades de 30gr', preEntreno.id, 33);
     db.prepare('INSERT INTO receta_items (receta_id, product_id, cantidad) VALUES (?, ?, ?)').run(info.lastInsertRowid, mix.id, 1);
   }
+}
+
+// Proveedores de ejemplo (Compras)
+const supplierCount = db.prepare('SELECT COUNT(*) AS n FROM suppliers').get().n;
+if (supplierCount === 0) {
+  const insertSupplier = db.prepare(
+    'INSERT INTO suppliers (ruc, nombre, direccion, telefono, email) VALUES (?, ?, ?, ?, ?)'
+  );
+  insertSupplier.run('20100123456', 'Distribuidora Andina S.A.C.', 'Av. Argentina 456, Callao', '014123456', 'ventas@distandina.com');
+  insertSupplier.run('20500987654', 'Importaciones del Pacífico E.I.R.L.', 'Jr. Lampa 789, Lima', '015987654', 'contacto@pacifico.com');
 }
 
 module.exports = db;

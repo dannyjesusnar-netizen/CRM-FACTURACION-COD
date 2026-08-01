@@ -8,8 +8,8 @@ con diseño y código propios.
 
 - **Login** con usuario y contraseña.
 - **Menú principal** estilo grid de módulos (con "Próximamente" para los módulos
-  que no se implementaron en esta primera versión: Compras, Finanzas,
-  Conciliación, Contabilidad, Planillas, Asistencias, Configuración).
+  que no se implementaron en esta primera versión: Finanzas, Conciliación,
+  Contabilidad, Planillas, Asistencias, Configuración).
 - **Clientes**: alta, edición, búsqueda, eliminación (CRUD completo).
 - **Inventario**: catálogo de productos/servicios (categoría, unidad, precio,
   stock y stock mínimo con alerta visual, y equivalencias/presentaciones — ver
@@ -22,6 +22,11 @@ con diseño y código propios.
 - **Ventas**: emisión de Facturas, Boletas y Notas de crédito, con forma de pago
   (Efectivo / Tarjeta / Transferencia-Banco). Cálculo automático de IGV (18%),
   numeración por serie, anulación, descarga de comprobante en PDF.
+- **Compras**: registro de compras a proveedores (con alta rápida de proveedor
+  desde el propio formulario). Cada compra ingresa el stock de los productos
+  comprados automáticamente (kardex con referencia `COMPRA-00001`, etc.),
+  calcula IGV (18%) igual que Ventas, y se puede anular (revierte el stock
+  ingresado, validando que no se haya vendido/trasladado ya).
 - **Modo oscuro**: icono de luna/sol en la barra superior para alternar entre
   modo claro y oscuro en toda la app (incluyendo la pantalla de login); la
   preferencia queda guardada en el navegador y se mantiene entre sesiones.
@@ -264,10 +269,13 @@ cuenta):
 
 ## Próximos pasos sugeridos
 
-1. Módulo de Compras e Inventario con kardex.
-2. Integración real con un proveedor SUNAT (OSE/PSE).
-3. Módulo de Contabilidad / Planillas (evaluar si aplican a tu negocio).
-4. Roles de usuario más granulares (actualmente todo usuario autenticado tiene
+1. Integración real con un proveedor SUNAT (OSE/PSE).
+2. Módulo de Contabilidad / Planillas (evaluar si aplican a tu negocio).
+3. Roles de usuario más granulares (actualmente todo usuario autenticado tiene
    acceso completo).
-5. Despliegue: contenedores Docker para backend/frontend + base de datos
+4. Despliegue: contenedores Docker para backend/frontend + base de datos
    administrada.
+5. Vincular Compras con Caja y Bancos: hoy el egreso de "Compras" en Caja
+   sigue siendo manual (igual que "Cuentas x Pagar"); se podría calcular
+   automáticamente desde las compras registradas, igual que ya ocurre con
+   las Ventas.

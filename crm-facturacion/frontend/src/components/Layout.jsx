@@ -10,7 +10,7 @@ import {
 
 const SUBNAV_ITEMS = [
   { to: '/ventas', label: 'Ventas', Icon: TrendingUp, active: true },
-  { to: null, label: 'Compras', Icon: ShoppingCart, active: false },
+  { to: '/compras', label: 'Compras', Icon: ShoppingCart, active: true },
   { to: '/productos', label: 'Inventario', Icon: Bike, active: true },
   { to: '/caja', label: 'Caja y bancos', Icon: Wallet, active: true },
   { to: '/clientes', label: 'Personas', Icon: Users, active: true },

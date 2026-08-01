@@ -7,6 +7,7 @@ import {
 
 const ACTIVE_MODULES = [
   { to: '/ventas', label: 'Ventas', Icon: Receipt, desc: 'Emitir facturas, boletas y notas' },
+  { to: '/compras', label: 'Compras', Icon: ShoppingCart, desc: 'Registrar compras a proveedores' },
   { to: '/clientes', label: 'Clientes', Icon: Users, desc: 'Gestión de clientes' },
   { to: '/productos', label: 'Inventario', Icon: Package, desc: 'Productos, stock y movimientos' },
   { to: '/dashboard', label: 'Dashboard', Icon: LayoutDashboard, desc: 'Indicadores generales' },
@@ -14,7 +15,6 @@ const ACTIVE_MODULES = [
 ];
 
 const COMING_SOON = [
-  { label: 'Compras', Icon: ShoppingCart },
   { label: 'Finanzas', Icon: Wallet },
   { label: 'Conciliación', Icon: Repeat },
   { label: 'Contabilidad', Icon: BookOpen },
