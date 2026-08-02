@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { ArrowLeft } from 'lucide-react';
 import api from '../api';
 import { useToast } from '../context/ToastContext';
 
@@ -27,13 +28,20 @@ function parseCsv(text) {
   return rows;
 }
 
+function todayStr() {
+  return new Date().toISOString().slice(0, 10);
+}
+
 export default function Movements() {
   const toast = useToast();
   const navigate = useNavigate();
   const [movements, setMovements] = useState([]);
   const [products, setProducts] = useState([]);
-  const [productoFiltro, setProductoFiltro] = useState('');
+  const [q, setQ] = useState('');
   const [tipoFiltro, setTipoFiltro] = useState('');
+  const [desde, setDesde] = useState(todayStr().slice(0, 8) + '01');
+  const [hasta, setHasta] = useState(todayStr());
+  const [mostrarPor, setMostrarPor] = useState('f_registro');
 
   const [showForm, setShowForm] = useState(false);
   const [productId, setProductId] = useState('');
@@ -55,13 +63,39 @@ export default function Movements() {
 
   function load() {
     const params = {};
-    if (productoFiltro) params.product_id = productoFiltro;
+    if (q) params.q = q;
     if (tipoFiltro) params.tipo = tipoFiltro;
+    if (desde) params.from = desde;
+    if (hasta) params.to = hasta;
     api.get('/movements', { params }).then((res) => setMovements(res.data));
   }
 
-  useEffect(() => { load(); }, [productoFiltro, tipoFiltro]);
+  useEffect(() => { load(); }, []);
   useEffect(() => { api.get('/products').then((res) => setProducts(res.data)); }, []);
+
+  function handleSearch(e) {
+    e.preventDefault();
+    load();
+  }
+
+  function handleExportar() {
+    const header = ['Fecha', 'Documento', 'Producto', 'Tipo', 'Observación', 'Cantidad', 'Stock resultante', 'Usuario'];
+    const rows = movements.map((m) => [
+      m.created_at, m.referencia || '', `${m.producto_codigo} - ${m.producto_nombre}`,
+      TIPO_LABEL[m.tipo] || m.tipo, m.motivo || '', m.cantidad, m.stock_resultante ?? '', m.usuario_nombre || '',
+    ]);
+    const csv = [header, ...rows].map((r) => r.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `movimientos_${desde}_a_${hasta}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    toast.success('Archivo CSV exportado.');
+  }
 
   function openForm() {
     setProductId('');
@@ -161,31 +195,33 @@ export default function Movements() {
 
   return (
     <div>
-      <h1 className="page-title">Movimientos de inventario</h1>
-
-      <div className="ventas-actions">
-        <button className="ventas-action-btn" onClick={() => navigate('/productos')}>Productos</button>
-        <button className="ventas-action-btn">Movimientos</button>
-        <button className="ventas-action-btn" onClick={() => navigate('/lotes')}>Lotes y Series</button>
-        <button className="ventas-action-btn" onClick={() => navigate('/productos')}>Lista de Precios</button>
-        <button className="ventas-action-btn" onClick={() => navigate('/traslados')}>Traslados</button>
-        <button className="ventas-action-btn" onClick={() => navigate('/produccion')}>Producción</button>
-        <button className="ventas-action-btn disabled" title="Próximamente" onClick={() => toast.info('Precio por márgenes estará disponible próximamente.')}>Precio por Márgenes</button>
+      <div className="page-header">
+        <h1 className="page-title" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <button className="icon-link" title="Volver a Inventario" onClick={() => navigate('/productos')} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}>
+            <ArrowLeft size={20} />
+          </button>
+          MOVIMIENTOS
+        </h1>
       </div>
 
-      <div className="ventas-actions" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
-        <button className="ventas-action-btn" onClick={openForm}>Registrar Movimiento</button>
-        <button className="ventas-action-btn" onClick={openConteo}>Inventario Físico</button>
-        <button className="ventas-action-btn" onClick={openImportar}>Importar Stock Real</button>
-      </div>
-
-      <form className="filter-panel" onSubmit={(e) => e.preventDefault()}>
-        <div className="filter-field grow">
-          <label>Producto</label>
-          <select value={productoFiltro} onChange={(e) => setProductoFiltro(e.target.value)}>
-            <option value="">Todos los productos</option>
-            {products.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+      <div className="actions-with-select-row">
+        <div className="actions-buttons">
+          <button className="ventas-action-btn" onClick={openForm}>Registrar Movimiento</button>
+          <button className="ventas-action-btn" onClick={openConteo}>Inventario Físico</button>
+          <button className="ventas-action-btn" onClick={openImportar}>Importar Stock Real</button>
+        </div>
+        <div className="filter-field">
+          <label>Mostrar por</label>
+          <select value={mostrarPor} onChange={(e) => setMostrarPor(e.target.value)}>
+            <option value="f_registro">F. Registro</option>
           </select>
+        </div>
+      </div>
+
+      <form className="filter-panel" onSubmit={handleSearch}>
+        <div className="filter-field grow">
+          <label>Buscar nombre o número de documento</label>
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar nombre o número de documento" />
         </div>
         <div className="filter-field">
           <label>Tipo</label>
@@ -199,35 +235,56 @@ export default function Movements() {
             <option value="produccion_ingreso">Ingreso (Producción)</option>
           </select>
         </div>
+        <div className="filter-field">
+          <label>Desde</label>
+          <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} />
+        </div>
+        <div className="filter-field">
+          <label>Hasta</label>
+          <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} />
+        </div>
+        <div className="filter-field">
+          <label>Sucursal</label>
+          <select defaultValue="principal">
+            <option value="principal">Todos</option>
+          </select>
+        </div>
+        <div className="filter-actions">
+          <button type="submit" className="btn-secondary">Buscar</button>
+          <button type="button" className="btn-export" onClick={handleExportar}>Exportar</button>
+        </div>
       </form>
 
       <div className="panel">
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Fecha</th><th>Producto</th><th>Tipo</th>
-              <th style={{ textAlign: 'right' }}>Cantidad</th><th style={{ textAlign: 'right' }}>Stock resultante</th>
-              <th>Motivo</th><th>Referencia</th><th>Usuario</th>
-            </tr>
-          </thead>
-          <tbody>
-            {movements.map((m) => (
-              <tr key={m.id}>
-                <td>{m.created_at}</td>
-                <td>{m.producto_codigo} — {m.producto_nombre}</td>
-                <td><span className={'badge ' + (TIPO_BADGE[m.tipo] || 'badge-neutral')}>{TIPO_LABEL[m.tipo] || m.tipo}</span></td>
-                <td style={{ textAlign: 'right' }}>{m.cantidad > 0 ? `+${m.cantidad}` : m.cantidad}</td>
-                <td style={{ textAlign: 'right' }}>{m.stock_resultante ?? '—'}</td>
-                <td>{m.motivo || '—'}</td>
-                <td>{m.referencia || '—'}</td>
-                <td>{m.usuario_nombre || '—'}</td>
+        <div className="table-scroll">
+          <table className="data-table compact">
+            <thead>
+              <tr>
+                <th>Fecha</th><th>Documento</th><th>Producto</th><th>Tipo</th>
+                <th>Observación</th>
+                <th style={{ textAlign: 'right' }}>Cantidad</th><th style={{ textAlign: 'right' }}>Stock resultante</th>
+                <th>Usuario</th>
               </tr>
-            ))}
-            {movements.length === 0 && (
-              <tr><td colSpan={8} className="empty-row">No hay movimientos registrados todavía.</td></tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {movements.map((m) => (
+                <tr key={m.id}>
+                  <td>{m.created_at}</td>
+                  <td>{m.referencia || '—'}</td>
+                  <td>{m.producto_codigo} — {m.producto_nombre}</td>
+                  <td><span className={'badge ' + (TIPO_BADGE[m.tipo] || 'badge-neutral')}>{TIPO_LABEL[m.tipo] || m.tipo}</span></td>
+                  <td>{m.motivo || '—'}</td>
+                  <td style={{ textAlign: 'right' }}>{m.cantidad > 0 ? `+${m.cantidad}` : m.cantidad}</td>
+                  <td style={{ textAlign: 'right' }}>{m.stock_resultante ?? '—'}</td>
+                  <td>{m.usuario_nombre || '—'}</td>
+                </tr>
+              ))}
+              {movements.length === 0 && (
+                <tr><td colSpan={8} className="empty-row">No hay movimientos registrados todavía.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {showForm && (
