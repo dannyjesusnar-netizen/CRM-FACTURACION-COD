@@ -2,12 +2,17 @@ const express = require('express');
 const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { buildInvoicePdf } = require('../utils/pdf');
-const { consumirStock } = require('../utils/stock');
+const { consumirStock, incrementarStock } = require('../utils/stock');
 
 const router = express.Router();
 router.use(requireAuth);
 
 const IGV_RATE = 0.18;
+
+// Tipos de Nota de Crédito que revierten una entrega física de mercadería
+// (por eso devuelven stock); el resto son ajustes puramente financieros y
+// no mueven inventario (descuentos, corrección de descripción, etc.).
+const TIPOS_NOTA_DEVUELVEN_STOCK = ['anulacion_operacion', 'anulacion_error_ruc', 'devolucion_total', 'devolucion_item'];
 
 const SERIES_BY_TIPO = {
   factura: 'F001',
@@ -192,13 +197,26 @@ router.post('/', (req, res) => {
       const invoiceItemId = itemInfo.lastInsertRowid;
 
       if (it.product_id) {
-        consumirStock(it.product_id, it.cantidad, {
-          tipoMovimiento: 'venta',
-          motivo: `Venta - ${tipo_comprobante}`,
-          referencia: referenciaComprobante,
-          userId: req.user?.id,
-          invoiceItemId,
-        });
+        if (tipo_comprobante === 'nota_credito') {
+          if (TIPOS_NOTA_DEVUELVEN_STOCK.includes(tipo_nota)) {
+            incrementarStock(it.product_id, it.cantidad, {
+              tipoMovimiento: 'nota_credito_devolucion',
+              motivo: `Nota de crédito - devolución de stock (${tipo_nota})`,
+              referencia: referenciaComprobante,
+              userId: req.user?.id,
+            });
+          }
+          // Para notas de crédito puramente financieras (descuentos, corrección,
+          // bonificación, etc.) no se mueve stock: la mercadería ya fue entregada.
+        } else {
+          consumirStock(it.product_id, it.cantidad, {
+            tipoMovimiento: 'venta',
+            motivo: `Venta - ${tipo_comprobante}`,
+            referencia: referenciaComprobante,
+            userId: req.user?.id,
+            invoiceItemId,
+          });
+        }
       }
     }
     return invoiceId;
@@ -216,27 +234,61 @@ router.post('/:id/anular', (req, res) => {
   if (invoice.estado === 'anulado') {
     return res.status(400).json({ error: 'El comprobante ya esta anulado.' });
   }
-  db.prepare("UPDATE invoices SET estado = 'anulado' WHERE id = ?").run(req.params.id);
+
   const referenciaComprobante = `${invoice.serie}-${String(invoice.numero).padStart(6, '0')}`;
   const items = db.prepare('SELECT * FROM invoice_items WHERE invoice_id = ?').all(req.params.id);
-  for (const it of items) {
-    if (it.product_id) {
+  const esNotaCreditoConDevolucion = invoice.tipo_comprobante === 'nota_credito' && TIPOS_NOTA_DEVUELVEN_STOCK.includes(invoice.tipo_nota);
+  const esNotaCreditoFinanciera = invoice.tipo_comprobante === 'nota_credito' && !esNotaCreditoConDevolucion;
+
+  // Si la nota de crédito devolvió stock al emitirse, anularla debe revertir esa
+  // devolución; para eso hace falta que exista stock suficiente para descontar.
+  if (esNotaCreditoConDevolucion) {
+    for (const it of items) {
+      if (!it.product_id) continue;
       const prod = db.prepare('SELECT * FROM products WHERE id = ?').get(it.product_id);
-      if (prod && prod.tipo === 'producto' && prod.stock !== null) {
-        // Restaurar exactamente los lotes/series de donde se descontó esta venta
-        const itemLotes = db.prepare('SELECT * FROM invoice_item_lotes WHERE invoice_item_id = ?').all(it.id);
-        for (const il of itemLotes) {
-          db.prepare('UPDATE lotes SET cantidad_actual = cantidad_actual + ? WHERE id = ?').run(il.cantidad, il.lote_id);
-        }
-        db.prepare('UPDATE products SET stock = stock + ? WHERE id = ?').run(it.cantidad, it.product_id);
-        const nuevoStock = db.prepare('SELECT stock FROM products WHERE id = ?').get(it.product_id).stock;
-        db.prepare(
-          `INSERT INTO stock_movements (product_id, lote_id, tipo, cantidad, stock_resultante, motivo, referencia, created_by)
-           VALUES (?, ?, 'anulacion', ?, ?, 'Anulación de comprobante', ?, ?)`
-        ).run(it.product_id, itemLotes[0]?.lote_id || null, it.cantidad, nuevoStock, referenciaComprobante, req.user?.id || null);
+      if (prod && prod.tipo === 'producto' && prod.stock < it.cantidad) {
+        return res.status(409).json({
+          error: `No se puede anular: ${prod.nombre} ya no tiene stock suficiente (parte de esa devolución ya fue vendida o trasladada).`,
+        });
       }
     }
   }
+
+  db.prepare("UPDATE invoices SET estado = 'anulado' WHERE id = ?").run(req.params.id);
+
+  for (const it of items) {
+    if (!it.product_id) continue;
+    const prod = db.prepare('SELECT * FROM products WHERE id = ?').get(it.product_id);
+    if (!prod || prod.tipo !== 'producto' || prod.stock === null) continue;
+
+    if (esNotaCreditoFinanciera) {
+      // Ajuste puramente financiero: nunca movió stock, tampoco al anularla.
+      continue;
+    }
+
+    if (esNotaCreditoConDevolucion) {
+      db.prepare('UPDATE products SET stock = stock - ? WHERE id = ?').run(it.cantidad, it.product_id);
+      const nuevoStock = db.prepare('SELECT stock FROM products WHERE id = ?').get(it.product_id).stock;
+      db.prepare(
+        `INSERT INTO stock_movements (product_id, tipo, cantidad, stock_resultante, motivo, referencia, created_by)
+         VALUES (?, 'anulacion', ?, ?, 'Anulación de nota de crédito (revierte devolución)', ?, ?)`
+      ).run(it.product_id, -it.cantidad, nuevoStock, referenciaComprobante, req.user?.id || null);
+      continue;
+    }
+
+    // Factura/Boleta: restaurar exactamente los lotes/series de donde se descontó esta venta
+    const itemLotes = db.prepare('SELECT * FROM invoice_item_lotes WHERE invoice_item_id = ?').all(it.id);
+    for (const il of itemLotes) {
+      db.prepare('UPDATE lotes SET cantidad_actual = cantidad_actual + ? WHERE id = ?').run(il.cantidad, il.lote_id);
+    }
+    db.prepare('UPDATE products SET stock = stock + ? WHERE id = ?').run(it.cantidad, it.product_id);
+    const nuevoStock = db.prepare('SELECT stock FROM products WHERE id = ?').get(it.product_id).stock;
+    db.prepare(
+      `INSERT INTO stock_movements (product_id, lote_id, tipo, cantidad, stock_resultante, motivo, referencia, created_by)
+       VALUES (?, ?, 'anulacion', ?, ?, 'Anulación de comprobante', ?, ?)`
+    ).run(it.product_id, itemLotes[0]?.lote_id || null, it.cantidad, nuevoStock, referenciaComprobante, req.user?.id || null);
+  }
+
   const updated = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id);
   res.json(updated);
 });
