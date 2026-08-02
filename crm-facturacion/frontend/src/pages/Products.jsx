@@ -255,6 +255,10 @@ export default function Products() {
                 <th>Producto</th>
                 <th>Categoría</th>
                 <th>U.M.</th>
+                <th>Cod. Barra</th>
+                <th>Afectación IGV</th>
+                <th>Proveedor</th>
+                <th>Favorito</th>
                 <th style={{ textAlign: 'right' }}>Mínimo</th>
                 <th style={{ textAlign: 'right' }}>Stock</th>
                 <th style={{ textAlign: 'right' }}>Precio</th>
@@ -264,12 +268,17 @@ export default function Products() {
             <tbody>
               {products.map((p) => {
                 const bajoMinimo = p.stock !== null && p.stock_minimo !== null && p.stock <= p.stock_minimo;
+                const afectacionLabel = AFECTACIONES_IGV.find((o) => o.value === p.afectacion_igv)?.label || '—';
                 return (
                   <tr key={p.id}>
                     <td>{p.codigo}</td>
                     <td>{p.nombre}</td>
                     <td>{p.categoria || '—'}</td>
                     <td>{p.unidad}</td>
+                    <td>{p.codigo_barras || '—'}</td>
+                    <td>{afectacionLabel}</td>
+                    <td>{p.proveedor_nombre || '—'}</td>
+                    <td>{p.favorito ? <span className="badge badge-good">Sí</span> : 'No'}</td>
                     <td style={{ textAlign: 'right' }}>{p.stock_minimo ?? '—'}</td>
                     <td style={{ textAlign: 'right' }}>
                       {p.stock === null ? '—' : (
@@ -285,7 +294,7 @@ export default function Products() {
                 );
               })}
               {products.length === 0 && (
-                <tr><td colSpan={8} className="empty-row">No hay productos registrados.</td></tr>
+                <tr><td colSpan={12} className="empty-row">No hay productos registrados.</td></tr>
               )}
             </tbody>
           </table>
