@@ -6,9 +6,9 @@ const { round2 } = require('../utils/stock');
 const router = express.Router();
 router.use(requireAuth);
 
-// GET /api/movements?product_id=&tipo=&from=&to=
+// GET /api/movements?product_id=&tipo=&from=&to=&q=
 router.get('/', (req, res) => {
-  const { product_id, tipo, from, to } = req.query;
+  const { product_id, tipo, from, to, q } = req.query;
   let sql = `
     SELECT m.*, p.nombre AS producto_nombre, p.codigo AS producto_codigo, u.full_name AS usuario_nombre
     FROM stock_movements m
@@ -21,6 +21,10 @@ router.get('/', (req, res) => {
   if (tipo) { sql += ' AND m.tipo = ?'; params.push(tipo); }
   if (from) { sql += ' AND date(m.created_at) >= date(?)'; params.push(from); }
   if (to) { sql += ' AND date(m.created_at) <= date(?)'; params.push(to); }
+  if (q) {
+    sql += ' AND (p.nombre LIKE ? OR p.codigo LIKE ? OR m.referencia LIKE ? OR m.motivo LIKE ?)';
+    params.push(`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`);
+  }
   sql += ' ORDER BY m.id DESC LIMIT 300';
   const rows = db.prepare(sql).all(...params);
   res.json(rows);

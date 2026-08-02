@@ -479,6 +479,21 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--b
 .venta-nc-recuperar { display: flex; align-items: flex-end; gap: 10px; }
 .venta-nc-recuperar button { white-space: nowrap; }
 
+.actions-with-select-row { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 14px; margin-bottom: 16px; }
+.actions-with-select-row .actions-buttons { display: flex; flex-wrap: wrap; gap: 10px; }
+.actions-with-select-row .filter-field { min-width: 160px; margin: 0; }
+
+.reports-shell { display: flex; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; align-items: stretch; }
+.reports-sidebar { width: 220px; flex-shrink: 0; background: var(--surface-hover); border-right: 1px solid var(--border); padding: 12px 0; }
+.reports-sidebar-item {
+  display: flex; align-items: center; gap: 10px; padding: 10px 18px; font-size: 13px; font-weight: 500;
+  color: var(--ink-secondary); cursor: pointer; border-left: 3px solid transparent; transition: background 0.12s;
+}
+.reports-sidebar-item:hover { background: var(--surface); }
+.reports-sidebar-item.active { background: var(--surface); color: var(--brand-blue-dark); font-weight: 700; border-left-color: var(--brand-blue); }
+.reports-content { flex: 1; min-width: 0; padding: 22px 24px; }
+.reports-content .report-toolbar { margin-top: 0; }
+
 /* ---------- Modo oscuro: ajustes puntuales sobre colores literales ---------- */
 
 html.dark .user-dropdown-item:hover { background: var(--surface-hover); }
