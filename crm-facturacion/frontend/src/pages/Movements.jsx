@@ -79,10 +79,10 @@ export default function Movements() {
   }
 
   function handleExportar() {
-    const header = ['Fecha', 'Documento', 'Producto', 'Tipo', 'Observación', 'Cantidad', 'Stock resultante', 'Usuario'];
+    const header = ['Fecha', 'Documento', 'Producto', 'Tipo', 'Cliente/Proveedor', 'Observación', 'Cantidad', 'Stock resultante', 'Usuario'];
     const rows = movements.map((m) => [
       m.created_at, m.referencia || '', `${m.producto_codigo} - ${m.producto_nombre}`,
-      TIPO_LABEL[m.tipo] || m.tipo, m.motivo || '', m.cantidad, m.stock_resultante ?? '', m.usuario_nombre || '',
+      TIPO_LABEL[m.tipo] || m.tipo, m.cliente_proveedor || '', m.motivo || '', m.cantidad, m.stock_resultante ?? '', m.usuario_nombre || '',
     ]);
     const csv = [header, ...rows].map((r) => r.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
     const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
@@ -261,7 +261,7 @@ export default function Movements() {
             <thead>
               <tr>
                 <th>Fecha</th><th>Documento</th><th>Producto</th><th>Tipo</th>
-                <th>Observación</th>
+                <th>Cliente/Proveedor</th><th>Observación</th>
                 <th style={{ textAlign: 'right' }}>Cantidad</th><th style={{ textAlign: 'right' }}>Stock resultante</th>
                 <th>Usuario</th>
               </tr>
@@ -273,6 +273,7 @@ export default function Movements() {
                   <td>{m.referencia || '—'}</td>
                   <td>{m.producto_codigo} — {m.producto_nombre}</td>
                   <td><span className={'badge ' + (TIPO_BADGE[m.tipo] || 'badge-neutral')}>{TIPO_LABEL[m.tipo] || m.tipo}</span></td>
+                  <td>{m.cliente_proveedor || '—'}</td>
                   <td>{m.motivo || '—'}</td>
                   <td style={{ textAlign: 'right' }}>{m.cantidad > 0 ? `+${m.cantidad}` : m.cantidad}</td>
                   <td style={{ textAlign: 'right' }}>{m.stock_resultante ?? '—'}</td>
@@ -280,7 +281,7 @@ export default function Movements() {
                 </tr>
               ))}
               {movements.length === 0 && (
-                <tr><td colSpan={8} className="empty-row">No hay movimientos registrados todavía.</td></tr>
+                <tr><td colSpan={9} className="empty-row">No hay movimientos registrados todavía.</td></tr>
               )}
             </tbody>
           </table>

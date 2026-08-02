@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { ArrowLeft } from 'lucide-react';
 import api from '../api';
 import { useToast } from '../context/ToastContext';
 
@@ -118,10 +119,34 @@ export default function Traslados() {
     }
   }
 
+  function handleExportar() {
+    const header = ['Fecha', 'Código', 'Operación', 'Sucursal Origen', 'Emisor', 'Sucursal Destino', 'Estado', 'Observaciones'];
+    const rows = traslados.map((t) => [
+      t.created_at, t.codigo, 'Traslado', t.sucursal_origen_nombre, t.emisor_nombre || '',
+      t.sucursal_destino_nombre, t.estado, t.observaciones || '',
+    ]);
+    const csv = [header, ...rows].map((r) => r.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `traslados_${desde}_a_${hasta}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    toast.success('Archivo CSV exportado.');
+  }
+
   return (
     <div>
       <div className="page-header">
-        <h1 className="page-title" style={{ margin: 0 }}>Traslados</h1>
+        <h1 className="page-title" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <button className="icon-link" title="Volver a Inventario" onClick={() => navigate('/productos')} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}>
+            <ArrowLeft size={20} />
+          </button>
+          TRASLADOS
+        </h1>
       </div>
 
       <div className="ventas-actions" style={{ gridTemplateColumns: '1fr' }}>
@@ -147,6 +172,7 @@ export default function Traslados() {
         </div>
         <div className="filter-actions">
           <button type="submit" className="btn-secondary">Buscar</button>
+          <button type="button" className="btn-export" onClick={handleExportar}>Exportar</button>
         </div>
       </form>
 
@@ -155,8 +181,8 @@ export default function Traslados() {
           <table className="data-table">
             <thead>
               <tr>
-                <th>Fecha</th><th>Código</th><th>Sucursal Origen</th><th>Sucursal Destino</th>
-                <th>Emisor</th><th>Estado</th><th>Observaciones</th><th></th>
+                <th>Fecha</th><th>Código</th><th>Operación</th><th>Sucursal Origen</th>
+                <th>Emisor</th><th>Sucursal Destino</th><th>Estado</th><th>Observaciones</th><th></th>
               </tr>
             </thead>
             <tbody>
@@ -164,9 +190,10 @@ export default function Traslados() {
                 <tr key={t.id}>
                   <td>{t.created_at}</td>
                   <td>{t.codigo}</td>
+                  <td>Traslado</td>
                   <td>{t.sucursal_origen_nombre}</td>
-                  <td>{t.sucursal_destino_nombre}</td>
                   <td>{t.emisor_nombre || '—'}</td>
+                  <td>{t.sucursal_destino_nombre}</td>
                   <td><span className={'badge ' + (t.estado === 'anulado' ? 'badge-critical' : 'badge-good')}>{t.estado === 'anulado' ? 'Anulado' : 'Completado'}</span></td>
                   <td>{t.observaciones || '—'}</td>
                   <td>
@@ -179,7 +206,7 @@ export default function Traslados() {
                 </tr>
               ))}
               {traslados.length === 0 && (
-                <tr><td colSpan={8} className="empty-row">No hay traslados en el rango seleccionado.</td></tr>
+                <tr><td colSpan={9} className="empty-row">No hay traslados en el rango seleccionado.</td></tr>
               )}
             </tbody>
           </table>

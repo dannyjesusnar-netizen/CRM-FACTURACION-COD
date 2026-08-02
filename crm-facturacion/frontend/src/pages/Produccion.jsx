@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { ArrowLeft } from 'lucide-react';
 import api from '../api';
 import { useToast } from '../context/ToastContext';
 
@@ -6,11 +8,18 @@ function emptyItem() {
   return { product_id: '', cantidad: 1 };
 }
 
+function todayStr() {
+  return new Date().toISOString().slice(0, 10);
+}
+
 export default function Produccion() {
   const toast = useToast();
+  const navigate = useNavigate();
   const [recetas, setRecetas] = useState([]);
   const [productos, setProductos] = useState([]);
   const [q, setQ] = useState('');
+  const [desde, setDesde] = useState('2018-01-01');
+  const [hasta, setHasta] = useState(todayStr());
 
   const [showForm, setShowForm] = useState(false);
   const [nombre, setNombre] = useState('');
@@ -29,7 +38,28 @@ export default function Produccion() {
   function load() {
     const params = {};
     if (q) params.q = q;
+    if (desde) params.desde = desde;
+    if (hasta) params.hasta = hasta;
     api.get('/recetas', { params }).then((res) => setRecetas(res.data));
+  }
+
+  function handleExportar() {
+    const header = ['Fecha creación', 'Descripción', 'Producto de salida', 'Cant. de salida', 'Producción'];
+    const rows = recetas.map((r) => [
+      r.created_at, r.nombre, `${r.producto_salida_codigo} - ${r.producto_salida_nombre}`,
+      r.cantidad_salida, r.tipo_produccion === 'automatico' ? 'Automático' : 'Manual',
+    ]);
+    const csv = [header, ...rows].map((r) => r.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `produccion_${desde}_a_${hasta}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    toast.success('Archivo CSV exportado.');
   }
 
   useEffect(() => { load(); }, []);
@@ -118,7 +148,12 @@ export default function Produccion() {
 
   return (
     <div>
-      <h1 className="page-title">Producción</h1>
+      <h1 className="page-title" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <button className="icon-link" title="Volver a Inventario" onClick={() => navigate('/productos')} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}>
+          <ArrowLeft size={20} />
+        </button>
+        PRODUCCIÓN
+      </h1>
 
       <div className="ventas-actions" style={{ gridTemplateColumns: '1fr' }}>
         <button className="ventas-action-btn" onClick={openNew}>+ Receta Nueva</button>
@@ -129,8 +164,17 @@ export default function Produccion() {
           <label>Buscar receta</label>
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar receta.." />
         </div>
+        <div className="filter-field">
+          <label>Desde</label>
+          <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} />
+        </div>
+        <div className="filter-field">
+          <label>Hasta</label>
+          <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} />
+        </div>
         <div className="filter-actions">
           <button type="submit" className="btn-secondary">Buscar</button>
+          <button type="button" className="btn-export" onClick={handleExportar}>Exportar</button>
         </div>
       </form>
 

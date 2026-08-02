@@ -6,11 +6,24 @@ const { round2 } = require('../utils/stock');
 const router = express.Router();
 router.use(requireAuth);
 
+// cliente_proveedor: nombre del proveedor o cliente del documento que originó
+// el movimiento, resuelto a partir de la referencia (no es un campo propio
+// del movimiento). Solo se resuelve para movimientos ligados a una Compra o
+// a un comprobante de Ventas; el resto queda en blanco.
+const CLIENTE_PROVEEDOR_SUBQUERY = `(
+  SELECT s.nombre FROM purchases pu JOIN suppliers s ON s.id = pu.supplier_id
+  WHERE 'COMPRA-' || printf('%05d', pu.numero) = m.referencia LIMIT 1
+), (
+  SELECT c.nombre FROM invoices i JOIN clients c ON c.id = i.client_id
+  WHERE i.serie || '-' || printf('%06d', i.numero) = m.referencia LIMIT 1
+)`;
+
 // GET /api/movements?product_id=&tipo=&from=&to=&q=
 router.get('/', (req, res) => {
   const { product_id, tipo, from, to, q } = req.query;
   let sql = `
-    SELECT m.*, p.nombre AS producto_nombre, p.codigo AS producto_codigo, u.full_name AS usuario_nombre
+    SELECT m.*, p.nombre AS producto_nombre, p.codigo AS producto_codigo, u.full_name AS usuario_nombre,
+           COALESCE(${CLIENTE_PROVEEDOR_SUBQUERY}) AS cliente_proveedor
     FROM stock_movements m
     JOIN products p ON p.id = m.product_id
     LEFT JOIN users u ON u.id = m.created_by

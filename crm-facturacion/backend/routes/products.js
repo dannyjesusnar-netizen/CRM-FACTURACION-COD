@@ -5,20 +5,30 @@ const { requireAuth } = require('../middleware/auth');
 const router = express.Router();
 router.use(requireAuth);
 
+// proveedor_nombre: proveedor de la compra más reciente registrada para ese
+// producto (no es un campo propio del producto, se deriva del historial de Compras).
+const PROVEEDOR_SUBQUERY = `(
+  SELECT s.nombre FROM purchase_items pi
+  JOIN purchases pu ON pu.id = pi.purchase_id
+  JOIN suppliers s ON s.id = pu.supplier_id
+  WHERE pi.product_id = p.id AND pu.estado = 'registrada'
+  ORDER BY pu.fecha DESC, pu.id DESC LIMIT 1
+) AS proveedor_nombre`;
+
 router.get('/', (req, res) => {
   const q = (req.query.q || '').trim();
   const categoria = (req.query.categoria || '').trim();
-  let sql = 'SELECT * FROM products WHERE activo = 1';
+  let sql = `SELECT p.*, ${PROVEEDOR_SUBQUERY} FROM products p WHERE p.activo = 1`;
   const params = [];
   if (q) {
-    sql += ' AND (nombre LIKE ? OR codigo LIKE ? OR codigo_barras LIKE ?)';
+    sql += ' AND (p.nombre LIKE ? OR p.codigo LIKE ? OR p.codigo_barras LIKE ?)';
     params.push(`%${q}%`, `%${q}%`, `%${q}%`);
   }
   if (categoria) {
-    sql += ' AND categoria = ?';
+    sql += ' AND p.categoria = ?';
     params.push(categoria);
   }
-  sql += ' ORDER BY nombre ASC';
+  sql += ' ORDER BY p.nombre ASC';
   const rows = db.prepare(sql).all(...params);
   res.json(rows);
 });
