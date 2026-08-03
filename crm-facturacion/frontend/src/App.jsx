@@ -20,6 +20,7 @@ import RegistroNotaCredito from './pages/RegistroNotaCredito';
 import GuiaRemitente from './pages/GuiaRemitente';
 import Compras from './pages/Compras';
 import Reports from './pages/Reports';
+import Configuracion from './pages/Configuracion';
 
 export default function App() {
   return (
@@ -51,6 +52,7 @@ export default function App() {
             <Route path="/ventas/guia-remitente/nueva" element={<GuiaRemitente />} />
             <Route path="/compras" element={<Compras />} />
             <Route path="/reportes" element={<Reports />} />
+            <Route path="/configuracion" element={<Configuracion />} />
           </Route>
           <Route path="*" element={<Navigate to="/menu" replace />} />
         </Routes>

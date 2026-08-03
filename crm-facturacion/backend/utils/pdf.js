@@ -1,4 +1,5 @@
 const PDFDocument = require('pdfkit');
+const db = require('../db');
 
 const TIPO_LABEL = {
   factura: 'FACTURA ELECTRONICA',
@@ -14,13 +15,18 @@ function money(n, moneda) {
 function buildInvoicePdf(invoice, items) {
   const doc = new PDFDocument({ margin: 40, size: 'A4' });
   const esReal = invoice.modo_emision === 'real' && invoice.sunat_estado === 'aceptado';
+  const empresa = db.prepare('SELECT * FROM empresa_config WHERE id = 1').get() || {};
 
   // Encabezado
-  doc.fontSize(16).fillColor('#0f4c81').text('CRM Facturacion', 40, 40);
+  doc.fontSize(16).fillColor('#0f4c81').text(empresa.razon_social || 'CRM Facturacion', 40, 40, { width: 320 });
+  doc.fontSize(9).fillColor('#333');
+  let headY = 60;
+  if (empresa.ruc) { doc.text(`RUC: ${empresa.ruc}`, 40, headY); headY += 13; }
+  if (empresa.direccion_fiscal) { doc.text(empresa.direccion_fiscal, 40, headY, { width: 320 }); headY += 13; }
   if (esReal) {
-    doc.fontSize(9).fillColor('#0ca30c').text(`Comprobante electronico aceptado por SUNAT — Hash: ${invoice.sunat_hash || '-'}`, 40, 60);
+    doc.fontSize(9).fillColor('#0ca30c').text(`Comprobante electronico aceptado por SUNAT — Hash: ${invoice.sunat_hash || '-'}`, 40, headY);
   } else {
-    doc.fontSize(9).fillColor('#666').text('Documento generado en modo SIMULADO (sin validez tributaria real)', 40, 60);
+    doc.fontSize(9).fillColor('#666').text('Documento generado en modo SIMULADO (sin validez tributaria real)', 40, headY);
   }
 
   doc.roundedRect(380, 35, 175, 60, 4).stroke('#0f4c81');

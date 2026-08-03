@@ -19,6 +19,9 @@ router.post('/login', (req, res) => {
   if (!valid) {
     return res.status(401).json({ error: 'Credenciales incorrectas.' });
   }
+  if (!user.activo) {
+    return res.status(403).json({ error: 'Esta cuenta está desactivada. Contacta a un administrador.' });
+  }
   const token = jwt.sign(
     { id: user.id, username: user.username, full_name: user.full_name, role: user.role },
     JWT_SECRET,

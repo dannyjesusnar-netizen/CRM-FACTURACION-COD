@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { useTheme } from '../context/ThemeContext';
+import api from '../api';
 import {
   TrendingUp, ShoppingCart, Bike, Wallet, Users, Calculator, ClipboardList, FileText,
   Moon, Sun, Settings, ChevronDown, Phone, FileSignature, Lock, Video, BarChart3, LogOut, UsersRound,
@@ -27,6 +28,7 @@ export default function Layout() {
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
+  const [empresa, setEmpresa] = useState(null);
 
   useEffect(() => {
     function onClickOutside(e) {
@@ -34,6 +36,10 @@ export default function Layout() {
     }
     document.addEventListener('mousedown', onClickOutside);
     return () => document.removeEventListener('mousedown', onClickOutside);
+  }, []);
+
+  useEffect(() => {
+    api.get('/empresa').then((res) => setEmpresa(res.data)).catch(() => {});
   }, []);
 
   function handleLogout() {
@@ -56,7 +62,9 @@ export default function Layout() {
           <span className="brand-mark">CRM</span>
           <span className="brand-suffix">Facturación</span>
         </div>
-        <div className="topbar-company">MI EMPRESA S.A.C. &mdash; SEDE PRINCIPAL</div>
+        <div className="topbar-company">
+          {empresa ? `${(empresa.nombre_comercial || empresa.razon_social).toUpperCase()} — SEDE PRINCIPAL` : ''}
+        </div>
         <div className="topbar-actions">
           <button
             type="button"
@@ -66,7 +74,7 @@ export default function Layout() {
           >
             {isDark ? <Sun size={17} /> : <Moon size={17} />}
           </button>
-          <button type="button" className="icon-btn" title="Configuración" onClick={() => navigate('/menu')}>
+          <button type="button" className="icon-btn" title="Configuración" onClick={() => navigate('/configuracion')}>
             <Settings size={17} />
           </button>
           <div className="user-menu" ref={menuRef} onClick={() => setMenuOpen((v) => !v)}>

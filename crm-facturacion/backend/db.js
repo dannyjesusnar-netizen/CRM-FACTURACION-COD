@@ -293,6 +293,20 @@ CREATE TABLE IF NOT EXISTS guia_items (
   peso_unitario REAL NOT NULL DEFAULT 0,
   peso_subtotal REAL NOT NULL DEFAULT 0
 );
+
+-- Datos legales del negocio que usa esta instancia del CRM (emisor de los
+-- comprobantes). Tabla singleton: siempre existe una única fila con id = 1.
+CREATE TABLE IF NOT EXISTS empresa_config (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  razon_social TEXT,
+  ruc TEXT,
+  nombre_comercial TEXT,
+  direccion_fiscal TEXT,
+  telefono TEXT,
+  email TEXT,
+  updated_at TEXT DEFAULT (datetime('now')),
+  updated_by INTEGER REFERENCES users(id)
+);
 `);
 
 // --- Migracion: agregar columnas nuevas a bases de datos ya existentes ---
@@ -370,16 +384,34 @@ for (const [col, def] of PRODUCT_NEW_COLUMNS) {
     db.exec(`ALTER TABLE products ADD COLUMN ${col} ${def}`);
   }
 }
+const userColumns = db.prepare("PRAGMA table_info(users)").all().map((c) => c.name);
+const USER_NEW_COLUMNS = [
+  ['activo', 'INTEGER NOT NULL DEFAULT 1'],
+  ['dni', 'TEXT'],
+];
+for (const [col, def] of USER_NEW_COLUMNS) {
+  if (!userColumns.includes(col)) {
+    db.exec(`ALTER TABLE users ADD COLUMN ${col} ${def}`);
+  }
+}
 
 // --- Seed inicial ---
 const userCount = db.prepare('SELECT COUNT(*) AS n FROM users').get().n;
 if (userCount === 0) {
   const insertUser = db.prepare(
-    'INSERT INTO users (username, password_hash, full_name, role) VALUES (?, ?, ?, ?)'
+    'INSERT INTO users (username, password_hash, full_name, role, dni) VALUES (?, ?, ?, ?, ?)'
   );
-  insertUser.run('admin', bcrypt.hashSync('admin123', 10), 'Administrador', 'gerencia');
-  insertUser.run('vendedor1', bcrypt.hashSync('vendedor123', 10), 'Carlos Ramírez', 'vendedor');
-  insertUser.run('vendedor2', bcrypt.hashSync('vendedor123', 10), 'Lucía Fernández', 'vendedor');
+  insertUser.run('admin', bcrypt.hashSync('admin123', 10), 'Administrador', 'gerencia', '00000000');
+  insertUser.run('vendedor1', bcrypt.hashSync('vendedor123', 10), 'Carlos Ramírez', 'vendedor', '45678912');
+  insertUser.run('vendedor2', bcrypt.hashSync('vendedor123', 10), 'Lucía Fernández', 'vendedor', '87654321');
+}
+
+const empresaConfigCount = db.prepare('SELECT COUNT(*) AS n FROM empresa_config').get().n;
+if (empresaConfigCount === 0) {
+  db.prepare(
+    `INSERT INTO empresa_config (id, razon_social, ruc, nombre_comercial, direccion_fiscal, telefono, email)
+     VALUES (1, ?, ?, ?, ?, ?, ?)`
+  ).run('MI EMPRESA S.A.C.', null, 'MI EMPRESA', 'Sede Principal', null, null);
 }
 
 const clientCount = db.prepare('SELECT COUNT(*) AS n FROM clients').get().n;
