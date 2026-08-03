@@ -10,17 +10,32 @@ router.get('/summary', (req, res) => {
   const today = new Date().toISOString().slice(0, 10);
   const startOfMonth = today.slice(0, 8) + '01';
 
+  // Las notas de crédito restan de las ventas (netean), no se excluyen: si
+  // se anula/devuelve parte de una venta, "Ventas del mes/hoy" debe bajar.
   const ventasMes = db.prepare(
-    `SELECT COALESCE(SUM(total), 0) AS total, COUNT(*) AS cantidad
+    `SELECT COALESCE(SUM(CASE WHEN tipo_comprobante = 'nota_credito' THEN -total ELSE total END), 0) AS total,
+            COUNT(*) AS cantidad
      FROM invoices WHERE estado = 'emitido' AND tipo_comprobante != 'nota_credito'
      AND date(fecha_emision) >= date(?)`
   ).get(startOfMonth);
+  const ventasMesNc = db.prepare(
+    `SELECT COALESCE(SUM(total), 0) AS total
+     FROM invoices WHERE estado = 'emitido' AND tipo_comprobante = 'nota_credito'
+     AND date(fecha_emision) >= date(?)`
+  ).get(startOfMonth);
+  ventasMes.total = round2(ventasMes.total - ventasMesNc.total);
 
   const ventasHoy = db.prepare(
     `SELECT COALESCE(SUM(total), 0) AS total, COUNT(*) AS cantidad
      FROM invoices WHERE estado = 'emitido' AND tipo_comprobante != 'nota_credito'
      AND date(fecha_emision) = date(?)`
   ).get(today);
+  const ventasHoyNc = db.prepare(
+    `SELECT COALESCE(SUM(total), 0) AS total
+     FROM invoices WHERE estado = 'emitido' AND tipo_comprobante = 'nota_credito'
+     AND date(fecha_emision) = date(?)`
+  ).get(today);
+  ventasHoy.total = round2(ventasHoy.total - ventasHoyNc.total);
 
   const totalClientes = db.prepare('SELECT COUNT(*) AS n FROM clients').get().n;
   const totalProductos = db.prepare('SELECT COUNT(*) AS n FROM products WHERE activo = 1').get().n;
@@ -33,7 +48,9 @@ router.get('/summary', (req, res) => {
   ).all();
 
   const topProductos = db.prepare(
-    `SELECT p.nombre, SUM(ii.cantidad) AS cantidad_vendida, SUM(ii.subtotal) AS total_vendido
+    `SELECT p.nombre,
+            SUM(CASE WHEN i.tipo_comprobante = 'nota_credito' THEN -ii.cantidad ELSE ii.cantidad END) AS cantidad_vendida,
+            SUM(CASE WHEN i.tipo_comprobante = 'nota_credito' THEN -ii.subtotal ELSE ii.subtotal END) AS total_vendido
      FROM invoice_items ii
      JOIN invoices i ON i.id = ii.invoice_id
      LEFT JOIN products p ON p.id = ii.product_id
@@ -60,9 +77,10 @@ router.get('/ventas-por-dia', (req, res) => {
   const fromDate = from || new Date(Date.now() - 29 * 86400000).toISOString().slice(0, 10);
   const toDate = to || new Date().toISOString().slice(0, 10);
   const rows = db.prepare(
-    `SELECT date(fecha_emision) AS dia, COALESCE(SUM(total), 0) AS total
+    `SELECT date(fecha_emision) AS dia,
+            COALESCE(SUM(CASE WHEN tipo_comprobante = 'nota_credito' THEN -total ELSE total END), 0) AS total
      FROM invoices
-     WHERE estado = 'emitido' AND tipo_comprobante != 'nota_credito'
+     WHERE estado = 'emitido'
        AND date(fecha_emision) BETWEEN date(?) AND date(?)
      GROUP BY date(fecha_emision)
      ORDER BY dia ASC`
@@ -83,9 +101,11 @@ router.get('/ventas-por-tipo', (req, res) => {
 // Top clientes por monto comprado
 router.get('/top-clientes', (req, res) => {
   const rows = db.prepare(
-    `SELECT c.id, c.nombre, COUNT(i.id) AS cantidad_compras, COALESCE(SUM(i.total), 0) AS total_comprado
+    `SELECT c.id, c.nombre,
+            COUNT(CASE WHEN i.tipo_comprobante != 'nota_credito' THEN i.id END) AS cantidad_compras,
+            COALESCE(SUM(CASE WHEN i.tipo_comprobante = 'nota_credito' THEN -i.total ELSE i.total END), 0) AS total_comprado
      FROM invoices i JOIN clients c ON c.id = i.client_id
-     WHERE i.estado = 'emitido' AND i.tipo_comprobante != 'nota_credito'
+     WHERE i.estado = 'emitido'
      GROUP BY c.id
      ORDER BY total_comprado DESC
      LIMIT 10`
@@ -97,9 +117,11 @@ router.get('/top-clientes', (req, res) => {
 router.get('/ventas-mensuales', (req, res) => {
   const year = req.query.year || String(new Date().getFullYear());
   const rows = db.prepare(
-    `SELECT strftime('%m', fecha_emision) AS mes, COALESCE(SUM(total), 0) AS total, COUNT(*) AS cantidad
+    `SELECT strftime('%m', fecha_emision) AS mes,
+            COALESCE(SUM(CASE WHEN tipo_comprobante = 'nota_credito' THEN -total ELSE total END), 0) AS total,
+            COUNT(CASE WHEN tipo_comprobante != 'nota_credito' THEN 1 END) AS cantidad
      FROM invoices
-     WHERE estado = 'emitido' AND tipo_comprobante != 'nota_credito' AND strftime('%Y', fecha_emision) = ?
+     WHERE estado = 'emitido' AND strftime('%Y', fecha_emision) = ?
      GROUP BY mes
      ORDER BY mes ASC`
   ).all(year);
@@ -119,11 +141,13 @@ router.get('/ventas-por-vendedor', (req, res) => {
   const { month, year } = req.query;
   const y = year || String(new Date().getFullYear());
   let sql = `
-    SELECT u.id, COALESCE(u.full_name, 'Sin asignar') AS vendedor, COUNT(i.id) AS cantidad,
-           COALESCE(SUM(i.total), 0) AS total, COALESCE(SUM(i.subtotal), 0) AS ventas_sin_igv
+    SELECT u.id, COALESCE(u.full_name, 'Sin asignar') AS vendedor,
+           COUNT(CASE WHEN i.tipo_comprobante != 'nota_credito' THEN i.id END) AS cantidad,
+           COALESCE(SUM(CASE WHEN i.tipo_comprobante = 'nota_credito' THEN -i.total ELSE i.total END), 0) AS total,
+           COALESCE(SUM(CASE WHEN i.tipo_comprobante = 'nota_credito' THEN -i.subtotal ELSE i.subtotal END), 0) AS ventas_sin_igv
     FROM invoices i
     LEFT JOIN users u ON u.id = i.created_by
-    WHERE i.estado = 'emitido' AND i.tipo_comprobante != 'nota_credito'
+    WHERE i.estado = 'emitido'
       AND strftime('%Y', i.fecha_emision) = ?
   `;
   const params = [y];
@@ -140,9 +164,10 @@ router.get('/productos-mas-vendidos', (req, res) => {
   const { month, year } = req.query;
   let sql = `
     SELECT p.id, COALESCE(p.nombre, ii.descripcion) AS nombre, COALESCE(p.unidad, '-') AS unidad,
-           SUM(ii.cantidad) AS cantidad_vendida, SUM(ii.subtotal) AS total_vendido,
-           COALESCE(SUM(CASE WHEN i.moneda != 'USD' THEN ii.subtotal ELSE 0 END), 0) AS monto_soles,
-           COALESCE(SUM(CASE WHEN i.moneda = 'USD' THEN ii.subtotal ELSE 0 END), 0) AS monto_dolares
+           SUM(CASE WHEN i.tipo_comprobante = 'nota_credito' THEN -ii.cantidad ELSE ii.cantidad END) AS cantidad_vendida,
+           SUM(CASE WHEN i.tipo_comprobante = 'nota_credito' THEN -ii.subtotal ELSE ii.subtotal END) AS total_vendido,
+           COALESCE(SUM(CASE WHEN i.moneda = 'USD' THEN 0 WHEN i.tipo_comprobante = 'nota_credito' THEN -ii.subtotal ELSE ii.subtotal END), 0) AS monto_soles,
+           COALESCE(SUM(CASE WHEN i.moneda != 'USD' THEN 0 WHEN i.tipo_comprobante = 'nota_credito' THEN -ii.subtotal ELSE ii.subtotal END), 0) AS monto_dolares
     FROM invoice_items ii
     JOIN invoices i ON i.id = ii.invoice_id
     LEFT JOIN products p ON p.id = ii.product_id
@@ -178,10 +203,11 @@ function fillMeses(byMonth, factory) {
 router.get('/informe-tributario', (req, res) => {
   const year = req.query.year || String(new Date().getFullYear());
   const ventasRows = db.prepare(
-    `SELECT strftime('%m', fecha_emision) AS mes, COALESCE(SUM(subtotal), 0) AS ventas_netas,
-            COALESCE(SUM(igv), 0) AS igv_ventas
+    `SELECT strftime('%m', fecha_emision) AS mes,
+            COALESCE(SUM(CASE WHEN tipo_comprobante = 'nota_credito' THEN -subtotal ELSE subtotal END), 0) AS ventas_netas,
+            COALESCE(SUM(CASE WHEN tipo_comprobante = 'nota_credito' THEN -igv ELSE igv END), 0) AS igv_ventas
      FROM invoices
-     WHERE estado = 'emitido' AND tipo_comprobante != 'nota_credito' AND strftime('%Y', fecha_emision) = ?
+     WHERE estado = 'emitido' AND strftime('%Y', fecha_emision) = ?
      GROUP BY mes`
   ).all(year);
   const comprasRows = db.prepare(

@@ -3,6 +3,7 @@ const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { buildInvoicePdf } = require('../utils/pdf');
 const { consumirStock, incrementarStock } = require('../utils/stock');
+const { emitirComprobante, estaConfigurado } = require('../utils/facturacionElectronica');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -92,7 +93,7 @@ router.get('/:id', (req, res) => {
 
 const FORMAS_PAGO = ['efectivo', 'tarjeta', 'banco'];
 
-router.post('/', (req, res) => {
+router.post('/', async (req, res) => {
   const {
     tipo_comprobante, client_id, items, moneda, observaciones, fecha_emision, forma_pago,
     numero: numeroManual, descuento_global_pct,
@@ -223,8 +224,34 @@ router.post('/', (req, res) => {
   });
 
   const invoiceId = insertAll();
-  const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(invoiceId);
-  const invoiceItems = db.prepare('SELECT * FROM invoice_items WHERE invoice_id = ?').all(invoiceId);
+  let invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(invoiceId);
+  let invoiceItems = db.prepare('SELECT * FROM invoice_items WHERE invoice_id = ?').all(invoiceId);
+
+  // La venta ya quedó confirmada localmente (stock, kardex, numeración) antes
+  // de intentar el envío a SUNAT: un fallo del OSE no debe perder la venta,
+  // solo queda registrada como no validada (sunat_estado='error').
+  if (estaConfigurado()) {
+    const itemsConCodigo = invoiceItems.map((it) => ({
+      ...it,
+      codigo_producto: it.product_id ? db.prepare('SELECT codigo FROM products WHERE id = ?').get(it.product_id)?.codigo : null,
+    }));
+    const resultado = await emitirComprobante(invoice, itemsConCodigo, client);
+    db.prepare(
+      `UPDATE invoices SET modo_emision = ?, sunat_estado = ?, sunat_hash = ?, sunat_pdf_url = ?,
+       sunat_xml_url = ?, sunat_cdr_url = ?, sunat_mensaje = ? WHERE id = ?`
+    ).run(
+      resultado.modo_emision || 'real',
+      resultado.sunat_estado || null,
+      resultado.sunat_hash || null,
+      resultado.sunat_pdf_url || null,
+      resultado.sunat_xml_url || null,
+      resultado.sunat_cdr_url || null,
+      resultado.sunat_mensaje || null,
+      invoiceId
+    );
+    invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(invoiceId);
+  }
+
   res.status(201).json({ ...invoice, items: invoiceItems });
 });
 

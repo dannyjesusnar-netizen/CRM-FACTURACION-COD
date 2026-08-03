@@ -153,13 +153,74 @@ alterna entre modo claro y modo oscuro en toda la aplicación, incluyendo la
 pantalla de login. La preferencia se guarda en `localStorage` del navegador,
 por lo que se mantiene aunque se recargue la página o se cierre sesión.
 
-## Importante: modo simulado
+## Facturación electrónica: modo simulado vs. real (SUNAT)
 
-La facturación electrónica se genera en **modo simulado**: no hay conexión real
-a SUNAT/OSE. Los PDF generados indican claramente que no tienen validez
-tributaria. Cuando quieras emitir comprobantes reales, hay que integrar un
-proveedor OSE/PSE (ej. Nubefact, Facturación Perú) en `backend/routes/invoices.js`
-y `backend/utils/pdf.js`.
+Por defecto la app opera en **modo simulado**: no hay conexión real a SUNAT/OSE,
+y los PDF generados lo indican claramente ("SIMULADO", sin validez tributaria).
+Esto es intencional — activar la emisión real requiere trámites y una
+contratación que la app no puede hacer por ti.
+
+### Qué necesitas para emitir comprobantes reales
+
+1. **RUC activo**, registrado como **emisor electrónico** en SUNAT (trámite
+   gratuito una vez que tengas RUC, se hace en sunat.gob.pe).
+2. Una vía de emisión:
+   - **SEE-SOL** (gratis, en el portal de SUNAT): sin costo, pero es manual/web
+     y **no tiene API** — no se puede integrar con este CRM. Sirve para muy
+     bajo volumen mientras defines proveedor.
+   - **Un OSE privado** (Nubefact, Facturador Perú, Efact, etc.), desde unos
+     S/30–50/mes: **sí tiene API**, es lo que permite que este CRM emita
+     automáticamente y reciba la validación de SUNAT en segundos. Es el
+     camino recomendado para uso real.
+3. Con el OSE contratado, te dan credenciales de **pruebas (sandbox)** y luego
+   de **producción**.
+
+### Cómo activarlo en este sistema
+
+El sistema ya incluye un adaptador para **Nubefact** en
+`backend/utils/facturacionElectronica.js`. Mientras no configures las
+variables de entorno de abajo, todo sigue funcionando exactamente igual que
+hoy (modo simulado). Para activarlo:
+
+1. Contrata Nubefact (u otro OSE) y obtén tu **RUC** y **token de API**
+   (primero en sandbox: `https://sandbox.nubefact.com`).
+2. Agrega estas variables de entorno al backend (en Render: Settings →
+   Environment):
+
+   | Variable | Valor |
+   | --- | --- |
+   | `NUBEFACT_RUC` | tu RUC (el mismo con el que te registraste como emisor electrónico) |
+   | `NUBEFACT_TOKEN` | el token de API que te da Nubefact |
+   | `NUBEFACT_ENV` | `sandbox` para pruebas, `production` cuando ya validaste que todo funciona |
+
+3. Reinicia el servicio. Al emitir una Factura, Boleta o Nota de Crédito, el
+   sistema ahora intentará enviarla a SUNAT vía Nubefact automáticamente. La
+   venta **siempre se guarda localmente primero** (stock, kardex, numeración);
+   si el envío al OSE falla por cualquier motivo, la venta no se pierde —
+   queda marcada como "Error de envío" (visible en Ventas) en vez de
+   mostrarse falsamente como aceptada.
+4. En Ventas verás el estado real de cada comprobante: **Simulado** (sin
+   credenciales configuradas), **Aceptado SUNAT**, **Rechazado SUNAT**, o
+   **Error de envío** — con enlaces directos al PDF/XML/CDR oficiales que
+   devuelve Nubefact cuando el envío es aceptado.
+
+### ⚠️ Antes de pasar a producción
+
+La integración con Nubefact se construyó siguiendo su documentación pública,
+pero **no pudo probarse contra una cuenta real** (no había credenciales
+disponibles al momento de escribirla). Antes de usarla con clientes reales:
+
+1. Prueba primero con `NUBEFACT_ENV=sandbox` y una venta de bajo valor.
+2. Revisa la respuesta real de Nubefact contra su documentación vigente
+   (https://nubefact.com/api/) y ajusta `backend/utils/facturacionElectronica.js`
+   si algún nombre de campo cambió.
+3. Solo después de confirmar que el sandbox funciona correctamente, cambia
+   `NUBEFACT_ENV` a `production` con tus credenciales reales.
+
+Si prefieres otro OSE en vez de Nubefact, el adaptador está aislado en un solo
+archivo (`backend/utils/facturacionElectronica.js`) para que sea sencillo
+reemplazar la llamada HTTP por la API del proveedor que elijas, sin tocar el
+resto del sistema.
 
 ## Estructura del proyecto
 
