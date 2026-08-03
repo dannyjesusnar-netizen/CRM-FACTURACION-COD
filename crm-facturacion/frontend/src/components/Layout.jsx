@@ -90,7 +90,7 @@ export default function Layout() {
               <div className="user-dropdown-item" onClick={() => toast.info('Términos y condiciones (próximamente).')}>
                 <FileSignature size={15} className="dropdown-icon" /> Términos y condiciones
               </div>
-              <div className="user-dropdown-item" onClick={() => toast.info('Cambio de contraseña disponible próximamente.')}>
+              <div className="user-dropdown-item" onClick={() => navigate('/cambiar-contrasena')}>
                 <Lock size={15} className="dropdown-icon" /> Cambiar contraseña
               </div>
               <div className="user-dropdown-item" onClick={() => toast.info('Capacitación en línea disponible próximamente.')}>

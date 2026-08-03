@@ -2,6 +2,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const db = require('../db');
 const { requireAuth, requireGerencia } = require('../middleware/auth');
+const { passwordError } = require('../utils/password');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -35,8 +36,9 @@ router.post('/', (req, res) => {
   if (!/^\d{8}$/.test(dni)) {
     return res.status(400).json({ error: 'El DNI debe tener 8 dígitos.' });
   }
-  if (password.length < 6) {
-    return res.status(400).json({ error: 'La contraseña debe tener al menos 6 caracteres.' });
+  const pwdErr = passwordError(password);
+  if (pwdErr) {
+    return res.status(400).json({ error: pwdErr });
   }
   if (!ROLES.includes(role)) {
     return res.status(400).json({ error: 'role inválido. Use gerencia o vendedor.' });
@@ -68,8 +70,9 @@ router.put('/:id', (req, res) => {
   if (dni && !/^\d{8}$/.test(dni)) {
     return res.status(400).json({ error: 'El DNI debe tener 8 dígitos.' });
   }
-  if (password && password.length < 6) {
-    return res.status(400).json({ error: 'La contraseña debe tener al menos 6 caracteres.' });
+  if (password) {
+    const pwdErr = passwordError(password);
+    if (pwdErr) return res.status(400).json({ error: pwdErr });
   }
   if (dni && dni !== existing.dni && db.prepare('SELECT id FROM users WHERE dni = ? AND id != ?').get(dni, req.params.id)) {
     return res.status(409).json({ error: 'Ya existe un usuario con ese DNI.' });
