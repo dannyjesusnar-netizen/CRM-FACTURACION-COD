@@ -17,4 +17,11 @@ function requireAuth(req, res, next) {
   }
 }
 
-module.exports = { requireAuth, JWT_SECRET };
+function requireGerencia(req, res, next) {
+  if (!req.user || req.user.role !== 'gerencia') {
+    return res.status(403).json({ error: 'Solo un usuario de Gerencia puede realizar esta acción.' });
+  }
+  next();
+}
+
+module.exports = { requireAuth, requireGerencia, JWT_SECRET };
