@@ -335,6 +335,24 @@ for (const [col, def] of INVOICE_NC_COLUMNS) {
     db.exec(`ALTER TABLE invoices ADD COLUMN ${col} ${def}`);
   }
 }
+// Facturación electrónica real (OSE/SUNAT). modo_emision = 'simulado' hasta
+// que el servidor tenga credenciales de un OSE configuradas (ver
+// backend/utils/facturacionElectronica.js); sunat_estado refleja la
+// respuesta real del OSE (aceptado | rechazado | error | null).
+const INVOICE_SUNAT_COLUMNS = [
+  ['modo_emision', "TEXT DEFAULT 'simulado'"],
+  ['sunat_estado', "TEXT"],
+  ['sunat_hash', "TEXT"],
+  ['sunat_pdf_url', "TEXT"],
+  ['sunat_xml_url', "TEXT"],
+  ['sunat_cdr_url', "TEXT"],
+  ['sunat_mensaje', "TEXT"],
+];
+for (const [col, def] of INVOICE_SUNAT_COLUMNS) {
+  if (!invoiceColumns.includes(col)) {
+    db.exec(`ALTER TABLE invoices ADD COLUMN ${col} ${def}`);
+  }
+}
 const PRODUCT_NEW_COLUMNS = [
   ['codigo_barras', "TEXT"],
   ['afectacion_igv', "TEXT DEFAULT 'gravado'"],

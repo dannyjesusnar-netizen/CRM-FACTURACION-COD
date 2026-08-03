@@ -13,10 +13,15 @@ function money(n, moneda) {
 
 function buildInvoicePdf(invoice, items) {
   const doc = new PDFDocument({ margin: 40, size: 'A4' });
+  const esReal = invoice.modo_emision === 'real' && invoice.sunat_estado === 'aceptado';
 
   // Encabezado
   doc.fontSize(16).fillColor('#0f4c81').text('CRM Facturacion', 40, 40);
-  doc.fontSize(9).fillColor('#666').text('Documento generado en modo SIMULADO (sin validez tributaria real)', 40, 60);
+  if (esReal) {
+    doc.fontSize(9).fillColor('#0ca30c').text(`Comprobante electronico aceptado por SUNAT — Hash: ${invoice.sunat_hash || '-'}`, 40, 60);
+  } else {
+    doc.fontSize(9).fillColor('#666').text('Documento generado en modo SIMULADO (sin validez tributaria real)', 40, 60);
+  }
 
   doc.roundedRect(380, 35, 175, 60, 4).stroke('#0f4c81');
   doc.fontSize(11).fillColor('#0f4c81').text(TIPO_LABEL[invoice.tipo_comprobante] || invoice.tipo_comprobante, 388, 42, { width: 160 });
@@ -76,10 +81,19 @@ function buildInvoicePdf(invoice, items) {
     doc.fontSize(9).fillColor('#444').text(`Observaciones: ${invoice.observaciones}`, 40, y, { width: 500 });
   }
 
-  doc.fontSize(8).fillColor('#999').text(
-    'Este comprobante fue generado por un sistema en modo simulado, sin conexion real a SUNAT. No tiene validez tributaria.',
-    40, 760, { width: 515, align: 'center' }
-  );
+  if (esReal) {
+    doc.fontSize(8).fillColor('#0ca30c').text(
+      'Representacion impresa de un comprobante electronico aceptado por SUNAT. Consulta el CDR/XML oficial en el enlace del OSE.',
+      40, 760, { width: 515, align: 'center' }
+    );
+  } else {
+    doc.fontSize(8).fillColor('#999').text(
+      invoice.modo_emision === 'real'
+        ? `Este comprobante fue enviado a SUNAT pero no fue aceptado (estado: ${invoice.sunat_estado || 'desconocido'}). No tiene validez tributaria. ${invoice.sunat_mensaje || ''}`
+        : 'Este comprobante fue generado por un sistema en modo simulado, sin conexion real a SUNAT. No tiene validez tributaria.',
+      40, 760, { width: 515, align: 'center' }
+    );
+  }
 
   return doc;
 }

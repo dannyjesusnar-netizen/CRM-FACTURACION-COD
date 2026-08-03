@@ -6,6 +6,23 @@ import { useToast } from '../context/ToastContext';
 const TIPO_LABEL = { factura: 'Factura', boleta: 'Boleta', nota_credito: 'Nota de crédito' };
 const FORMA_PAGO_LABEL = { efectivo: 'Efectivo', tarjeta: 'Tarjeta', banco: 'Transferencia/Banco' };
 
+function envioBadgeLabel(inv) {
+  if (inv.estado === 'anulado') return 'Anulado';
+  if (inv.modo_emision !== 'real') return 'Simulado';
+  if (inv.sunat_estado === 'aceptado') return 'Aceptado SUNAT';
+  if (inv.sunat_estado === 'rechazado') return 'Rechazado SUNAT';
+  if (inv.sunat_estado === 'error') return 'Error de envío';
+  return 'Pendiente';
+}
+
+function envioBadgeClass(inv) {
+  if (inv.estado === 'anulado') return 'badge-critical';
+  if (inv.modo_emision !== 'real') return 'badge-good';
+  if (inv.sunat_estado === 'aceptado') return 'badge-good';
+  if (inv.sunat_estado === 'rechazado' || inv.sunat_estado === 'error') return 'badge-critical';
+  return 'badge-neutral';
+}
+
 function todayStr() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -161,19 +178,39 @@ export default function Invoices() {
                   <td style={{ textAlign: 'right' }}>S/ {Number(inv.total).toFixed(2)}</td>
                   <td style={{ textTransform: 'capitalize' }}>{FORMA_PAGO_LABEL[inv.forma_pago] || inv.forma_pago || 'Efectivo'}</td>
                   <td>
-                    <span className={'badge ' + (inv.estado === 'anulado' ? 'badge-critical' : 'badge-good')}>
-                      {inv.estado === 'anulado' ? 'Anulado' : 'Simulado'}
+                    <span className={'badge ' + envioBadgeClass(inv)} title={inv.sunat_mensaje || ''}>
+                      {envioBadgeLabel(inv)}
                     </span>
                   </td>
                   <td>
-                    <a className="icon-link" href={`/api/invoices/${inv.id}/pdf`} target="_blank" rel="noreferrer" title="Imprimir">🖨️</a>
+                    <a className="icon-link" href={inv.sunat_pdf_url || `/api/invoices/${inv.id}/pdf`} target="_blank" rel="noreferrer" title="Imprimir">🖨️</a>
                   </td>
                   <td>
-                    <a className="icon-link" href={`/api/invoices/${inv.id}/pdf`} target="_blank" rel="noreferrer" title="Ver PDF">📄</a>
+                    <a className="icon-link" href={inv.sunat_pdf_url || `/api/invoices/${inv.id}/pdf`} target="_blank" rel="noreferrer" title="Ver PDF">📄</a>
                   </td>
-                  <td><span className="icon-link muted" title="No disponible en modo simulado">XML</span></td>
-                  <td><span className="icon-link muted" title="No disponible en modo simulado">CDR</span></td>
-                  <td><span className="icon-link muted" title="Sin conexión real a SUNAT">—</span></td>
+                  <td>
+                    {inv.sunat_xml_url ? (
+                      <a className="icon-link" href={inv.sunat_xml_url} target="_blank" rel="noreferrer">XML</a>
+                    ) : (
+                      <span className="icon-link muted" title="No disponible en modo simulado">XML</span>
+                    )}
+                  </td>
+                  <td>
+                    {inv.sunat_cdr_url ? (
+                      <a className="icon-link" href={inv.sunat_cdr_url} target="_blank" rel="noreferrer">CDR</a>
+                    ) : (
+                      <span className="icon-link muted" title="No disponible en modo simulado">CDR</span>
+                    )}
+                  </td>
+                  <td>
+                    {inv.modo_emision === 'real' ? (
+                      <span className={'icon-link ' + (inv.sunat_estado === 'aceptado' ? '' : 'muted')} title={inv.sunat_mensaje || ''}>
+                        {inv.sunat_estado || '—'}
+                      </span>
+                    ) : (
+                      <span className="icon-link muted" title="Sin conexión real a SUNAT">—</span>
+                    )}
+                  </td>
                   <td>
                     {inv.estado === 'emitido' ? (
                       <button className="btn-link danger" onClick={() => handleAnular(inv.id)}>Anular</button>
