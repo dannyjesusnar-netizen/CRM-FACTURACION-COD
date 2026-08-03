@@ -228,11 +228,11 @@ export default function Configuracion() {
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h2>{editingId ? 'Editar usuario' : 'Nuevo usuario'}</h2>
             <form onSubmit={handleSubmitUser}>
-              <label>Usuario (para iniciar sesión)</label>
+              <label>Usuario (identificador interno)</label>
               <input required disabled={!!editingId} value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} />
               <label>Nombre completo</label>
               <input required value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} />
-              <label>DNI (8 dígitos)</label>
+              <label>DNI (8 dígitos) — se usa para iniciar sesión junto con el RUC de la empresa</label>
               <input required value={form.dni} onChange={(e) => setForm({ ...form, dni: e.target.value })} maxLength={8} />
               <label>Rol</label>
               <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>

@@ -41,6 +41,9 @@ router.post('/', (req, res) => {
   if (!ROLES.includes(role)) {
     return res.status(400).json({ error: 'role inválido. Use gerencia o vendedor.' });
   }
+  if (db.prepare('SELECT id FROM users WHERE dni = ?').get(dni)) {
+    return res.status(409).json({ error: 'Ya existe un usuario con ese DNI.' });
+  }
   try {
     const info = db.prepare(
       'INSERT INTO users (username, password_hash, full_name, role, dni, activo) VALUES (?, ?, ?, ?, ?, 1)'
@@ -67,6 +70,9 @@ router.put('/:id', (req, res) => {
   }
   if (password && password.length < 6) {
     return res.status(400).json({ error: 'La contraseña debe tener al menos 6 caracteres.' });
+  }
+  if (dni && dni !== existing.dni && db.prepare('SELECT id FROM users WHERE dni = ? AND id != ?').get(dni, req.params.id)) {
+    return res.status(409).json({ error: 'Ya existe un usuario con ese DNI.' });
   }
   db.prepare(
     'UPDATE users SET full_name = ?, dni = ?, role = ?, password_hash = ? WHERE id = ?'

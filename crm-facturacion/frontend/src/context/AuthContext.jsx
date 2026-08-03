@@ -9,8 +9,8 @@ export function AuthProvider({ children }) {
     return raw ? JSON.parse(raw) : null;
   });
 
-  async function login(username, password) {
-    const res = await api.post('/auth/login', { username, password });
+  async function login(ruc, dni, password) {
+    const res = await api.post('/auth/login', { ruc, dni, password });
     localStorage.setItem('crm_token', res.data.token);
     localStorage.setItem('crm_user', JSON.stringify(res.data.user));
     setUser(res.data.user);

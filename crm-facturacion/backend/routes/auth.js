@@ -7,11 +7,17 @@ const { JWT_SECRET, requireAuth } = require('../middleware/auth');
 const router = express.Router();
 
 router.post('/login', (req, res) => {
-  const { username, password } = req.body || {};
-  if (!username || !password) {
-    return res.status(400).json({ error: 'Usuario y contrasena son requeridos.' });
+  const { ruc, dni, password } = req.body || {};
+  if (!ruc || !dni || !password) {
+    return res.status(400).json({ error: 'RUC, DNI y contraseña son requeridos.' });
   }
-  const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
+  // Si la empresa aun no configuro su RUC (primer ingreso tras desplegar), no
+  // bloqueamos por RUC para no dejar a Gerencia sin forma de entrar y configurarlo.
+  const empresa = db.prepare('SELECT ruc FROM empresa_config WHERE id = 1').get();
+  if (empresa && empresa.ruc && empresa.ruc !== ruc) {
+    return res.status(401).json({ error: 'Credenciales incorrectas.' });
+  }
+  const user = db.prepare('SELECT * FROM users WHERE dni = ?').get(dni);
   if (!user) {
     return res.status(401).json({ error: 'Credenciales incorrectas.' });
   }
@@ -29,7 +35,7 @@ router.post('/login', (req, res) => {
   );
   res.json({
     token,
-    user: { id: user.id, username: user.username, full_name: user.full_name, role: user.role }
+    user: { id: user.id, username: user.username, full_name: user.full_name, role: user.role, dni: user.dni }
   });
 });
 
