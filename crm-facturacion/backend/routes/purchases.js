@@ -2,9 +2,11 @@ const express = require('express');
 const db = require('../db');
 const { requireAuth, resolveSucursal } = require('../middleware/auth');
 const { incrementarStock, ajustarStockSucursal, round2 } = require('../utils/stock');
+const { requirePermiso } = require('../utils/permisos');
 
 const router = express.Router();
 router.use(requireAuth);
+router.use(requirePermiso('compras'));
 router.use(resolveSucursal);
 
 const IGV_RATE = 0.18;

@@ -11,14 +11,14 @@ import {
 } from 'lucide-react';
 
 const SUBNAV_ITEMS = [
-  { to: '/ventas', label: 'Ventas', Icon: TrendingUp, active: true },
-  { to: '/compras', label: 'Compras', Icon: ShoppingCart, active: true },
-  { to: '/productos', label: 'Inventario', Icon: Bike, active: true },
-  { to: '/caja', label: 'Caja y bancos', Icon: Wallet, active: true },
-  { to: '/clientes', label: 'Personas', Icon: Users, active: true },
+  { to: '/ventas', label: 'Ventas', Icon: TrendingUp, active: true, modulo: 'ventas' },
+  { to: '/compras', label: 'Compras', Icon: ShoppingCart, active: true, modulo: 'compras' },
+  { to: '/productos', label: 'Inventario', Icon: Bike, active: true, modulo: 'inventario' },
+  { to: '/caja', label: 'Caja y bancos', Icon: Wallet, active: true, modulo: 'caja' },
+  { to: '/clientes', label: 'Personas', Icon: Users, active: true, modulo: 'clientes' },
   { to: null, label: 'Contabilidad', Icon: Calculator, active: false },
   { to: null, label: 'Planillas', Icon: ClipboardList, active: false },
-  { to: '/reportes', label: 'Reportes', Icon: FileText, active: true },
+  { to: '/reportes', label: 'Reportes', Icon: FileText, active: true, modulo: 'reportes' },
 ];
 
 export default function Layout() {
@@ -102,9 +102,11 @@ export default function Layout() {
               <div className="user-dropdown-item" onClick={() => toast.info('Capacitación en línea disponible próximamente.')}>
                 <Video size={15} className="dropdown-icon" /> Capacitación en línea
               </div>
-              <div className="user-dropdown-item" onClick={() => navigate('/dashboard')}>
-                <BarChart3 size={15} className="dropdown-icon" /> Dashboard
-              </div>
+              {user?.permisos?.dashboard !== false && (
+                <div className="user-dropdown-item" onClick={() => navigate('/dashboard')}>
+                  <BarChart3 size={15} className="dropdown-icon" /> Dashboard
+                </div>
+              )}
               <div className="user-dropdown-divider" />
               <div className="user-dropdown-item danger" onClick={handleLogout}>
                 <LogOut size={15} className="dropdown-icon" /> CERRAR SESIÓN
@@ -115,7 +117,7 @@ export default function Layout() {
       </header>
 
       <nav className="subnav">
-        {SUBNAV_ITEMS.map((item) => {
+        {SUBNAV_ITEMS.filter((item) => !item.modulo || user?.permisos?.[item.modulo] !== false).map((item) => {
           const isActive = item.to && location.pathname === item.to;
           return (
             <div

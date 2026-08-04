@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 const db = require('../db');
 const { JWT_SECRET, requireAuth } = require('../middleware/auth');
 const { passwordError } = require('../utils/password');
+const { permisosDeUsuario } = require('../utils/permisos');
 
 const router = express.Router();
 
@@ -42,6 +43,8 @@ router.post('/login', (req, res) => {
     user: {
       id: user.id, username: user.username, full_name: user.full_name, role: user.role, dni: user.dni,
       sucursal_id: sucursalFija?.id || null, sucursal_nombre: sucursalFija?.nombre || null,
+      custom_role_id: user.custom_role_id || null,
+      permisos: permisosDeUsuario(user),
     }
   });
 });

@@ -2,9 +2,11 @@ const express = require('express');
 const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { getStockSucursal, setStockSucursal } = require('../utils/stock');
+const { requirePermiso } = require('../utils/permisos');
 
 const router = express.Router();
 router.use(requireAuth);
+router.use(requirePermiso('inventario'));
 
 // GET /api/traslados?emisor=&desde=&hasta=&estado=
 router.get('/', (req, res) => {

@@ -22,12 +22,15 @@ const cotizacionRoutes = require('./routes/cotizaciones');
 const guiaRoutes = require('./routes/guias');
 const empresaRoutes = require('./routes/empresa');
 const userRoutes = require('./routes/users');
+const roleRoutes = require('./routes/roles');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
 
 app.use(cors());
-app.use(express.json());
+// Limite mayor al default (100kb) para permitir subir el logo de la empresa
+// como data URL en el mismo PUT /api/empresa.
+app.use(express.json({ limit: '2mb' }));
 
 app.get('/api/health', (req, res) => res.json({ ok: true, service: 'crm-facturacion-backend' }));
 
@@ -49,6 +52,7 @@ app.use('/api/cotizaciones', cotizacionRoutes);
 app.use('/api/guias', guiaRoutes);
 app.use('/api/empresa', empresaRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/roles', roleRoutes);
 
 // Si existe el build del frontend (frontend/dist), lo servimos desde el mismo
 // servidor. Asi el despliegue queda como un unico servicio (una sola URL).

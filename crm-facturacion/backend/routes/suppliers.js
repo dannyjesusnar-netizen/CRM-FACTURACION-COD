@@ -1,9 +1,11 @@
 const express = require('express');
 const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
+const { requirePermiso } = require('../utils/permisos');
 
 const router = express.Router();
 router.use(requireAuth);
+router.use(requirePermiso('compras'));
 
 router.get('/', (req, res) => {
   const q = (req.query.q || '').trim();

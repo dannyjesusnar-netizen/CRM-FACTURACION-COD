@@ -4,9 +4,11 @@ const { requireAuth, resolveSucursal } = require('../middleware/auth');
 const { buildInvoicePdf } = require('../utils/pdf');
 const { consumirStock, incrementarStock, ajustarStockSucursal, StockInsuficienteError } = require('../utils/stock');
 const { emitirComprobante, estaConfigurado } = require('../utils/facturacionElectronica');
+const { requirePermiso } = require('../utils/permisos');
 
 const router = express.Router();
 router.use(requireAuth);
+router.use(requirePermiso('ventas'));
 router.use(resolveSucursal);
 
 const IGV_RATE = 0.18;

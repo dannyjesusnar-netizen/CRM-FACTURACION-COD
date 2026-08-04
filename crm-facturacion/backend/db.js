@@ -384,6 +384,27 @@ for (const [col, def] of PRODUCT_NEW_COLUMNS) {
     db.exec(`ALTER TABLE products ADD COLUMN ${col} ${def}`);
   }
 }
+// Roles personalizados con permisos por módulo (Configuración → Roles de
+// usuario). Solo Gerencia los administra y asigna, para no permitir que un
+// rol se otorgue a sí mismo más acceso del que tiene quien lo crea.
+db.exec(`
+CREATE TABLE IF NOT EXISTS roles (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  nombre TEXT NOT NULL,
+  descripcion TEXT,
+  activo INTEGER NOT NULL DEFAULT 1,
+  created_by INTEGER REFERENCES users(id),
+  created_at TEXT DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS role_permisos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  role_id INTEGER NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+  modulo TEXT NOT NULL,
+  habilitado INTEGER NOT NULL DEFAULT 0,
+  UNIQUE(role_id, modulo)
+);
+`);
+
 const userColumns = db.prepare("PRAGMA table_info(users)").all().map((c) => c.name);
 const USER_NEW_COLUMNS = [
   ['activo', 'INTEGER NOT NULL DEFAULT 1'],
@@ -391,10 +412,41 @@ const USER_NEW_COLUMNS = [
   // sucursal_id fija = el usuario (vendedor) solo opera en esa sede; NULL =
   // acceso a todas las sedes de la empresa (gerencia), elige una por sesión.
   ['sucursal_id', 'INTEGER REFERENCES sucursales(id)'],
+  // nombres/apellidos son la fuente para el formulario de Empleados;
+  // full_name se sigue calculando a partir de ellos para no romper PDFs,
+  // reportes y badges que ya lo usan tal cual.
+  ['nombres', 'TEXT'],
+  ['apellidos', 'TEXT'],
+  ['email', 'TEXT'],
+  ['telefono', 'TEXT'],
+  // custom_role_id: rol personalizado (ver tabla roles) con permisos por
+  // módulo. NULL = sin restricciones extra (compatibilidad con cuentas
+  // creadas antes de que existiera este sistema). Gerencia nunca lo usa:
+  // siempre tiene acceso completo, sea cual sea este valor.
+  ['custom_role_id', 'INTEGER REFERENCES roles(id)'],
 ];
 for (const [col, def] of USER_NEW_COLUMNS) {
   if (!userColumns.includes(col)) {
     db.exec(`ALTER TABLE users ADD COLUMN ${col} ${def}`);
+  }
+}
+
+const empresaColumns = db.prepare("PRAGMA table_info(empresa_config)").all().map((c) => c.name);
+const EMPRESA_NEW_COLUMNS = [
+  // Texto libre: no fabricamos el catálogo oficial CIIU/MCC de SUNAT.
+  ['actividad_ciiu', 'TEXT'],
+  ['actividad_mcc', 'TEXT'],
+  ['departamento', 'TEXT'],
+  // Provincia/distrito en texto libre: el catálogo UBIGEO completo del Perú
+  // (~1874 distritos) no está embebido aquí para no arriesgar datos
+  // incorrectos en una dirección fiscal real.
+  ['provincia', 'TEXT'],
+  ['distrito', 'TEXT'],
+  ['logo_data_url', 'TEXT'],
+];
+for (const [col, def] of EMPRESA_NEW_COLUMNS) {
+  if (!empresaColumns.includes(col)) {
+    db.exec(`ALTER TABLE empresa_config ADD COLUMN ${col} ${def}`);
   }
 }
 
@@ -448,11 +500,24 @@ if (!cajaSaldosColumns.includes('sucursal_id')) {
 const userCount = db.prepare('SELECT COUNT(*) AS n FROM users').get().n;
 if (userCount === 0) {
   const insertUser = db.prepare(
-    'INSERT INTO users (username, password_hash, full_name, role, dni) VALUES (?, ?, ?, ?, ?)'
+    `INSERT INTO users (username, password_hash, full_name, role, dni, nombres, apellidos)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
   );
-  insertUser.run('admin', bcrypt.hashSync('admin123', 10), 'Administrador', 'gerencia', '00000000');
-  insertUser.run('vendedor1', bcrypt.hashSync('vendedor123', 10), 'Carlos Ramírez', 'vendedor', '45678912');
-  insertUser.run('vendedor2', bcrypt.hashSync('vendedor123', 10), 'Lucía Fernández', 'vendedor', '87654321');
+  insertUser.run('admin', bcrypt.hashSync('admin123', 10), 'Administrador', 'gerencia', '00000000', 'Administrador', '');
+  insertUser.run('vendedor1', bcrypt.hashSync('vendedor123', 10), 'Carlos Ramírez', 'vendedor', '45678912', 'Carlos', 'Ramírez');
+  insertUser.run('vendedor2', bcrypt.hashSync('vendedor123', 10), 'Lucía Fernández', 'vendedor', '87654321', 'Lucía', 'Fernández');
+}
+
+// Backfill: cuentas creadas antes de que existieran nombres/apellidos
+// separados los derivan de full_name (primera palabra = nombres, resto =
+// apellidos) para que Empleados no las muestre en blanco.
+const usuariosSinNombres = db.prepare("SELECT id, full_name FROM users WHERE (nombres IS NULL OR nombres = '') AND full_name IS NOT NULL").all();
+if (usuariosSinNombres.length > 0) {
+  const updateNombres = db.prepare('UPDATE users SET nombres = ?, apellidos = ? WHERE id = ?');
+  for (const u of usuariosSinNombres) {
+    const partes = u.full_name.trim().split(/\s+/);
+    updateNombres.run(partes[0] || u.full_name, partes.slice(1).join(' '), u.id);
+  }
 }
 
 const empresaConfigCount = db.prepare('SELECT COUNT(*) AS n FROM empresa_config').get().n;

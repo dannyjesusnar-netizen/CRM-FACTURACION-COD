@@ -2,9 +2,11 @@ const express = require('express');
 const db = require('../db');
 const { requireAuth, resolveSucursal } = require('../middleware/auth');
 const { ajustarStockSucursal } = require('../utils/stock');
+const { requirePermiso } = require('../utils/permisos');
 
 const router = express.Router();
 router.use(requireAuth);
+router.use(requirePermiso('inventario'));
 router.use(resolveSucursal);
 
 const DIAS_ALERTA_VENCIMIENTO = 30;

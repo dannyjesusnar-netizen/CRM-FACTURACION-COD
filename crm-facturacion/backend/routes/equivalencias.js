@@ -1,9 +1,11 @@
 const express = require('express');
 const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
+const { requirePermiso } = require('../utils/permisos');
 
 const router = express.Router();
 router.use(requireAuth);
+router.use(requirePermiso('inventario'));
 
 // GET /api/equivalencias?product_id=
 router.get('/', (req, res) => {

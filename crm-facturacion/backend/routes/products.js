@@ -2,9 +2,11 @@ const express = require('express');
 const db = require('../db');
 const { requireAuth, resolveSucursal } = require('../middleware/auth');
 const { getStockSucursal, setStockSucursal, round2 } = require('../utils/stock');
+const { requirePermiso } = require('../utils/permisos');
 
 const router = express.Router();
 router.use(requireAuth);
+router.use(requirePermiso('inventario'));
 router.use(resolveSucursal);
 
 // El stock que se muestra siempre es el de la sede activa (no el agregado de

@@ -2,9 +2,11 @@ const express = require('express');
 const db = require('../db');
 const { requireAuth, resolveSucursal } = require('../middleware/auth');
 const { round2, ajustarStockSucursal, getStockSucursal, setStockSucursal } = require('../utils/stock');
+const { requirePermiso } = require('../utils/permisos');
 
 const router = express.Router();
 router.use(requireAuth);
+router.use(requirePermiso('inventario'));
 router.use(resolveSucursal);
 
 // cliente_proveedor: nombre del proveedor o cliente del documento que originó

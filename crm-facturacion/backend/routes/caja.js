@@ -1,9 +1,11 @@
 const express = require('express');
 const db = require('../db');
 const { requireAuth, resolveSucursal } = require('../middleware/auth');
+const { requirePermiso } = require('../utils/permisos');
 
 const router = express.Router();
 router.use(requireAuth);
+router.use(requirePermiso('caja'));
 router.use(resolveSucursal);
 
 const INGRESO_CATS = ['ventas', 'cuentas_cobrar', 'transferencia', 'otros'];

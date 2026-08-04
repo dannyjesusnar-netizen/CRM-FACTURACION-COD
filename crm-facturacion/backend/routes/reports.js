@@ -1,13 +1,18 @@
 const express = require('express');
 const db = require('../db');
 const { requireAuth, resolveSucursal } = require('../middleware/auth');
+const { requirePermiso, requireAlgunPermiso } = require('../utils/permisos');
 
 const router = express.Router();
 router.use(requireAuth);
 router.use(resolveSucursal);
+// Inicio (Dashboard) y Reportes comparten estos tres endpoints; el resto es
+// exclusivo de la pantalla de Reportes.
+const requireDashboardOReportes = requireAlgunPermiso(['dashboard', 'reportes']);
+const requireReportes = requirePermiso('reportes');
 
 // Resumen para el dashboard principal
-router.get('/summary', (req, res) => {
+router.get('/summary', requireDashboardOReportes, (req, res) => {
   const today = new Date().toISOString().slice(0, 10);
   const startOfMonth = today.slice(0, 8) + '01';
 
@@ -74,7 +79,7 @@ router.get('/summary', (req, res) => {
 });
 
 // Ventas agrupadas por dia dentro de un rango (para grafico de linea)
-router.get('/ventas-por-dia', (req, res) => {
+router.get('/ventas-por-dia', requireDashboardOReportes, (req, res) => {
   const { from, to } = req.query;
   const fromDate = from || new Date(Date.now() - 29 * 86400000).toISOString().slice(0, 10);
   const toDate = to || new Date().toISOString().slice(0, 10);
@@ -91,7 +96,7 @@ router.get('/ventas-por-dia', (req, res) => {
 });
 
 // Ventas por tipo de comprobante
-router.get('/ventas-por-tipo', (req, res) => {
+router.get('/ventas-por-tipo', requireDashboardOReportes, (req, res) => {
   const rows = db.prepare(
     `SELECT tipo_comprobante, COUNT(*) AS cantidad, COALESCE(SUM(total), 0) AS total
      FROM invoices WHERE estado = 'emitido' AND sucursal_id = ?
@@ -101,7 +106,7 @@ router.get('/ventas-por-tipo', (req, res) => {
 });
 
 // Top clientes por monto comprado
-router.get('/top-clientes', (req, res) => {
+router.get('/top-clientes', requireReportes, (req, res) => {
   const rows = db.prepare(
     `SELECT c.id, c.nombre,
             COUNT(CASE WHEN i.tipo_comprobante != 'nota_credito' THEN i.id END) AS cantidad_compras,
@@ -116,7 +121,7 @@ router.get('/top-clientes', (req, res) => {
 });
 
 // Ventas mensuales de un año (para "VENTAS MENSUALES")
-router.get('/ventas-mensuales', (req, res) => {
+router.get('/ventas-mensuales', requireReportes, (req, res) => {
   const year = req.query.year || String(new Date().getFullYear());
   const rows = db.prepare(
     `SELECT strftime('%m', fecha_emision) AS mes,
@@ -139,7 +144,7 @@ router.get('/ventas-mensuales', (req, res) => {
 });
 
 // Ventas por vendedor (usuario que emitio el comprobante)
-router.get('/ventas-por-vendedor', (req, res) => {
+router.get('/ventas-por-vendedor', requireReportes, (req, res) => {
   const { month, year } = req.query;
   const y = year || String(new Date().getFullYear());
   let sql = `
@@ -163,7 +168,7 @@ router.get('/ventas-por-vendedor', (req, res) => {
 });
 
 // Productos mas vendidos (lista completa, no solo top 5)
-router.get('/productos-mas-vendidos', (req, res) => {
+router.get('/productos-mas-vendidos', requireReportes, (req, res) => {
   const { month, year } = req.query;
   let sql = `
     SELECT p.id, COALESCE(p.nombre, ii.descripcion) AS nombre, COALESCE(p.unidad, '-') AS unidad,
@@ -203,7 +208,7 @@ function fillMeses(byMonth, factory) {
 // el mismo formato de columnas. Renta es una estimación simplificada
 // (1.5% de ventas netas, método de pago a cuenta), no un cálculo tributario
 // oficial: el sistema opera en modo simulado, sin validez tributaria real.
-router.get('/informe-tributario', (req, res) => {
+router.get('/informe-tributario', requireReportes, (req, res) => {
   const year = req.query.year || String(new Date().getFullYear());
   const ventasRows = db.prepare(
     `SELECT strftime('%m', fecha_emision) AS mes,
@@ -264,7 +269,7 @@ router.get('/informe-tributario', (req, res) => {
 });
 
 // Compras por mes de un año
-router.get('/compras-por-mes', (req, res) => {
+router.get('/compras-por-mes', requireReportes, (req, res) => {
   const year = req.query.year || String(new Date().getFullYear());
   const rows = db.prepare(
     `SELECT strftime('%m', fecha) AS mes, COALESCE(SUM(total), 0) AS total, COUNT(*) AS cantidad
@@ -281,7 +286,7 @@ router.get('/compras-por-mes', (req, res) => {
 
 // Ingresos (ventas) vs Gastos (compras + egresos de caja no relacionados a
 // compras, para no duplicar) por mes de un año.
-router.get('/ingreso-vs-gastos', (req, res) => {
+router.get('/ingreso-vs-gastos', requireReportes, (req, res) => {
   const year = req.query.year || String(new Date().getFullYear());
 
   const ventasRows = db.prepare(
@@ -321,7 +326,7 @@ router.get('/ingreso-vs-gastos', (req, res) => {
 // absoluto (el stock inicial de los productos de ejemplo no quedó
 // registrado como movimiento), pero sí refleja fielmente el volumen de
 // entradas/salidas de cada mes.
-router.get('/evolucion-inventarios', (req, res) => {
+router.get('/evolucion-inventarios', requireReportes, (req, res) => {
   const year = req.query.year || String(new Date().getFullYear());
   const rows = db.prepare(
     `SELECT strftime('%m', created_at) AS mes,

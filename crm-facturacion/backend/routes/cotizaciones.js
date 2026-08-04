@@ -1,9 +1,11 @@
 const express = require('express');
 const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
+const { requirePermiso } = require('../utils/permisos');
 
 const router = express.Router();
 router.use(requireAuth);
+router.use(requirePermiso('ventas'));
 
 const IGV_RATE = 0.18;
 const SERIE = 'CL02';
