@@ -118,6 +118,64 @@ router.post('/', (req, res) => {
   }
 });
 
+// POST /api/products/carga-masiva { rows: [{ codigo, nombre, categoria, unidad,
+// precio_unitario, stock, stock_minimo, precio_compra, codigo_barras }] }
+// Crea productos nuevos (por código) o actualiza los que ya existen. El
+// stock de cada fila es el de la sede activa, igual que en el alta/edición
+// individual.
+router.post('/carga-masiva', (req, res) => {
+  const { rows } = req.body || {};
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return res.status(400).json({ error: 'rows es requerido y debe tener al menos una fila.' });
+  }
+  const creados = [];
+  const actualizados = [];
+  const errores = [];
+
+  for (const r of rows) {
+    const codigo = (r.codigo || '').toString().trim();
+    const nombre = (r.nombre || '').toString().trim();
+    const precioUnitario = Number(r.precio_unitario);
+    if (!codigo || !nombre || Number.isNaN(precioUnitario)) {
+      errores.push({ codigo: codigo || '(vacío)', error: 'codigo, nombre y precio_unitario son requeridos (precio_unitario debe ser numérico).' });
+      continue;
+    }
+    const unidad = (r.unidad || 'NIU').toString().trim() || 'NIU';
+    const tipo = tipoDesdeUnidad(unidad);
+    const stock = tipo === 'servicio' ? null : Number(r.stock || 0);
+    const stockMinimo = tipo === 'servicio' ? null : Number(r.stock_minimo || 0);
+    const precioCompra = r.precio_compra === undefined || r.precio_compra === '' ? null : Number(r.precio_compra);
+    const categoria = (r.categoria || 'General').toString().trim() || 'General';
+    const codigoBarras = (r.codigo_barras || '').toString().trim() || null;
+
+    const existing = db.prepare('SELECT * FROM products WHERE codigo = ?').get(codigo);
+    try {
+      if (existing) {
+        const nuevoAgregado = tipo === 'servicio' || stock === null
+          ? existing.stock
+          : round2(existing.stock + (stock - getStockSucursal(existing.id, req.sucursalId)));
+        db.prepare(
+          `UPDATE products SET nombre = ?, categoria = ?, unidad = ?, tipo = ?, precio_unitario = ?, precio_compra = ?,
+           codigo_barras = ?, stock = ?, stock_minimo = ? WHERE id = ?`
+        ).run(nombre, categoria, unidad, tipo, precioUnitario, precioCompra, codigoBarras, nuevoAgregado, stockMinimo, existing.id);
+        if (tipo !== 'servicio') setStockSucursal(existing.id, req.sucursalId, stock);
+        actualizados.push({ codigo, nombre });
+      } else {
+        const info = db.prepare(
+          `INSERT INTO products (codigo, codigo_barras, nombre, tipo, categoria, unidad, precio_compra, precio_unitario, stock, stock_minimo)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        ).run(codigo, codigoBarras, nombre, tipo, categoria, unidad, precioCompra, precioUnitario, stock, stockMinimo);
+        if (tipo !== 'servicio' && stock > 0) setStockSucursal(info.lastInsertRowid, req.sucursalId, stock);
+        creados.push({ codigo, nombre });
+      }
+    } catch (err) {
+      errores.push({ codigo, error: 'No se pudo guardar esta fila.' });
+    }
+  }
+
+  res.json({ creados, actualizados, errores });
+});
+
 router.put('/:id', (req, res) => {
   const existing = db.prepare('SELECT * FROM products WHERE id = ?').get(req.params.id);
   if (!existing) return res.status(404).json({ error: 'Producto no encontrado.' });
