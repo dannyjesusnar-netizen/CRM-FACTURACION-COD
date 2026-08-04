@@ -1,0 +1,112 @@
+const express = require('express');
+const db = require('../db');
+const { requireAuth } = require('../middleware/auth');
+const { platformRequest } = require('../utils/httpClient');
+
+const router = express.Router();
+router.use(requireAuth);
+
+function sinToken(company) {
+  const { platform_token, ...rest } = company;
+  return rest;
+}
+
+// Nota: nunca devolvemos 401 aquí, aunque el error venga de un 401 real del
+// cliente (token de esa instancia incorrecto) — el interceptor del frontend
+// del panel trata cualquier 401 como "mi sesión expiró" y redirige a
+// /login. Un 401 ajeno (de la instancia cliente, no del panel) no debe
+// cerrar la sesión del propio admin de plataforma.
+function errorStatus(code) {
+  if (code === 'AUTH') return 409;
+  if (code === 'UNREACHABLE') return 502;
+  return 400;
+}
+
+// GET /api/companies
+router.get('/', (req, res) => {
+  const rows = db.prepare('SELECT * FROM empresas_cliente ORDER BY nombre ASC').all();
+  res.json(rows.map(sinToken));
+});
+
+// POST /api/companies { nombre, ruc, telefono, render_url, platform_token }
+router.post('/', (req, res) => {
+  const { nombre, ruc, telefono, render_url, platform_token } = req.body || {};
+  if (!nombre || !render_url || !platform_token) {
+    return res.status(400).json({ error: 'Nombre, URL de Render y token de plataforma son requeridos.' });
+  }
+  const info = db.prepare(
+    'INSERT INTO empresas_cliente (nombre, ruc, telefono, render_url, platform_token) VALUES (?, ?, ?, ?, ?)'
+  ).run(nombre, ruc || null, telefono || null, render_url, platform_token);
+  res.status(201).json(sinToken(db.prepare('SELECT * FROM empresas_cliente WHERE id = ?').get(info.lastInsertRowid)));
+});
+
+// PUT /api/companies/:id
+router.put('/:id', (req, res) => {
+  const existing = db.prepare('SELECT * FROM empresas_cliente WHERE id = ?').get(req.params.id);
+  if (!existing) return res.status(404).json({ error: 'Empresa no encontrada.' });
+  const { nombre, ruc, telefono, render_url, platform_token, activo } = req.body || {};
+  db.prepare(
+    `UPDATE empresas_cliente SET nombre = ?, ruc = ?, telefono = ?, render_url = ?, platform_token = ?, activo = ?
+     WHERE id = ?`
+  ).run(
+    nombre ?? existing.nombre,
+    ruc !== undefined ? (ruc || null) : existing.ruc,
+    telefono !== undefined ? (telefono || null) : existing.telefono,
+    render_url ?? existing.render_url,
+    platform_token ?? existing.platform_token,
+    activo !== undefined ? (activo ? 1 : 0) : existing.activo,
+    req.params.id
+  );
+  res.json(sinToken(db.prepare('SELECT * FROM empresas_cliente WHERE id = ?').get(req.params.id)));
+});
+
+// DELETE /api/companies/:id
+router.delete('/:id', (req, res) => {
+  const existing = db.prepare('SELECT * FROM empresas_cliente WHERE id = ?').get(req.params.id);
+  if (!existing) return res.status(404).json({ error: 'Empresa no encontrada.' });
+  db.prepare('DELETE FROM empresas_cliente WHERE id = ?').run(req.params.id);
+  res.json({ ok: true });
+});
+
+function getCompanyOr404(req, res) {
+  const company = db.prepare('SELECT * FROM empresas_cliente WHERE id = ?').get(req.params.id);
+  if (!company) {
+    res.status(404).json({ error: 'Empresa no encontrada.' });
+    return null;
+  }
+  return company;
+}
+
+async function proxy(req, res, path, opts) {
+  const company = getCompanyOr404(req, res);
+  if (!company) return;
+  try {
+    const data = await platformRequest(company, path, opts);
+    res.json(data);
+  } catch (err) {
+    res.status(errorStatus(err.code)).json({ error: err.message });
+  }
+}
+
+// GET /api/companies/:id/live/empresa
+router.get('/:id/live/empresa', (req, res) => proxy(req, res, '/empresa'));
+
+// GET /api/companies/:id/live/users
+router.get('/:id/live/users', (req, res) => proxy(req, res, '/users'));
+
+// PUT /api/companies/:id/live/users/:userId/estado { activo }
+router.put('/:id/live/users/:userId/estado', (req, res) =>
+  proxy(req, res, `/users/${req.params.userId}/estado`, { method: 'PUT', body: { activo: !!req.body?.activo } })
+);
+
+// PUT /api/companies/:id/live/users/:userId/password { new_password }
+router.put('/:id/live/users/:userId/password', (req, res) =>
+  proxy(req, res, `/users/${req.params.userId}/password`, { method: 'PUT', body: { new_password: req.body?.new_password } })
+);
+
+// PUT /api/companies/:id/live/users/:userId/rol
+router.put('/:id/live/users/:userId/rol', (req, res) =>
+  proxy(req, res, `/users/${req.params.userId}/rol`, { method: 'PUT', body: {} })
+);
+
+module.exports = router;

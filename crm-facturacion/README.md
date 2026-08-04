@@ -245,6 +245,30 @@ Si no defines la variable, no hay límite. Con ella configurada:
   todos modos se intenta llegar al límite por otra vía, con un mensaje claro
   indicando que debe contactar a su proveedor para ampliarlo.
 
+## Administración remota de cuentas admin (`PLATFORM_TOKEN`)
+
+Si rentas este CRM a varias empresas, puedes administrar sus cuentas de
+Gerencia (activarlas, desactivarlas, restaurar contraseñas, corregir el rol
+si alguna quedó mal configurada) desde el **panel central** (`panel-central/`
+en este mismo repo, una app separada que despliegas una sola vez para ti).
+
+| Variable | Valor |
+| --- | --- |
+| `PLATFORM_TOKEN` | secreto largo y aleatorio, único por cada instancia cliente (ej. `openssl rand -hex 32`) |
+
+Sin esta variable, la superficie `/api/platform/*` no existe (404) — ninguna
+empresa cliente puede verla ni activarla por su cuenta, y por defecto ningún
+cliente queda administrable desde el panel hasta que tú lo configures. Para
+habilitarlo en una instancia:
+
+1. Genera un token único para esa empresa y agrégalo como variable de
+   entorno `PLATFORM_TOKEN` en su servicio de Render.
+2. En el panel central, "+ Nueva empresa" con la URL de Render de esa
+   instancia y ese mismo token.
+
+Nunca reutilices el mismo `PLATFORM_TOKEN` en más de un cliente — si se
+filtra, solo debe comprometer a esa única empresa.
+
 ## Estructura del proyecto
 
 ```
