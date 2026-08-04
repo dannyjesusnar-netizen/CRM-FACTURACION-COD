@@ -34,9 +34,15 @@ router.post('/login', (req, res) => {
     JWT_SECRET,
     { expiresIn: '12h' }
   );
+  const sucursalFija = user.sucursal_id
+    ? db.prepare('SELECT id, nombre FROM sucursales WHERE id = ?').get(user.sucursal_id)
+    : null;
   res.json({
     token,
-    user: { id: user.id, username: user.username, full_name: user.full_name, role: user.role, dni: user.dni }
+    user: {
+      id: user.id, username: user.username, full_name: user.full_name, role: user.role, dni: user.dni,
+      sucursal_id: sucursalFija?.id || null, sucursal_nombre: sucursalFija?.nombre || null,
+    }
   });
 });
 

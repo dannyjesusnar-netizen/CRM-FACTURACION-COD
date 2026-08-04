@@ -113,12 +113,6 @@ export default function Caja() {
           <label>Fecha</label>
           <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} />
         </div>
-        <div className="filter-field">
-          <label>Sucursal</label>
-          <select defaultValue="principal">
-            <option value="principal">Miraflores</option>
-          </select>
-        </div>
       </div>
 
       {loading || !data ? (

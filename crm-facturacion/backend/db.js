@@ -388,11 +388,60 @@ const userColumns = db.prepare("PRAGMA table_info(users)").all().map((c) => c.na
 const USER_NEW_COLUMNS = [
   ['activo', 'INTEGER NOT NULL DEFAULT 1'],
   ['dni', 'TEXT'],
+  // sucursal_id fija = el usuario (vendedor) solo opera en esa sede; NULL =
+  // acceso a todas las sedes de la empresa (gerencia), elige una por sesión.
+  ['sucursal_id', 'INTEGER REFERENCES sucursales(id)'],
 ];
 for (const [col, def] of USER_NEW_COLUMNS) {
   if (!userColumns.includes(col)) {
     db.exec(`ALTER TABLE users ADD COLUMN ${col} ${def}`);
   }
+}
+
+// Separación real por sede: cada venta, compra, movimiento de stock y
+// movimiento de caja queda ligado a una sucursal concreta.
+if (!invoiceColumns.includes('sucursal_id')) {
+  db.exec('ALTER TABLE invoices ADD COLUMN sucursal_id INTEGER REFERENCES sucursales(id)');
+}
+const purchaseColumns = db.prepare("PRAGMA table_info(purchases)").all().map((c) => c.name);
+if (!purchaseColumns.includes('sucursal_id')) {
+  db.exec('ALTER TABLE purchases ADD COLUMN sucursal_id INTEGER REFERENCES sucursales(id)');
+}
+const stockMovementColumns = db.prepare("PRAGMA table_info(stock_movements)").all().map((c) => c.name);
+if (!stockMovementColumns.includes('sucursal_id')) {
+  db.exec('ALTER TABLE stock_movements ADD COLUMN sucursal_id INTEGER REFERENCES sucursales(id)');
+}
+const cajaMovimientoColumns = db.prepare("PRAGMA table_info(caja_movimientos)").all().map((c) => c.name);
+if (!cajaMovimientoColumns.includes('sucursal_id')) {
+  db.exec('ALTER TABLE caja_movimientos ADD COLUMN sucursal_id INTEGER REFERENCES sucursales(id)');
+}
+
+// caja_saldos_iniciales tenia UNIQUE(fecha) — con varias sedes cada una necesita
+// su propio saldo inicial por fecha, asi que hace falta recrear la tabla con
+// UNIQUE(fecha, sucursal_id). Los datos existentes se asignan a la sede principal.
+const cajaSaldosColumns = db.prepare("PRAGMA table_info(caja_saldos_iniciales)").all().map((c) => c.name);
+if (!cajaSaldosColumns.includes('sucursal_id')) {
+  db.exec(`
+    CREATE TABLE caja_saldos_iniciales_new (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      fecha TEXT NOT NULL,
+      sucursal_id INTEGER NOT NULL REFERENCES sucursales(id),
+      saldo_inicial_efectivo REAL NOT NULL DEFAULT 0,
+      created_by INTEGER REFERENCES users(id),
+      updated_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(fecha, sucursal_id)
+    );
+  `);
+  const principal = db.prepare('SELECT id FROM sucursales WHERE es_principal = 1').get()
+    || db.prepare('SELECT id FROM sucursales ORDER BY id ASC LIMIT 1').get();
+  if (principal) {
+    db.prepare(
+      `INSERT INTO caja_saldos_iniciales_new (id, fecha, sucursal_id, saldo_inicial_efectivo, created_by, updated_at)
+       SELECT id, fecha, ?, saldo_inicial_efectivo, created_by, updated_at FROM caja_saldos_iniciales`
+    ).run(principal.id);
+  }
+  db.exec('DROP TABLE caja_saldos_iniciales');
+  db.exec('ALTER TABLE caja_saldos_iniciales_new RENAME TO caja_saldos_iniciales');
 }
 
 // --- Seed inicial ---
@@ -493,6 +542,25 @@ if (supplierCount === 0) {
   );
   insertSupplier.run('20100123456', 'Distribuidora Andina S.A.C.', 'Av. Argentina 456, Callao', '014123456', 'ventas@distandina.com');
   insertSupplier.run('20500987654', 'Importaciones del Pacífico E.I.R.L.', 'Jr. Lampa 789, Lima', '015987654', 'contacto@pacifico.com');
+}
+
+// Backfill: todo producto con stock que aun no tenga su propia fila en
+// sucursal_stock para la sede principal la recibe con su stock agregado
+// actual. Sin esto, esos productos aparecerian con stock cero en la sede
+// principal (separacion real por sede: sucursal_stock es la unica fuente,
+// sin fallback implicito hacia products.stock en tiempo de lectura). Corre
+// en cada arranque pero es barato: solo llena filas que faltan.
+const sucursalPrincipal = db.prepare('SELECT id FROM sucursales WHERE es_principal = 1').get();
+if (sucursalPrincipal) {
+  const productosSinFila = db.prepare(
+    `SELECT p.id, p.stock FROM products p
+     WHERE p.tipo = 'producto' AND p.stock IS NOT NULL
+       AND NOT EXISTS (SELECT 1 FROM sucursal_stock ss WHERE ss.product_id = p.id AND ss.sucursal_id = ?)`
+  ).all(sucursalPrincipal.id);
+  const insertFilaSucursalStock = db.prepare('INSERT INTO sucursal_stock (product_id, sucursal_id, stock) VALUES (?, ?, ?)');
+  for (const p of productosSinFila) {
+    insertFilaSucursalStock.run(p.id, sucursalPrincipal.id, p.stock || 0);
+  }
 }
 
 module.exports = db;

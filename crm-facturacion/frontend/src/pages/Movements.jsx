@@ -243,12 +243,6 @@ export default function Movements() {
           <label>Hasta</label>
           <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} />
         </div>
-        <div className="filter-field">
-          <label>Sucursal</label>
-          <select defaultValue="principal">
-            <option value="principal">Todos</option>
-          </select>
-        </div>
         <div className="filter-actions">
           <button type="submit" className="btn-secondary">Buscar</button>
           <button type="button" className="btn-export" onClick={handleExportar}>Exportar</button>

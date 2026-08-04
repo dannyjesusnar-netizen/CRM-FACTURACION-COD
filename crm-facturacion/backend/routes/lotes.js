@@ -1,9 +1,11 @@
 const express = require('express');
 const db = require('../db');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, resolveSucursal } = require('../middleware/auth');
+const { ajustarStockSucursal } = require('../utils/stock');
 
 const router = express.Router();
 router.use(requireAuth);
+router.use(resolveSucursal);
 
 const DIAS_ALERTA_VENCIMIENTO = 30;
 
@@ -63,10 +65,11 @@ router.post('/', (req, res) => {
 
     db.prepare('UPDATE products SET stock = stock + ? WHERE id = ?').run(cantidad, product_id);
     const nuevoStock = db.prepare('SELECT stock FROM products WHERE id = ?').get(product_id).stock;
+    ajustarStockSucursal(product_id, req.sucursalId, cantidad);
     db.prepare(
-      `INSERT INTO stock_movements (product_id, lote_id, tipo, cantidad, stock_resultante, motivo, referencia, created_by)
-       VALUES (?, ?, 'ingreso_lote', ?, ?, 'Ingreso de lote/serie', ?, ?)`
-    ).run(product_id, loteId, cantidad, nuevoStock, codigo_lote, req.user?.id || null);
+      `INSERT INTO stock_movements (product_id, lote_id, tipo, cantidad, stock_resultante, motivo, referencia, created_by, sucursal_id)
+       VALUES (?, ?, 'ingreso_lote', ?, ?, 'Ingreso de lote/serie', ?, ?, ?)`
+    ).run(product_id, loteId, cantidad, nuevoStock, codigo_lote, req.user?.id || null, req.sucursalId);
 
     return loteId;
   });

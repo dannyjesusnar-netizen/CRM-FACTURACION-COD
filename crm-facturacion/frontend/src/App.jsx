@@ -22,6 +22,7 @@ import Compras from './pages/Compras';
 import Reports from './pages/Reports';
 import Configuracion from './pages/Configuracion';
 import CambiarContrasena from './pages/CambiarContrasena';
+import SeleccionarSede from './pages/SeleccionarSede';
 
 export default function App() {
   return (
@@ -31,6 +32,14 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route
+            path="/seleccionar-sede"
+            element={
+              <RequireAuth>
+                <SeleccionarSede />
+              </RequireAuth>
+            }
+          />
           <Route
             element={
               <RequireAuth>

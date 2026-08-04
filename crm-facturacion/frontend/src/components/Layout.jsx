@@ -7,6 +7,7 @@ import api from '../api';
 import {
   TrendingUp, ShoppingCart, Bike, Wallet, Users, Calculator, ClipboardList, FileText,
   Moon, Sun, Settings, ChevronDown, Phone, FileSignature, Lock, Video, BarChart3, LogOut, UsersRound,
+  Building2,
 } from 'lucide-react';
 
 const SUBNAV_ITEMS = [
@@ -21,7 +22,7 @@ const SUBNAV_ITEMS = [
 ];
 
 export default function Layout() {
-  const { user, logout } = useAuth();
+  const { user, logout, sucursal } = useAuth();
   const toast = useToast();
   const { isDark, toggleTheme } = useTheme();
   const navigate = useNavigate();
@@ -63,7 +64,7 @@ export default function Layout() {
           <span className="brand-suffix">Facturación</span>
         </div>
         <div className="topbar-company">
-          {empresa ? `${(empresa.nombre_comercial || empresa.razon_social).toUpperCase()} — SEDE PRINCIPAL` : ''}
+          {empresa ? `${(empresa.nombre_comercial || empresa.razon_social).toUpperCase()}${sucursal ? ` — ${sucursal.nombre.toUpperCase()}` : ''}` : ''}
         </div>
         <div className="topbar-actions">
           <button
@@ -81,6 +82,11 @@ export default function Layout() {
             <span className="user-name">{(user?.role || 'GERENCIA').toUpperCase()}</span>
             <ChevronDown size={14} className={'caret-icon' + (menuOpen ? ' open' : '')} />
             <div className={'user-dropdown' + (menuOpen ? ' open' : '')}>
+              {!user?.sucursal_id && (
+                <div className="user-dropdown-item" onClick={() => navigate('/seleccionar-sede')}>
+                  <Building2 size={15} className="dropdown-icon" /> Cambiar de sede
+                </div>
+              )}
               <div className="user-dropdown-item" onClick={() => toast.info('Próximamente podrás cambiar entre varias cuentas.')}>
                 <UsersRound size={15} className="dropdown-icon" /> Mostrar todas las cuentas
               </div>

@@ -1,10 +1,11 @@
 const express = require('express');
 const db = require('../db');
-const { requireAuth } = require('../middleware/auth');
-const { incrementarStock, round2 } = require('../utils/stock');
+const { requireAuth, resolveSucursal } = require('../middleware/auth');
+const { incrementarStock, ajustarStockSucursal, round2 } = require('../utils/stock');
 
 const router = express.Router();
 router.use(requireAuth);
+router.use(resolveSucursal);
 
 const IGV_RATE = 0.18;
 const FORMAS_PAGO = ['efectivo', 'tarjeta', 'banco'];
@@ -23,9 +24,9 @@ router.get('/', (req, res) => {
     FROM purchases p
     JOIN suppliers s ON s.id = p.supplier_id
     LEFT JOIN users u ON u.id = p.created_by
-    WHERE 1=1
+    WHERE p.sucursal_id = ?
   `;
-  const params = [];
+  const params = [req.sucursalId];
   if (estado) { sql += ' AND p.estado = ?'; params.push(estado); }
   if (supplier_id) { sql += ' AND p.supplier_id = ?'; params.push(supplier_id); }
   if (from) { sql += ' AND date(p.fecha) >= date(?)'; params.push(from); }
@@ -42,8 +43,8 @@ router.get('/', (req, res) => {
 router.get('/:id', (req, res) => {
   const purchase = db.prepare(
     `SELECT p.*, s.nombre AS proveedor_nombre, s.ruc AS proveedor_ruc
-     FROM purchases p JOIN suppliers s ON s.id = p.supplier_id WHERE p.id = ?`
-  ).get(req.params.id);
+     FROM purchases p JOIN suppliers s ON s.id = p.supplier_id WHERE p.id = ? AND p.sucursal_id = ?`
+  ).get(req.params.id, req.sucursalId);
   if (!purchase) return res.status(404).json({ error: 'Compra no encontrada.' });
   const items = db.prepare(
     `SELECT pi.*, pr.nombre AS producto_nombre, pr.codigo AS producto_codigo
@@ -89,8 +90,8 @@ router.post('/', (req, res) => {
   const insertAll = db.transaction(() => {
     const numero = nextNumero();
     const info = db.prepare(
-      `INSERT INTO purchases (numero, supplier_id, created_by, fecha, forma_pago, subtotal, igv, total, estado, observaciones)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'registrada', ?)`
+      `INSERT INTO purchases (numero, supplier_id, created_by, fecha, forma_pago, subtotal, igv, total, estado, observaciones, sucursal_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'registrada', ?, ?)`
     ).run(
       numero,
       supplier_id,
@@ -100,7 +101,8 @@ router.post('/', (req, res) => {
       subtotal,
       igv,
       total,
-      observaciones || null
+      observaciones || null,
+      req.sucursalId
     );
     const purchaseId = info.lastInsertRowid;
     const insertItem = db.prepare(
@@ -116,6 +118,7 @@ router.post('/', (req, res) => {
         motivo: `Compra a ${supplier.nombre}`,
         referencia,
         userId: req.user?.id,
+        sucursalId: req.sucursalId,
       });
     }
     return purchaseId;
@@ -128,7 +131,7 @@ router.post('/', (req, res) => {
 });
 
 router.post('/:id/anular', (req, res) => {
-  const purchase = db.prepare('SELECT * FROM purchases WHERE id = ?').get(req.params.id);
+  const purchase = db.prepare('SELECT * FROM purchases WHERE id = ? AND sucursal_id = ?').get(req.params.id, req.sucursalId);
   if (!purchase) return res.status(404).json({ error: 'Compra no encontrada.' });
   if (purchase.estado === 'anulada') {
     return res.status(400).json({ error: 'La compra ya esta anulada.' });
@@ -151,6 +154,7 @@ router.post('/:id/anular', (req, res) => {
         motivo: 'Anulación de compra',
         referencia,
         userId: req.user?.id,
+        sucursalId: purchase.sucursal_id,
       });
     }
   })();

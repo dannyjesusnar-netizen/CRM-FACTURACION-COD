@@ -1,9 +1,10 @@
 const express = require('express');
 const db = require('../db');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, resolveSucursal } = require('../middleware/auth');
 
 const router = express.Router();
 router.use(requireAuth);
+router.use(resolveSucursal);
 
 // Resumen para el dashboard principal
 router.get('/summary', (req, res) => {
@@ -16,36 +17,37 @@ router.get('/summary', (req, res) => {
     `SELECT COALESCE(SUM(CASE WHEN tipo_comprobante = 'nota_credito' THEN -total ELSE total END), 0) AS total,
             COUNT(*) AS cantidad
      FROM invoices WHERE estado = 'emitido' AND tipo_comprobante != 'nota_credito'
-     AND date(fecha_emision) >= date(?)`
-  ).get(startOfMonth);
+     AND date(fecha_emision) >= date(?) AND sucursal_id = ?`
+  ).get(startOfMonth, req.sucursalId);
   const ventasMesNc = db.prepare(
     `SELECT COALESCE(SUM(total), 0) AS total
      FROM invoices WHERE estado = 'emitido' AND tipo_comprobante = 'nota_credito'
-     AND date(fecha_emision) >= date(?)`
-  ).get(startOfMonth);
+     AND date(fecha_emision) >= date(?) AND sucursal_id = ?`
+  ).get(startOfMonth, req.sucursalId);
   ventasMes.total = round2(ventasMes.total - ventasMesNc.total);
 
   const ventasHoy = db.prepare(
     `SELECT COALESCE(SUM(total), 0) AS total, COUNT(*) AS cantidad
      FROM invoices WHERE estado = 'emitido' AND tipo_comprobante != 'nota_credito'
-     AND date(fecha_emision) = date(?)`
-  ).get(today);
+     AND date(fecha_emision) = date(?) AND sucursal_id = ?`
+  ).get(today, req.sucursalId);
   const ventasHoyNc = db.prepare(
     `SELECT COALESCE(SUM(total), 0) AS total
      FROM invoices WHERE estado = 'emitido' AND tipo_comprobante = 'nota_credito'
-     AND date(fecha_emision) = date(?)`
-  ).get(today);
+     AND date(fecha_emision) = date(?) AND sucursal_id = ?`
+  ).get(today, req.sucursalId);
   ventasHoy.total = round2(ventasHoy.total - ventasHoyNc.total);
 
   const totalClientes = db.prepare('SELECT COUNT(*) AS n FROM clients').get().n;
   const totalProductos = db.prepare('SELECT COUNT(*) AS n FROM products WHERE activo = 1').get().n;
-  const comprobantesAnulados = db.prepare("SELECT COUNT(*) AS n FROM invoices WHERE estado = 'anulado'").get().n;
+  const comprobantesAnulados = db.prepare("SELECT COUNT(*) AS n FROM invoices WHERE estado = 'anulado' AND sucursal_id = ?").get(req.sucursalId).n;
 
   const ultimasVentas = db.prepare(
     `SELECT i.id, i.tipo_comprobante, i.serie, i.numero, i.total, i.fecha_emision, i.estado, c.nombre AS cliente_nombre
      FROM invoices i JOIN clients c ON c.id = i.client_id
+     WHERE i.sucursal_id = ?
      ORDER BY i.id DESC LIMIT 8`
-  ).all();
+  ).all(req.sucursalId);
 
   const topProductos = db.prepare(
     `SELECT p.nombre,
@@ -54,11 +56,11 @@ router.get('/summary', (req, res) => {
      FROM invoice_items ii
      JOIN invoices i ON i.id = ii.invoice_id
      LEFT JOIN products p ON p.id = ii.product_id
-     WHERE i.estado = 'emitido'
+     WHERE i.estado = 'emitido' AND i.sucursal_id = ?
      GROUP BY ii.product_id
      ORDER BY total_vendido DESC
      LIMIT 5`
-  ).all();
+  ).all(req.sucursalId);
 
   res.json({
     ventasMes,
@@ -80,11 +82,11 @@ router.get('/ventas-por-dia', (req, res) => {
     `SELECT date(fecha_emision) AS dia,
             COALESCE(SUM(CASE WHEN tipo_comprobante = 'nota_credito' THEN -total ELSE total END), 0) AS total
      FROM invoices
-     WHERE estado = 'emitido'
+     WHERE estado = 'emitido' AND sucursal_id = ?
        AND date(fecha_emision) BETWEEN date(?) AND date(?)
      GROUP BY date(fecha_emision)
      ORDER BY dia ASC`
-  ).all(fromDate, toDate);
+  ).all(req.sucursalId, fromDate, toDate);
   res.json(rows);
 });
 
@@ -92,9 +94,9 @@ router.get('/ventas-por-dia', (req, res) => {
 router.get('/ventas-por-tipo', (req, res) => {
   const rows = db.prepare(
     `SELECT tipo_comprobante, COUNT(*) AS cantidad, COALESCE(SUM(total), 0) AS total
-     FROM invoices WHERE estado = 'emitido'
+     FROM invoices WHERE estado = 'emitido' AND sucursal_id = ?
      GROUP BY tipo_comprobante`
-  ).all();
+  ).all(req.sucursalId);
   res.json(rows);
 });
 
@@ -105,11 +107,11 @@ router.get('/top-clientes', (req, res) => {
             COUNT(CASE WHEN i.tipo_comprobante != 'nota_credito' THEN i.id END) AS cantidad_compras,
             COALESCE(SUM(CASE WHEN i.tipo_comprobante = 'nota_credito' THEN -i.total ELSE i.total END), 0) AS total_comprado
      FROM invoices i JOIN clients c ON c.id = i.client_id
-     WHERE i.estado = 'emitido'
+     WHERE i.estado = 'emitido' AND i.sucursal_id = ?
      GROUP BY c.id
      ORDER BY total_comprado DESC
      LIMIT 10`
-  ).all();
+  ).all(req.sucursalId);
   res.json(rows);
 });
 
@@ -121,10 +123,10 @@ router.get('/ventas-mensuales', (req, res) => {
             COALESCE(SUM(CASE WHEN tipo_comprobante = 'nota_credito' THEN -total ELSE total END), 0) AS total,
             COUNT(CASE WHEN tipo_comprobante != 'nota_credito' THEN 1 END) AS cantidad
      FROM invoices
-     WHERE estado = 'emitido' AND strftime('%Y', fecha_emision) = ?
+     WHERE estado = 'emitido' AND strftime('%Y', fecha_emision) = ? AND sucursal_id = ?
      GROUP BY mes
      ORDER BY mes ASC`
-  ).all(year);
+  ).all(year, req.sucursalId);
   const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
   const byMonth = {};
   rows.forEach((r) => { byMonth[r.mes] = r; });
@@ -149,8 +151,9 @@ router.get('/ventas-por-vendedor', (req, res) => {
     LEFT JOIN users u ON u.id = i.created_by
     WHERE i.estado = 'emitido'
       AND strftime('%Y', i.fecha_emision) = ?
+      AND i.sucursal_id = ?
   `;
-  const params = [y];
+  const params = [y, req.sucursalId];
   if (month) { sql += " AND strftime('%m', i.fecha_emision) = ?"; params.push(String(month).padStart(2, '0')); }
   sql += ' GROUP BY u.id ORDER BY total DESC';
   const rows = db.prepare(sql).all(...params);
@@ -171,9 +174,9 @@ router.get('/productos-mas-vendidos', (req, res) => {
     FROM invoice_items ii
     JOIN invoices i ON i.id = ii.invoice_id
     LEFT JOIN products p ON p.id = ii.product_id
-    WHERE i.estado = 'emitido'
+    WHERE i.estado = 'emitido' AND i.sucursal_id = ?
   `;
-  const params = [];
+  const params = [req.sucursalId];
   if (year) { sql += " AND strftime('%Y', i.fecha_emision) = ?"; params.push(String(year)); }
   if (month) { sql += " AND strftime('%m', i.fecha_emision) = ?"; params.push(String(month).padStart(2, '0')); }
   sql += ' GROUP BY ii.product_id ORDER BY total_vendido DESC';
@@ -207,16 +210,16 @@ router.get('/informe-tributario', (req, res) => {
             COALESCE(SUM(CASE WHEN tipo_comprobante = 'nota_credito' THEN -subtotal ELSE subtotal END), 0) AS ventas_netas,
             COALESCE(SUM(CASE WHEN tipo_comprobante = 'nota_credito' THEN -igv ELSE igv END), 0) AS igv_ventas
      FROM invoices
-     WHERE estado = 'emitido' AND strftime('%Y', fecha_emision) = ?
+     WHERE estado = 'emitido' AND strftime('%Y', fecha_emision) = ? AND sucursal_id = ?
      GROUP BY mes`
-  ).all(year);
+  ).all(year, req.sucursalId);
   const comprasRows = db.prepare(
     `SELECT strftime('%m', fecha) AS mes, COALESCE(SUM(subtotal), 0) AS compras_netas,
             COALESCE(SUM(igv), 0) AS igv_compras
      FROM purchases
-     WHERE estado = 'registrada' AND strftime('%Y', fecha) = ?
+     WHERE estado = 'registrada' AND strftime('%Y', fecha) = ? AND sucursal_id = ?
      GROUP BY mes`
-  ).all(year);
+  ).all(year, req.sucursalId);
 
   const ventasByMonth = {};
   ventasRows.forEach((r) => { ventasByMonth[r.mes] = r; });
@@ -266,9 +269,9 @@ router.get('/compras-por-mes', (req, res) => {
   const rows = db.prepare(
     `SELECT strftime('%m', fecha) AS mes, COALESCE(SUM(total), 0) AS total, COUNT(*) AS cantidad
      FROM purchases
-     WHERE estado = 'registrada' AND strftime('%Y', fecha) = ?
+     WHERE estado = 'registrada' AND strftime('%Y', fecha) = ? AND sucursal_id = ?
      GROUP BY mes`
-  ).all(year);
+  ).all(year, req.sucursalId);
   const byMonth = {};
   rows.forEach((r) => { byMonth[r.mes] = r; });
   res.json(fillMeses(byMonth, (nombre, found) => ({
@@ -285,20 +288,20 @@ router.get('/ingreso-vs-gastos', (req, res) => {
     `SELECT strftime('%m', fecha_emision) AS mes,
             COALESCE(SUM(CASE WHEN tipo_comprobante = 'nota_credito' THEN -total ELSE total END), 0) AS total
      FROM invoices
-     WHERE estado = 'emitido' AND strftime('%Y', fecha_emision) = ?
+     WHERE estado = 'emitido' AND strftime('%Y', fecha_emision) = ? AND sucursal_id = ?
      GROUP BY mes`
-  ).all(year);
+  ).all(year, req.sucursalId);
   const comprasRows = db.prepare(
     `SELECT strftime('%m', fecha) AS mes, COALESCE(SUM(total), 0) AS total
-     FROM purchases WHERE estado = 'registrada' AND strftime('%Y', fecha) = ?
+     FROM purchases WHERE estado = 'registrada' AND strftime('%Y', fecha) = ? AND sucursal_id = ?
      GROUP BY mes`
-  ).all(year);
+  ).all(year, req.sucursalId);
   const cajaEgresosRows = db.prepare(
     `SELECT strftime('%m', fecha) AS mes, COALESCE(SUM(monto), 0) AS total
      FROM caja_movimientos
-     WHERE tipo = 'egreso' AND categoria != 'compras' AND strftime('%Y', fecha) = ?
+     WHERE tipo = 'egreso' AND categoria != 'compras' AND strftime('%Y', fecha) = ? AND sucursal_id = ?
      GROUP BY mes`
-  ).all(year);
+  ).all(year, req.sucursalId);
 
   const ventasByMonth = {}; ventasRows.forEach((r) => { ventasByMonth[r.mes] = r.total; });
   const comprasByMonth = {}; comprasRows.forEach((r) => { comprasByMonth[r.mes] = r.total; });
@@ -325,9 +328,9 @@ router.get('/evolucion-inventarios', (req, res) => {
             COALESCE(SUM(CASE WHEN cantidad > 0 THEN cantidad ELSE 0 END), 0) AS ingresos,
             COALESCE(SUM(CASE WHEN cantidad < 0 THEN -cantidad ELSE 0 END), 0) AS salidas
      FROM stock_movements
-     WHERE strftime('%Y', created_at) = ?
+     WHERE strftime('%Y', created_at) = ? AND sucursal_id = ?
      GROUP BY mes`
-  ).all(year);
+  ).all(year, req.sucursalId);
   const byMonth = {};
   rows.forEach((r) => { byMonth[r.mes] = r; });
   res.json(fillMeses(byMonth, (nombre, found) => ({

@@ -1,12 +1,13 @@
 const express = require('express');
 const db = require('../db');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, resolveSucursal } = require('../middleware/auth');
 const { buildInvoicePdf } = require('../utils/pdf');
-const { consumirStock, incrementarStock } = require('../utils/stock');
+const { consumirStock, incrementarStock, ajustarStockSucursal, StockInsuficienteError } = require('../utils/stock');
 const { emitirComprobante, estaConfigurado } = require('../utils/facturacionElectronica');
 
 const router = express.Router();
 router.use(requireAuth);
+router.use(resolveSucursal);
 
 const IGV_RATE = 0.18;
 
@@ -63,9 +64,9 @@ router.get('/', (req, res) => {
     FROM invoices i
     JOIN clients c ON c.id = i.client_id
     LEFT JOIN users u ON u.id = i.created_by
-    WHERE 1=1
+    WHERE i.sucursal_id = ?
   `;
-  const params = [];
+  const params = [req.sucursalId];
   if (tipo) { sql += ' AND i.tipo_comprobante = ?'; params.push(tipo); }
   if (estado) { sql += ' AND i.estado = ?'; params.push(estado); }
   if (client_id) { sql += ' AND i.client_id = ?'; params.push(client_id); }
@@ -84,8 +85,8 @@ router.get('/:id', (req, res) => {
   const invoice = db.prepare(
     `SELECT i.*, c.nombre AS cliente_nombre, c.numero_documento AS cliente_documento,
             c.tipo_documento AS cliente_tipo_documento, c.direccion AS cliente_direccion
-     FROM invoices i JOIN clients c ON c.id = i.client_id WHERE i.id = ?`
-  ).get(req.params.id);
+     FROM invoices i JOIN clients c ON c.id = i.client_id WHERE i.id = ? AND i.sucursal_id = ?`
+  ).get(req.params.id, req.sucursalId);
   if (!invoice) return res.status(404).json({ error: 'Comprobante no encontrado.' });
   const items = db.prepare('SELECT * FROM invoice_items WHERE invoice_id = ?').all(req.params.id);
   res.json({ ...invoice, items });
@@ -163,8 +164,8 @@ router.post('/', async (req, res) => {
       `INSERT INTO invoices (
          tipo_comprobante, serie, numero, client_id, created_by, fecha_emision, moneda,
          subtotal, igv, descuento_global_pct, total, estado, observaciones, forma_pago,
-         modifica_tipo, modifica_serie, modifica_numero, tipo_nota
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'emitido', ?, ?, ?, ?, ?, ?)`
+         modifica_tipo, modifica_serie, modifica_numero, tipo_nota, sucursal_id
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'emitido', ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       tipo_comprobante,
       serie,
@@ -182,7 +183,8 @@ router.post('/', async (req, res) => {
       tipo_comprobante === 'nota_credito' ? (modifica_tipo || null) : null,
       tipo_comprobante === 'nota_credito' ? (modifica_serie || null) : null,
       tipo_comprobante === 'nota_credito' && modifica_numero ? Number(modifica_numero) : null,
-      tipo_comprobante === 'nota_credito' ? (tipo_nota || null) : null
+      tipo_comprobante === 'nota_credito' ? (tipo_nota || null) : null,
+      req.sucursalId
     );
     const invoiceId = info.lastInsertRowid;
     const insertItem = db.prepare(
@@ -205,6 +207,7 @@ router.post('/', async (req, res) => {
               motivo: `Nota de crédito - devolución de stock (${tipo_nota})`,
               referencia: referenciaComprobante,
               userId: req.user?.id,
+              sucursalId: req.sucursalId,
             });
           }
           // Para notas de crédito puramente financieras (descuentos, corrección,
@@ -216,6 +219,7 @@ router.post('/', async (req, res) => {
             referencia: referenciaComprobante,
             userId: req.user?.id,
             invoiceItemId,
+            sucursalId: req.sucursalId,
           });
         }
       }
@@ -223,7 +227,15 @@ router.post('/', async (req, res) => {
     return invoiceId;
   });
 
-  const invoiceId = insertAll();
+  let invoiceId;
+  try {
+    invoiceId = insertAll();
+  } catch (err) {
+    if (err instanceof StockInsuficienteError) {
+      return res.status(409).json({ error: err.message });
+    }
+    throw err;
+  }
   let invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(invoiceId);
   let invoiceItems = db.prepare('SELECT * FROM invoice_items WHERE invoice_id = ?').all(invoiceId);
 
@@ -256,7 +268,7 @@ router.post('/', async (req, res) => {
 });
 
 router.post('/:id/anular', (req, res) => {
-  const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id);
+  const invoice = db.prepare('SELECT * FROM invoices WHERE id = ? AND sucursal_id = ?').get(req.params.id, req.sucursalId);
   if (!invoice) return res.status(404).json({ error: 'Comprobante no encontrado.' });
   if (invoice.estado === 'anulado') {
     return res.status(400).json({ error: 'El comprobante ya esta anulado.' });
@@ -296,10 +308,11 @@ router.post('/:id/anular', (req, res) => {
     if (esNotaCreditoConDevolucion) {
       db.prepare('UPDATE products SET stock = stock - ? WHERE id = ?').run(it.cantidad, it.product_id);
       const nuevoStock = db.prepare('SELECT stock FROM products WHERE id = ?').get(it.product_id).stock;
+      ajustarStockSucursal(it.product_id, invoice.sucursal_id, -it.cantidad);
       db.prepare(
-        `INSERT INTO stock_movements (product_id, tipo, cantidad, stock_resultante, motivo, referencia, created_by)
-         VALUES (?, 'anulacion', ?, ?, 'Anulación de nota de crédito (revierte devolución)', ?, ?)`
-      ).run(it.product_id, -it.cantidad, nuevoStock, referenciaComprobante, req.user?.id || null);
+        `INSERT INTO stock_movements (product_id, tipo, cantidad, stock_resultante, motivo, referencia, created_by, sucursal_id)
+         VALUES (?, 'anulacion', ?, ?, 'Anulación de nota de crédito (revierte devolución)', ?, ?, ?)`
+      ).run(it.product_id, -it.cantidad, nuevoStock, referenciaComprobante, req.user?.id || null, invoice.sucursal_id);
       continue;
     }
 
@@ -310,10 +323,11 @@ router.post('/:id/anular', (req, res) => {
     }
     db.prepare('UPDATE products SET stock = stock + ? WHERE id = ?').run(it.cantidad, it.product_id);
     const nuevoStock = db.prepare('SELECT stock FROM products WHERE id = ?').get(it.product_id).stock;
+    ajustarStockSucursal(it.product_id, invoice.sucursal_id, it.cantidad);
     db.prepare(
-      `INSERT INTO stock_movements (product_id, lote_id, tipo, cantidad, stock_resultante, motivo, referencia, created_by)
-       VALUES (?, ?, 'anulacion', ?, ?, 'Anulación de comprobante', ?, ?)`
-    ).run(it.product_id, itemLotes[0]?.lote_id || null, it.cantidad, nuevoStock, referenciaComprobante, req.user?.id || null);
+      `INSERT INTO stock_movements (product_id, lote_id, tipo, cantidad, stock_resultante, motivo, referencia, created_by, sucursal_id)
+       VALUES (?, ?, 'anulacion', ?, ?, 'Anulación de comprobante', ?, ?, ?)`
+    ).run(it.product_id, itemLotes[0]?.lote_id || null, it.cantidad, nuevoStock, referenciaComprobante, req.user?.id || null, invoice.sucursal_id);
   }
 
   const updated = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id);
@@ -324,8 +338,8 @@ router.get('/:id/pdf', (req, res) => {
   const invoice = db.prepare(
     `SELECT i.*, c.nombre AS cliente_nombre, c.numero_documento AS cliente_documento,
             c.tipo_documento AS cliente_tipo_documento, c.direccion AS cliente_direccion
-     FROM invoices i JOIN clients c ON c.id = i.client_id WHERE i.id = ?`
-  ).get(req.params.id);
+     FROM invoices i JOIN clients c ON c.id = i.client_id WHERE i.id = ? AND i.sucursal_id = ?`
+  ).get(req.params.id, req.sucursalId);
   if (!invoice) return res.status(404).json({ error: 'Comprobante no encontrado.' });
   const items = db.prepare('SELECT * FROM invoice_items WHERE invoice_id = ?').all(req.params.id);
 
