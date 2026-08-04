@@ -3,6 +3,24 @@ import { useNavigate } from 'react-router-dom';
 import api from '../api';
 import { useToast } from '../context/ToastContext';
 
+const CARGA_MASIVA_COLUMNAS = ['codigo', 'nombre', 'categoria', 'unidad', 'precio_unitario', 'stock', 'stock_minimo', 'precio_compra', 'codigo_barras'];
+
+function parseCsvProductos(text) {
+  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  if (lines.length === 0) return [];
+  let start = 0;
+  if (/codigo/i.test(lines[0]) && /nombre/i.test(lines[0])) start = 1;
+  const rows = [];
+  for (let i = start; i < lines.length; i += 1) {
+    const cols = lines[i].split(',').map((c) => c.trim().replace(/^"|"$/g, ''));
+    if (!cols[0]) continue;
+    const row = {};
+    CARGA_MASIVA_COLUMNAS.forEach((key, idx) => { row[key] = cols[idx] ?? ''; });
+    rows.push(row);
+  }
+  return rows;
+}
+
 const EMPTY_FORM = {
   codigo: '', codigo_barras: '', nombre: '', descripcion: '', categoria: 'General',
   unidad: 'NIU', afectacion_igv: 'gravado', control: 'ninguno', tipo_inventario: 'MERCADERIAS',
@@ -62,6 +80,12 @@ export default function Products() {
   const [equivPrecio, setEquivPrecio] = useState('');
   const [equivMinimo, setEquivMinimo] = useState('');
   const [equivMaximo, setEquivMaximo] = useState('');
+
+  const [showCargaMasiva, setShowCargaMasiva] = useState(false);
+  const [cargaFileName, setCargaFileName] = useState('');
+  const [cargaRows, setCargaRows] = useState([]);
+  const [cargaResult, setCargaResult] = useState(null);
+  const [errorCarga, setErrorCarga] = useState('');
 
   function load() {
     const params = {};
@@ -190,6 +214,57 @@ export default function Products() {
     }
   }
 
+  function openCargaMasiva() {
+    setCargaFileName('');
+    setCargaRows([]);
+    setCargaResult(null);
+    setErrorCarga('');
+    setShowCargaMasiva(true);
+  }
+
+  function handleCargaFileChange(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setCargaFileName(file.name);
+    setCargaResult(null);
+    setErrorCarga('');
+    const reader = new FileReader();
+    reader.onload = () => {
+      const rows = parseCsvProductos(String(reader.result || ''));
+      setCargaRows(rows);
+      if (rows.length === 0) setErrorCarga('No se encontraron filas válidas (columnas esperadas: código, nombre, categoría, unidad, precio_unitario, stock, stock_mínimo, precio_compra, código_barras).');
+    };
+    reader.readAsText(file);
+  }
+
+  async function handleCargaMasivaSubmit(e) {
+    e.preventDefault();
+    setErrorCarga('');
+    if (cargaRows.length === 0) { setErrorCarga('Selecciona un archivo CSV con al menos una fila.'); return; }
+    try {
+      const res = await api.post('/products/carga-masiva', { rows: cargaRows });
+      setCargaResult(res.data);
+      if (res.data.creados.length > 0) toast.success(`${res.data.creados.length} producto(s) creados.`);
+      if (res.data.actualizados.length > 0) toast.success(`${res.data.actualizados.length} producto(s) actualizados.`);
+      if (res.data.errores.length > 0) toast.error(`${res.data.errores.length} fila(s) con errores. Revisa el detalle.`);
+      load();
+    } catch (err) {
+      setErrorCarga(err.response?.data?.error || 'No se pudo procesar el archivo.');
+    }
+  }
+
+  function descargarPlantillaCargaMasiva() {
+    const header = CARGA_MASIVA_COLUMNAS;
+    const ejemplo = ['P100', 'Producto de ejemplo', 'General', 'NIU', '19.90', '10', '2', '12.00', ''];
+    const csv = [header, ejemplo].map((r) => r.join(',')).join('\n');
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'plantilla_carga_masiva_productos.csv';
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  }
+
   async function handleDelete(id) {
     if (!window.confirm('¿Desactivar este producto?')) return;
     try {
@@ -243,7 +318,10 @@ export default function Products() {
 
       <div className="page-header">
         <span />
-        <button className="btn-primary" style={{ width: 'auto' }} onClick={openNew}>+ Nuevo producto</button>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button className="btn-secondary" style={{ width: 'auto' }} onClick={openCargaMasiva}>Carga masiva</button>
+          <button className="btn-primary" style={{ width: 'auto' }} onClick={openNew}>+ Nuevo producto</button>
+        </div>
       </div>
 
       <div className="panel">
@@ -484,6 +562,46 @@ export default function Products() {
                 <button type="button" className="btn-secondary" onClick={handleAddEquivalencia}>+ Agregar Equivalencia</button>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {showCargaMasiva && (
+        <div className="modal-overlay" onClick={() => setShowCargaMasiva(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h2>Carga masiva de productos</h2>
+            <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -6 }}>
+              Sube un CSV con columnas: código, nombre, categoría, unidad, precio_unitario, stock, stock_mínimo, precio_compra, código_barras.
+              Si el código ya existe, actualiza ese producto; si no, lo crea. El stock que subas es el de esta sede.
+            </p>
+            <button type="button" className="btn-link" onClick={descargarPlantillaCargaMasiva} style={{ marginBottom: 10 }}>
+              Descargar plantilla de ejemplo
+            </button>
+            <form onSubmit={handleCargaMasivaSubmit}>
+              <label>Archivo CSV</label>
+              <input required type="file" accept=".csv,text/csv" onChange={handleCargaFileChange} />
+              {cargaFileName && (
+                <p className="caja-row-auto">{cargaFileName} — {cargaRows.length} fila(s) detectadas.</p>
+              )}
+              {cargaResult && (
+                <div style={{ marginTop: 10 }}>
+                  <p>
+                    <strong>{cargaResult.creados.length}</strong> creados, <strong>{cargaResult.actualizados.length}</strong> actualizados,{' '}
+                    <strong>{cargaResult.errores.length}</strong> con error.
+                  </p>
+                  {cargaResult.errores.length > 0 && (
+                    <ul style={{ fontSize: 12, color: 'var(--critical)', maxHeight: 120, overflowY: 'auto' }}>
+                      {cargaResult.errores.map((e, i) => <li key={i}>{e.codigo}: {e.error}</li>)}
+                    </ul>
+                  )}
+                </div>
+              )}
+              {errorCarga && <div className="form-error">{errorCarga}</div>}
+              <div className="modal-actions">
+                <button type="button" className="btn-secondary" onClick={() => setShowCargaMasiva(false)}>Cerrar</button>
+                <button type="submit" className="btn-primary">Cargar</button>
+              </div>
+            </form>
           </div>
         </div>
       )}

@@ -1,10 +1,14 @@
-import { Navigate } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 export default function RequireAuth({ children }) {
-  const { user } = useAuth();
+  const { user, sucursal } = useAuth();
+  const location = useLocation();
   if (!user) {
     return <Navigate to="/login" replace />;
+  }
+  if (!sucursal && !user.sucursal_id && location.pathname !== '/seleccionar-sede') {
+    return <Navigate to="/seleccionar-sede" replace />;
   }
   return children;
 }

@@ -47,10 +47,6 @@ function SucursalYAnio({ anio, setAnio, extra }) {
   return (
     <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
       <div className="filter-field">
-        <label>Sucursal</label>
-        <select defaultValue="principal"><option value="principal">Miraflores</option></select>
-      </div>
-      <div className="filter-field">
         <label>Año</label>
         <select value={anio} onChange={(e) => setAnio(e.target.value)}>
           {YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
@@ -300,10 +296,6 @@ export default function Reports() {
                 <h3 style={{ margin: 0 }}>Ventas por vendedor</h3>
                 <div style={{ display: 'flex', gap: 10 }}>
                   <div className="filter-field">
-                    <label>Sucursal</label>
-                    <select defaultValue="principal"><option value="principal">Miraflores</option></select>
-                  </div>
-                  <div className="filter-field">
                     <label>Mes</label>
                     <select value={vendedorMes} onChange={(e) => setVendedorMes(e.target.value)}>
                       <option value="">Todos</option>
@@ -347,10 +339,6 @@ export default function Reports() {
               <div className="report-toolbar">
                 <h3 style={{ margin: 0 }}>Productos más vendidos</h3>
                 <div style={{ display: 'flex', gap: 10 }}>
-                  <div className="filter-field">
-                    <label>Sucursal</label>
-                    <select defaultValue="principal"><option value="principal">Miraflores</option></select>
-                  </div>
                   <div className="filter-field">
                     <label>Mes</label>
                     <select value={prodMes} onChange={(e) => setProdMes(e.target.value)}>

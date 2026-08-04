@@ -1,17 +1,18 @@
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '../context/ToastContext';
+import { useAuth } from '../context/AuthContext';
 import {
   Receipt, Users, Package, LayoutDashboard, LineChart,
   ShoppingCart, Wallet, Repeat, BookOpen, Briefcase, Clock, Settings,
 } from 'lucide-react';
 
 const ACTIVE_MODULES = [
-  { to: '/ventas', label: 'Ventas', Icon: Receipt, desc: 'Emitir facturas, boletas y notas' },
-  { to: '/compras', label: 'Compras', Icon: ShoppingCart, desc: 'Registrar compras a proveedores' },
-  { to: '/clientes', label: 'Clientes', Icon: Users, desc: 'Gestión de clientes' },
-  { to: '/productos', label: 'Inventario', Icon: Package, desc: 'Productos, stock y movimientos' },
-  { to: '/dashboard', label: 'Dashboard', Icon: LayoutDashboard, desc: 'Indicadores generales' },
-  { to: '/reportes', label: 'Reportes', Icon: LineChart, desc: 'Reportes de ventas' },
+  { to: '/ventas', label: 'Ventas', Icon: Receipt, desc: 'Emitir facturas, boletas y notas', modulo: 'ventas' },
+  { to: '/compras', label: 'Compras', Icon: ShoppingCart, desc: 'Registrar compras a proveedores', modulo: 'compras' },
+  { to: '/clientes', label: 'Clientes', Icon: Users, desc: 'Gestión de clientes', modulo: 'clientes' },
+  { to: '/productos', label: 'Inventario', Icon: Package, desc: 'Productos, stock y movimientos', modulo: 'inventario' },
+  { to: '/dashboard', label: 'Dashboard', Icon: LayoutDashboard, desc: 'Indicadores generales', modulo: 'dashboard' },
+  { to: '/reportes', label: 'Reportes', Icon: LineChart, desc: 'Reportes de ventas', modulo: 'reportes' },
 ];
 
 const COMING_SOON = [
@@ -26,13 +27,16 @@ const COMING_SOON = [
 export default function Menu() {
   const navigate = useNavigate();
   const toast = useToast();
+  const { user } = useAuth();
+
+  const modulosVisibles = ACTIVE_MODULES.filter((m) => user?.permisos?.[m.modulo] !== false);
 
   return (
     <div className="menu-page">
       <h1 className="menu-title">MENÚ PRINCIPAL</h1>
 
       <div className="menu-grid">
-        {ACTIVE_MODULES.map((m) => (
+        {modulosVisibles.map((m) => (
           <div
             key={m.to}
             className="menu-tile"

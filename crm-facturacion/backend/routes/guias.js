@@ -1,9 +1,11 @@
 const express = require('express');
 const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
+const { requirePermiso } = require('../utils/permisos');
 
 const router = express.Router();
 router.use(requireAuth);
+router.use(requirePermiso('ventas'));
 
 const SERIE = 'TL02';
 const MOTIVOS = ['venta', 'compra', 'traslado_entre_establecimientos', 'consignacion', 'otros'];

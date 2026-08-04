@@ -1,10 +1,13 @@
 const express = require('express');
 const db = require('../db');
-const { requireAuth } = require('../middleware/auth');
-const { consumirStock, incrementarStock } = require('../utils/stock');
+const { requireAuth, resolveSucursal } = require('../middleware/auth');
+const { consumirStock, incrementarStock, getStockSucursal } = require('../utils/stock');
+const { requirePermiso } = require('../utils/permisos');
 
 const router = express.Router();
 router.use(requireAuth);
+router.use(requirePermiso('inventario'));
+router.use(resolveSucursal);
 
 router.get('/', (req, res) => {
   const { q, desde, hasta } = req.query;
@@ -82,9 +85,10 @@ router.post('/:id/producir', (req, res) => {
   for (const it of items) {
     const necesario = it.cantidad * lotes;
     const prod = db.prepare('SELECT * FROM products WHERE id = ?').get(it.product_id);
-    if (!prod || (prod.stock || 0) < necesario) {
+    const disponibleSede = prod ? getStockSucursal(it.product_id, req.sucursalId) : 0;
+    if (!prod || disponibleSede < necesario) {
       return res.status(400).json({
-        error: `Stock insuficiente de "${prod?.nombre || it.product_id}" (necesario: ${necesario}, disponible: ${prod?.stock ?? 0}).`,
+        error: `Stock insuficiente en esta sede de "${prod?.nombre || it.product_id}" (necesario: ${necesario}, disponible: ${disponibleSede}).`,
       });
     }
   }
@@ -100,6 +104,7 @@ router.post('/:id/producir', (req, res) => {
         motivo: `Consumo receta "${receta.nombre}"`,
         referencia,
         userId: req.user?.id,
+        sucursalId: req.sucursalId,
       });
     }
     incrementarStock(receta.product_id_salida, receta.cantidad_salida * lotes, {
@@ -107,6 +112,7 @@ router.post('/:id/producir', (req, res) => {
       motivo: `Producción receta "${receta.nombre}"`,
       referencia,
       userId: req.user?.id,
+      sucursalId: req.sucursalId,
     });
     return produccionId;
   });

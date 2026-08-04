@@ -7,6 +7,10 @@ api.interceptors.request.use((config) => {
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+  const sucursalId = localStorage.getItem('crm_sucursal_id');
+  if (sucursalId) {
+    config.headers['X-Sucursal-Id'] = sucursalId;
+  }
   return config;
 });
 

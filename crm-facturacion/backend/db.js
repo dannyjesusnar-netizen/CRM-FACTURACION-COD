@@ -384,10 +384,46 @@ for (const [col, def] of PRODUCT_NEW_COLUMNS) {
     db.exec(`ALTER TABLE products ADD COLUMN ${col} ${def}`);
   }
 }
+// Roles personalizados con permisos por módulo (Configuración → Roles de
+// usuario). Solo Gerencia los administra y asigna, para no permitir que un
+// rol se otorgue a sí mismo más acceso del que tiene quien lo crea.
+db.exec(`
+CREATE TABLE IF NOT EXISTS roles (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  nombre TEXT NOT NULL,
+  descripcion TEXT,
+  activo INTEGER NOT NULL DEFAULT 1,
+  created_by INTEGER REFERENCES users(id),
+  created_at TEXT DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS role_permisos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  role_id INTEGER NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+  modulo TEXT NOT NULL,
+  habilitado INTEGER NOT NULL DEFAULT 0,
+  UNIQUE(role_id, modulo)
+);
+`);
+
 const userColumns = db.prepare("PRAGMA table_info(users)").all().map((c) => c.name);
 const USER_NEW_COLUMNS = [
   ['activo', 'INTEGER NOT NULL DEFAULT 1'],
   ['dni', 'TEXT'],
+  // sucursal_id fija = el usuario (vendedor) solo opera en esa sede; NULL =
+  // acceso a todas las sedes de la empresa (gerencia), elige una por sesión.
+  ['sucursal_id', 'INTEGER REFERENCES sucursales(id)'],
+  // nombres/apellidos son la fuente para el formulario de Empleados;
+  // full_name se sigue calculando a partir de ellos para no romper PDFs,
+  // reportes y badges que ya lo usan tal cual.
+  ['nombres', 'TEXT'],
+  ['apellidos', 'TEXT'],
+  ['email', 'TEXT'],
+  ['telefono', 'TEXT'],
+  // custom_role_id: rol personalizado (ver tabla roles) con permisos por
+  // módulo. NULL = sin restricciones extra (compatibilidad con cuentas
+  // creadas antes de que existiera este sistema). Gerencia nunca lo usa:
+  // siempre tiene acceso completo, sea cual sea este valor.
+  ['custom_role_id', 'INTEGER REFERENCES roles(id)'],
 ];
 for (const [col, def] of USER_NEW_COLUMNS) {
   if (!userColumns.includes(col)) {
@@ -395,15 +431,93 @@ for (const [col, def] of USER_NEW_COLUMNS) {
   }
 }
 
+const empresaColumns = db.prepare("PRAGMA table_info(empresa_config)").all().map((c) => c.name);
+const EMPRESA_NEW_COLUMNS = [
+  // Texto libre: no fabricamos el catálogo oficial CIIU/MCC de SUNAT.
+  ['actividad_ciiu', 'TEXT'],
+  ['actividad_mcc', 'TEXT'],
+  ['departamento', 'TEXT'],
+  // Provincia/distrito en texto libre: el catálogo UBIGEO completo del Perú
+  // (~1874 distritos) no está embebido aquí para no arriesgar datos
+  // incorrectos en una dirección fiscal real.
+  ['provincia', 'TEXT'],
+  ['distrito', 'TEXT'],
+  ['logo_data_url', 'TEXT'],
+];
+for (const [col, def] of EMPRESA_NEW_COLUMNS) {
+  if (!empresaColumns.includes(col)) {
+    db.exec(`ALTER TABLE empresa_config ADD COLUMN ${col} ${def}`);
+  }
+}
+
+// Separación real por sede: cada venta, compra, movimiento de stock y
+// movimiento de caja queda ligado a una sucursal concreta.
+if (!invoiceColumns.includes('sucursal_id')) {
+  db.exec('ALTER TABLE invoices ADD COLUMN sucursal_id INTEGER REFERENCES sucursales(id)');
+}
+const purchaseColumns = db.prepare("PRAGMA table_info(purchases)").all().map((c) => c.name);
+if (!purchaseColumns.includes('sucursal_id')) {
+  db.exec('ALTER TABLE purchases ADD COLUMN sucursal_id INTEGER REFERENCES sucursales(id)');
+}
+const stockMovementColumns = db.prepare("PRAGMA table_info(stock_movements)").all().map((c) => c.name);
+if (!stockMovementColumns.includes('sucursal_id')) {
+  db.exec('ALTER TABLE stock_movements ADD COLUMN sucursal_id INTEGER REFERENCES sucursales(id)');
+}
+const cajaMovimientoColumns = db.prepare("PRAGMA table_info(caja_movimientos)").all().map((c) => c.name);
+if (!cajaMovimientoColumns.includes('sucursal_id')) {
+  db.exec('ALTER TABLE caja_movimientos ADD COLUMN sucursal_id INTEGER REFERENCES sucursales(id)');
+}
+
+// caja_saldos_iniciales tenia UNIQUE(fecha) — con varias sedes cada una necesita
+// su propio saldo inicial por fecha, asi que hace falta recrear la tabla con
+// UNIQUE(fecha, sucursal_id). Los datos existentes se asignan a la sede principal.
+const cajaSaldosColumns = db.prepare("PRAGMA table_info(caja_saldos_iniciales)").all().map((c) => c.name);
+if (!cajaSaldosColumns.includes('sucursal_id')) {
+  db.exec(`
+    CREATE TABLE caja_saldos_iniciales_new (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      fecha TEXT NOT NULL,
+      sucursal_id INTEGER NOT NULL REFERENCES sucursales(id),
+      saldo_inicial_efectivo REAL NOT NULL DEFAULT 0,
+      created_by INTEGER REFERENCES users(id),
+      updated_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(fecha, sucursal_id)
+    );
+  `);
+  const principal = db.prepare('SELECT id FROM sucursales WHERE es_principal = 1').get()
+    || db.prepare('SELECT id FROM sucursales ORDER BY id ASC LIMIT 1').get();
+  if (principal) {
+    db.prepare(
+      `INSERT INTO caja_saldos_iniciales_new (id, fecha, sucursal_id, saldo_inicial_efectivo, created_by, updated_at)
+       SELECT id, fecha, ?, saldo_inicial_efectivo, created_by, updated_at FROM caja_saldos_iniciales`
+    ).run(principal.id);
+  }
+  db.exec('DROP TABLE caja_saldos_iniciales');
+  db.exec('ALTER TABLE caja_saldos_iniciales_new RENAME TO caja_saldos_iniciales');
+}
+
 // --- Seed inicial ---
 const userCount = db.prepare('SELECT COUNT(*) AS n FROM users').get().n;
 if (userCount === 0) {
   const insertUser = db.prepare(
-    'INSERT INTO users (username, password_hash, full_name, role, dni) VALUES (?, ?, ?, ?, ?)'
+    `INSERT INTO users (username, password_hash, full_name, role, dni, nombres, apellidos)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
   );
-  insertUser.run('admin', bcrypt.hashSync('admin123', 10), 'Administrador', 'gerencia', '00000000');
-  insertUser.run('vendedor1', bcrypt.hashSync('vendedor123', 10), 'Carlos Ramírez', 'vendedor', '45678912');
-  insertUser.run('vendedor2', bcrypt.hashSync('vendedor123', 10), 'Lucía Fernández', 'vendedor', '87654321');
+  insertUser.run('admin', bcrypt.hashSync('admin123', 10), 'Administrador', 'gerencia', '00000000', 'Administrador', '');
+  insertUser.run('vendedor1', bcrypt.hashSync('vendedor123', 10), 'Carlos Ramírez', 'vendedor', '45678912', 'Carlos', 'Ramírez');
+  insertUser.run('vendedor2', bcrypt.hashSync('vendedor123', 10), 'Lucía Fernández', 'vendedor', '87654321', 'Lucía', 'Fernández');
+}
+
+// Backfill: cuentas creadas antes de que existieran nombres/apellidos
+// separados los derivan de full_name (primera palabra = nombres, resto =
+// apellidos) para que Empleados no las muestre en blanco.
+const usuariosSinNombres = db.prepare("SELECT id, full_name FROM users WHERE (nombres IS NULL OR nombres = '') AND full_name IS NOT NULL").all();
+if (usuariosSinNombres.length > 0) {
+  const updateNombres = db.prepare('UPDATE users SET nombres = ?, apellidos = ? WHERE id = ?');
+  for (const u of usuariosSinNombres) {
+    const partes = u.full_name.trim().split(/\s+/);
+    updateNombres.run(partes[0] || u.full_name, partes.slice(1).join(' '), u.id);
+  }
 }
 
 const empresaConfigCount = db.prepare('SELECT COUNT(*) AS n FROM empresa_config').get().n;
@@ -493,6 +607,25 @@ if (supplierCount === 0) {
   );
   insertSupplier.run('20100123456', 'Distribuidora Andina S.A.C.', 'Av. Argentina 456, Callao', '014123456', 'ventas@distandina.com');
   insertSupplier.run('20500987654', 'Importaciones del Pacífico E.I.R.L.', 'Jr. Lampa 789, Lima', '015987654', 'contacto@pacifico.com');
+}
+
+// Backfill: todo producto con stock que aun no tenga su propia fila en
+// sucursal_stock para la sede principal la recibe con su stock agregado
+// actual. Sin esto, esos productos aparecerian con stock cero en la sede
+// principal (separacion real por sede: sucursal_stock es la unica fuente,
+// sin fallback implicito hacia products.stock en tiempo de lectura). Corre
+// en cada arranque pero es barato: solo llena filas que faltan.
+const sucursalPrincipal = db.prepare('SELECT id FROM sucursales WHERE es_principal = 1').get();
+if (sucursalPrincipal) {
+  const productosSinFila = db.prepare(
+    `SELECT p.id, p.stock FROM products p
+     WHERE p.tipo = 'producto' AND p.stock IS NOT NULL
+       AND NOT EXISTS (SELECT 1 FROM sucursal_stock ss WHERE ss.product_id = p.id AND ss.sucursal_id = ?)`
+  ).all(sucursalPrincipal.id);
+  const insertFilaSucursalStock = db.prepare('INSERT INTO sucursal_stock (product_id, sucursal_id, stock) VALUES (?, ?, ?)');
+  for (const p of productosSinFila) {
+    insertFilaSucursalStock.run(p.id, sucursalPrincipal.id, p.stock || 0);
+  }
 }
 
 module.exports = db;

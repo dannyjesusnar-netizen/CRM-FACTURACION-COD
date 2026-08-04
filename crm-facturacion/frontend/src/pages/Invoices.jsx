@@ -130,12 +130,6 @@ export default function Invoices() {
             <option value="nota_credito">Nota de crédito</option>
           </select>
         </div>
-        <div className="filter-field">
-          <label>Sucursal</label>
-          <select defaultValue="principal">
-            <option value="principal">Sede Principal</option>
-          </select>
-        </div>
         <div className="filter-actions">
           <button type="submit" className="btn-secondary">Buscar</button>
           <button type="button" className="btn-export" onClick={handleExportar}>Exportar</button>

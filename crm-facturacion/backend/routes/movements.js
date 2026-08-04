@@ -1,10 +1,13 @@
 const express = require('express');
 const db = require('../db');
-const { requireAuth } = require('../middleware/auth');
-const { round2 } = require('../utils/stock');
+const { requireAuth, resolveSucursal } = require('../middleware/auth');
+const { round2, ajustarStockSucursal, getStockSucursal, setStockSucursal } = require('../utils/stock');
+const { requirePermiso } = require('../utils/permisos');
 
 const router = express.Router();
 router.use(requireAuth);
+router.use(requirePermiso('inventario'));
+router.use(resolveSucursal);
 
 // cliente_proveedor: nombre del proveedor o cliente del documento que originó
 // el movimiento, resuelto a partir de la referencia (no es un campo propio
@@ -27,9 +30,9 @@ router.get('/', (req, res) => {
     FROM stock_movements m
     JOIN products p ON p.id = m.product_id
     LEFT JOIN users u ON u.id = m.created_by
-    WHERE 1=1
+    WHERE m.sucursal_id = ?
   `;
-  const params = [];
+  const params = [req.sucursalId];
   if (product_id) { sql += ' AND m.product_id = ?'; params.push(product_id); }
   if (tipo) { sql += ' AND m.tipo = ?'; params.push(tipo); }
   if (from) { sql += ' AND date(m.created_at) >= date(?)'; params.push(from); }
@@ -56,13 +59,17 @@ router.post('/', (req, res) => {
   }
 
   const cant = Number(cantidad);
+  if (cant < 0 && Math.abs(cant) > getStockSucursal(product_id, req.sucursalId)) {
+    return res.status(409).json({ error: `Stock insuficiente en esta sede (disponible: ${getStockSucursal(product_id, req.sucursalId)}).` });
+  }
   const insertAll = db.transaction(() => {
     db.prepare('UPDATE products SET stock = stock + ? WHERE id = ?').run(cant, product_id);
     const updated = db.prepare('SELECT stock FROM products WHERE id = ?').get(product_id);
+    ajustarStockSucursal(product_id, req.sucursalId, cant);
     db.prepare(
-      `INSERT INTO stock_movements (product_id, tipo, cantidad, stock_resultante, motivo, created_by)
-       VALUES (?, 'ajuste', ?, ?, ?, ?)`
-    ).run(product_id, cant, updated.stock, motivo || null, req.user?.id || null);
+      `INSERT INTO stock_movements (product_id, tipo, cantidad, stock_resultante, motivo, created_by, sucursal_id)
+       VALUES (?, 'ajuste', ?, ?, ?, ?, ?)`
+    ).run(product_id, cant, updated.stock, motivo || null, req.user?.id || null, req.sucursalId);
     return updated.stock;
   });
 
@@ -83,16 +90,18 @@ router.post('/conteo', (req, res) => {
   }
 
   const contado = Number(cantidad_contada);
-  const actual = prod.stock || 0;
+  const actual = getStockSucursal(product_id, req.sucursalId);
   const diferencia = round2(contado - actual);
 
   if (diferencia !== 0) {
     db.transaction(() => {
-      db.prepare('UPDATE products SET stock = ? WHERE id = ?').run(contado, product_id);
+      db.prepare('UPDATE products SET stock = stock + ? WHERE id = ?').run(diferencia, product_id);
+      const nuevoAgregado = db.prepare('SELECT stock FROM products WHERE id = ?').get(product_id).stock;
+      setStockSucursal(product_id, req.sucursalId, contado);
       db.prepare(
-        `INSERT INTO stock_movements (product_id, tipo, cantidad, stock_resultante, motivo, referencia, created_by)
-         VALUES (?, 'ajuste', ?, ?, ?, 'INV-FISICO', ?)`
-      ).run(product_id, diferencia, contado, motivo ? `Inventario físico: ${motivo}` : 'Inventario físico', req.user?.id || null);
+        `INSERT INTO stock_movements (product_id, tipo, cantidad, stock_resultante, motivo, referencia, created_by, sucursal_id)
+         VALUES (?, 'ajuste', ?, ?, ?, 'INV-FISICO', ?, ?)`
+      ).run(product_id, diferencia, nuevoAgregado, motivo ? `Inventario físico: ${motivo}` : 'Inventario físico', req.user?.id || null, req.sucursalId);
     })();
   }
 
@@ -125,14 +134,16 @@ router.post('/importar', (req, res) => {
         errores.push({ codigo, error: 'No es un producto con stock (es un servicio).' });
         continue;
       }
-      const actual = prod.stock || 0;
+      const actual = getStockSucursal(prod.id, req.sucursalId);
       const diferencia = round2(stockReal - actual);
-      db.prepare('UPDATE products SET stock = ? WHERE id = ?').run(stockReal, prod.id);
+      db.prepare('UPDATE products SET stock = stock + ? WHERE id = ?').run(diferencia, prod.id);
+      const nuevoAgregado = db.prepare('SELECT stock FROM products WHERE id = ?').get(prod.id).stock;
+      setStockSucursal(prod.id, req.sucursalId, stockReal);
       if (diferencia !== 0) {
         db.prepare(
-          `INSERT INTO stock_movements (product_id, tipo, cantidad, stock_resultante, motivo, referencia, created_by)
-           VALUES (?, 'ajuste', ?, ?, 'Importación de stock real', 'IMPORT-STOCK', ?)`
-        ).run(prod.id, diferencia, stockReal, req.user?.id || null);
+          `INSERT INTO stock_movements (product_id, tipo, cantidad, stock_resultante, motivo, referencia, created_by, sucursal_id)
+           VALUES (?, 'ajuste', ?, ?, 'Importación de stock real', 'IMPORT-STOCK', ?, ?)`
+        ).run(prod.id, diferencia, nuevoAgregado, req.user?.id || null, req.sucursalId);
       }
       aplicados.push({ codigo, producto: prod.nombre, stock_anterior: actual, stock_nuevo: stockReal, diferencia });
     }

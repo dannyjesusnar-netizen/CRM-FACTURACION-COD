@@ -38,8 +38,10 @@ con diseño y código propios.
   IGV por mes, exportable a CSV), top clientes, resumen por tipo de comprobante.
 - **Usuarios**: además del admin, hay dos usuarios "vendedor" de ejemplo para
   poder ver el reporte de Ventas por vendedor con datos de más de una persona:
-  `vendedor1` / `vendedor123` (Carlos Ramírez) y `vendedor2` / `vendedor123`
-  (Lucía Fernández). Cada venta queda asociada al usuario que la emitió.
+  DNI `45678912` (Carlos Ramírez) y DNI `87654321` (Lucía Fernández), ambos
+  con contraseña `vendedor123`. Cada venta queda asociada al usuario que la
+  emitió. El login es con RUC de la empresa + DNI + contraseña (ver
+  "Primer ingreso" más abajo).
 
 ## Lotes y series (FEFO)
 
@@ -244,7 +246,12 @@ Levanta en `http://localhost:4000`. La base de datos SQLite se crea
 automáticamente en `backend/data/crm.db` con datos de ejemplo (clientes,
 productos) y un usuario admin la primera vez que se ejecuta.
 
-**Usuario de prueba:** `admin` / `admin123`
+**Login:** el ingreso es con RUC de la empresa + DNI + contraseña (igual que
+en la app de referencia). Mientras la empresa no haya configurado su RUC en
+Configuración → Datos de la empresa, el campo RUC no se valida (para no
+dejar a Gerencia sin forma de entrar y configurarlo la primera vez).
+**Usuario de prueba:** DNI `00000000` / contraseña `admin123` (con
+cualquier RUC, hasta que se configure el real).
 
 ### 2. Frontend
 
@@ -298,8 +305,9 @@ Pasos:
 3. Click en **Apply** / **Deploy**. El primer build tarda unos minutos
    (instala dependencias del frontend, hace el build, instala dependencias
    del backend). Cuando termine, Render te da la URL pública.
-4. Entra a esa URL — vas a ver la pantalla de login. Usuario de prueba:
-   `admin` / `admin123`.
+4. Entra a esa URL — vas a ver la pantalla de login (RUC + DNI + contraseña).
+   Usuario de prueba: DNI `00000000` / contraseña `admin123` (cualquier RUC,
+   hasta que configures el real en Configuración → Datos de la empresa).
 
 **Limitaciones del plan gratuito de Render** (importante tenerlas en
 cuenta):
