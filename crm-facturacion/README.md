@@ -224,6 +224,27 @@ archivo (`backend/utils/facturacionElectronica.js`) para que sea sencillo
 reemplazar la llamada HTTP por la API del proveedor que elijas, sin tocar el
 resto del sistema.
 
+## Límite de sedes por plan (`MAX_SUCURSALES`)
+
+Si rentas este CRM a distintas empresas con planes de distinto tamaño (por
+ejemplo, "hasta 12 sucursales"), puedes fijar ese tope por variable de
+entorno del backend. **No es una opción que Gerencia pueda cambiar desde la
+app** — se configura al desplegar la instancia del cliente, para que el
+límite acordado sea real y no algo que el propio cliente pueda quitarse.
+
+| Variable | Valor |
+| --- | --- |
+| `MAX_SUCURSALES` | número máximo de sedes permitidas (ej. `12`) |
+
+Si no defines la variable, no hay límite. Con ella configurada:
+
+- Configuración → Sucursales muestra cuántas sedes lleva usadas la empresa
+  frente al máximo del plan.
+- El botón "+ Nueva sede" se deshabilita al llegar al tope.
+- El backend también rechaza la creación (`POST /api/sucursales`) si de
+  todos modos se intenta llegar al límite por otra vía, con un mensaje claro
+  indicando que debe contactar a su proveedor para ampliarlo.
+
 ## Estructura del proyecto
 
 ```

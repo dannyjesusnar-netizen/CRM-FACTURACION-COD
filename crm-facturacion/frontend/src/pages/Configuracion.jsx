@@ -40,6 +40,7 @@ export default function Configuracion() {
 
   // --- Sucursales ---
   const [sucursales, setSucursales] = useState([]);
+  const [limiteSucursales, setLimiteSucursales] = useState(null);
   const [showSucursalForm, setShowSucursalForm] = useState(false);
   const [editingSucursalId, setEditingSucursalId] = useState(null);
   const [sucursalForm, setSucursalForm] = useState(emptySucursalForm());
@@ -52,6 +53,7 @@ export default function Configuracion() {
     api.get('/empresa').then((res) => setEmpresa(res.data));
     loadUsuarios();
     loadSucursales();
+    loadLimiteSucursales();
     loadRoles();
   }, []);
 
@@ -63,6 +65,10 @@ export default function Configuracion() {
 
   function loadSucursales() {
     api.get('/sucursales', { params: { todas: 1 } }).then((res) => setSucursales(res.data));
+  }
+
+  function loadLimiteSucursales() {
+    api.get('/sucursales/limite').then((res) => setLimiteSucursales(res.data));
   }
 
   function loadRoles() {
@@ -206,6 +212,7 @@ export default function Configuracion() {
       }
       setShowSucursalForm(false);
       loadSucursales();
+      loadLimiteSucursales();
     } catch (err) {
       setErrorSucursal(err.response?.data?.error || 'No se pudo guardar la sede.');
     }
@@ -358,12 +365,31 @@ export default function Configuracion() {
             <>
               <div className="report-toolbar">
                 <h3 style={{ margin: 0 }}>Sucursales</h3>
-                <button className="btn-primary" style={{ width: 'auto' }} onClick={openNewSucursal}>+ Nueva sede</button>
+                <button
+                  className="btn-primary"
+                  style={{ width: 'auto' }}
+                  onClick={openNewSucursal}
+                  disabled={limiteSucursales?.max != null && limiteSucursales.actual >= limiteSucursales.max}
+                  title={limiteSucursales?.max != null && limiteSucursales.actual >= limiteSucursales.max
+                    ? `Llegaste al máximo de sedes de tu plan (${limiteSucursales.max}).`
+                    : undefined}
+                >
+                  + Nueva sede
+                </button>
               </div>
               <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -8 }}>
                 Cada sede tiene su propio stock, ventas, compras y caja — como negocios independientes bajo la misma
                 empresa. Al iniciar sesión, quien tenga acceso a más de una elige con cuál trabajar.
+                {limiteSucursales?.max != null && (
+                  <> Tu plan permite hasta <strong>{limiteSucursales.max}</strong> sede(s) — llevas usadas{' '}
+                    <strong>{limiteSucursales.actual}</strong> de {limiteSucursales.max}.</>
+                )}
               </p>
+              {limiteSucursales?.max != null && limiteSucursales.actual >= limiteSucursales.max && (
+                <p style={{ fontSize: 12, color: 'var(--danger, #c0392b)', marginTop: -6 }}>
+                  Llegaste al máximo de sedes de tu plan. Contacta a tu proveedor para ampliarlo.
+                </p>
+              )}
               <table className="data-table">
                 <thead>
                   <tr><th>Nombre</th><th>Dirección</th><th>Estado</th><th></th></tr>
