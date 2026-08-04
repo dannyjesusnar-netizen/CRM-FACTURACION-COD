@@ -5,6 +5,14 @@ const { requireAuth, requireGerencia } = require('../middleware/auth');
 const router = express.Router();
 router.use(requireAuth);
 
+// Tope de sedes del plan contratado. Se configura por variable de entorno
+// (MAX_SUCURSALES) al desplegar la instancia de un cliente — no es algo que
+// Gerencia pueda cambiar desde la app, para que el límite acordado con el
+// cliente sea real. Sin la variable configurada, no hay límite.
+const MAX_SUCURSALES = Number.isInteger(Number(process.env.MAX_SUCURSALES)) && Number(process.env.MAX_SUCURSALES) > 0
+  ? Number(process.env.MAX_SUCURSALES)
+  : null;
+
 // GET /api/sucursales?todas=1 (incluye desactivadas, para el panel de Gerencia)
 router.get('/', (req, res) => {
   const sql = req.query.todas
@@ -13,9 +21,22 @@ router.get('/', (req, res) => {
   res.json(db.prepare(sql).all());
 });
 
+// GET /api/sucursales/limite -> { max, actual } para que la UI muestre
+// "X de Y sedes usadas" y deshabilite "Nueva sede" al llegar al tope.
+router.get('/limite', (req, res) => {
+  const actual = db.prepare('SELECT COUNT(*) AS n FROM sucursales').get().n;
+  res.json({ max: MAX_SUCURSALES, actual });
+});
+
 router.post('/', requireGerencia, (req, res) => {
   const { nombre, direccion } = req.body || {};
   if (!nombre) return res.status(400).json({ error: 'nombre es requerido.' });
+  if (MAX_SUCURSALES !== null) {
+    const actual = db.prepare('SELECT COUNT(*) AS n FROM sucursales').get().n;
+    if (actual >= MAX_SUCURSALES) {
+      return res.status(400).json({ error: `Llegaste al máximo de sedes de tu plan (${MAX_SUCURSALES}). Contacta a tu proveedor para ampliarlo.` });
+    }
+  }
   try {
     const info = db.prepare('INSERT INTO sucursales (nombre, direccion) VALUES (?, ?)').run(nombre, direccion || null);
     res.status(201).json(db.prepare('SELECT * FROM sucursales WHERE id = ?').get(info.lastInsertRowid));

@@ -11,3 +11,15 @@ services:
         value: production
       - key: JWT_SECRET
         generateValue: true
+  - type: web
+    name: panel-central
+    runtime: node
+    plan: free
+    buildCommand: "cd panel-central/frontend && npm install --include=dev && npm run build && cd ../backend && npm install"
+    startCommand: "node panel-central/backend/server.js"
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PANEL_JWT_SECRET
+        generateValue: true
