@@ -6,11 +6,20 @@ services:
     buildCommand: "cd crm-facturacion/frontend && npm install --include=dev && npm run build && cd ../backend && npm install"
     startCommand: "node crm-facturacion/backend/server.js"
     healthCheckPath: /api/health
+    # Disco persistente: requiere subir "plan" arriba de free (Render no
+    # permite discos en el plan gratuito). Con el disco montado y DATA_DIR
+    # apuntando ahí, la base de datos sobrevive a los redeploys.
+    disk:
+      name: crm-data
+      mountPath: /var/data
+      sizeGB: 1
     envVars:
       - key: NODE_ENV
         value: production
       - key: JWT_SECRET
         generateValue: true
+      - key: DATA_DIR
+        value: /var/data
   - type: web
     name: panel-central
     runtime: node
