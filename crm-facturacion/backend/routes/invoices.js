@@ -57,6 +57,21 @@ router.get('/buscar', (req, res) => {
   res.json({ ...invoice, items });
 });
 
+// GET /api/invoices/deudas -> ventas "abonado" con saldo pendiente (cuentas por cobrar)
+router.get('/deudas', (req, res) => {
+  const rows = db.prepare(`
+    SELECT i.id, i.tipo_comprobante, i.serie, i.numero, i.fecha_emision, i.total, i.monto_pagado,
+           (i.total - i.monto_pagado) AS saldo,
+           c.id AS client_id, c.nombre AS cliente_nombre, c.numero_documento AS cliente_documento,
+           c.tipo_documento AS cliente_tipo_documento, c.telefono AS cliente_telefono
+    FROM invoices i JOIN clients c ON c.id = i.client_id
+    WHERE i.sucursal_id = ? AND i.forma_pago = 'abonado' AND i.estado = 'emitido'
+      AND (i.total - i.monto_pagado) > 0.005
+    ORDER BY i.fecha_emision ASC, i.id ASC
+  `).all(req.sucursalId);
+  res.json(rows.map((r) => ({ ...r, saldo: round2(r.saldo) })));
+});
+
 // GET /api/invoices?tipo=&estado=&client_id=&from=&to=&q=
 router.get('/', (req, res) => {
   const { tipo, estado, client_id, from, to, q } = req.query;
@@ -94,13 +109,16 @@ router.get('/:id', (req, res) => {
   res.json({ ...invoice, items });
 });
 
-const FORMAS_PAGO = ['efectivo', 'tarjeta', 'banco'];
+const FORMAS_PAGO = ['efectivo', 'tarjeta', 'banco', 'abonado'];
+const MEDIOS_COBRO = ['efectivo', 'tarjeta', 'banco', 'otros'];
+const CLIENTE_GENERICO_DOCUMENTO = '10000000'; // "CLIENTES VARIOS", sembrado en db.js
 
 router.post('/', async (req, res) => {
   const {
     tipo_comprobante, client_id, items, moneda, observaciones, fecha_emision, forma_pago,
     numero: numeroManual, descuento_global_pct,
     modifica_tipo, modifica_serie, modifica_numero, tipo_nota,
+    monto_pagado: montoPagadoBody, medio_abono,
   } = req.body || {};
 
   if (!['factura', 'boleta', 'nota_credito'].includes(tipo_comprobante)) {
@@ -111,7 +129,7 @@ router.post('/', async (req, res) => {
     return res.status(400).json({ error: 'Debe incluir al menos un item.' });
   }
   if (forma_pago && !FORMAS_PAGO.includes(forma_pago)) {
-    return res.status(400).json({ error: 'forma_pago invalida. Use efectivo, tarjeta o banco.' });
+    return res.status(400).json({ error: 'forma_pago invalida. Use efectivo, tarjeta, banco o abonado.' });
   }
 
   const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(client_id);
@@ -119,6 +137,18 @@ router.post('/', async (req, res) => {
 
   if (tipo_comprobante === 'factura' && client.tipo_documento !== 'RUC') {
     return res.status(400).json({ error: 'Para emitir factura el cliente debe tener RUC.' });
+  }
+
+  const esAbonado = forma_pago === 'abonado';
+  if (esAbonado && client.numero_documento === CLIENTE_GENERICO_DOCUMENTO) {
+    return res.status(400).json({ error: 'Para una venta abonada selecciona un cliente real — no puede quedar a nombre de "Clientes Varios".' });
+  }
+  let medioAbono = null;
+  if (esAbonado && Number(montoPagadoBody || 0) > 0) {
+    if (!MEDIOS_COBRO.includes(medio_abono)) {
+      return res.status(400).json({ error: 'Selecciona el medio del abono (efectivo, tarjeta o banco).' });
+    }
+    medioAbono = medio_abono;
   }
 
   const descuentoGlobalPct = Math.min(100, Math.max(0, Number(descuento_global_pct || 0)));
@@ -157,24 +187,29 @@ router.post('/', async (req, res) => {
   const ratio = totalBruto > 0 ? total / totalBruto : 1;
   const igv = round2(igvBruto * ratio);
   const subtotal = round2(total - igv);
+  // Para efectivo/tarjeta/banco se asume pagado por completo (igual que
+  // siempre). Para "abonado" es lo que el cliente entregó ahora (puede ser
+  // 0 hasta el total) — el resto queda como saldo pendiente.
+  const montoPagado = esAbonado ? Math.min(total, Math.max(0, round2(Number(montoPagadoBody || 0)))) : total;
 
   const serie = SERIES_BY_TIPO[tipo_comprobante];
+  const fechaEmisionFinal = fecha_emision || new Date().toISOString().slice(0, 10);
 
   const insertAll = db.transaction(() => {
     const numero = numeroManual ? Number(numeroManual) : nextNumero(tipo_comprobante, serie);
     const info = db.prepare(
       `INSERT INTO invoices (
          tipo_comprobante, serie, numero, client_id, created_by, fecha_emision, moneda,
-         subtotal, igv, descuento_global_pct, total, estado, observaciones, forma_pago,
+         subtotal, igv, descuento_global_pct, total, estado, observaciones, forma_pago, monto_pagado,
          modifica_tipo, modifica_serie, modifica_numero, tipo_nota, sucursal_id
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'emitido', ?, ?, ?, ?, ?, ?, ?)`
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'emitido', ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       tipo_comprobante,
       serie,
       numero,
       client_id,
       req.user?.id || null,
-      fecha_emision || new Date().toISOString().slice(0, 10),
+      fechaEmisionFinal,
       moneda || 'PEN',
       subtotal,
       igv,
@@ -182,6 +217,7 @@ router.post('/', async (req, res) => {
       total,
       observaciones || null,
       forma_pago || 'efectivo',
+      montoPagado,
       tipo_comprobante === 'nota_credito' ? (modifica_tipo || null) : null,
       tipo_comprobante === 'nota_credito' ? (modifica_serie || null) : null,
       tipo_comprobante === 'nota_credito' && modifica_numero ? Number(modifica_numero) : null,
@@ -225,6 +261,19 @@ router.post('/', async (req, res) => {
           });
         }
       }
+    }
+
+    // Abono inicial de una venta "abonado": queda registrado en el historial
+    // de cobros de esa venta y como ingreso real en Caja (cuentas_cobrar) —
+    // el resto del total queda pendiente en /invoices/deudas.
+    if (esAbonado && montoPagado > 0) {
+      db.prepare(
+        `INSERT INTO cobros (invoice_id, monto, medio, observacion, created_by) VALUES (?, ?, ?, ?, ?)`
+      ).run(invoiceId, montoPagado, medioAbono, 'Abono al emitir la venta', req.user?.id || null);
+      db.prepare(
+        `INSERT INTO caja_movimientos (fecha, tipo, medio, categoria, monto, descripcion, created_by, sucursal_id)
+         VALUES (?, 'ingreso', ?, 'cuentas_cobrar', ?, ?, ?, ?)`
+      ).run(fechaEmisionFinal, medioAbono, montoPagado, `Abono - ${referenciaComprobante} - ${client.nombre}`, req.user?.id || null, req.sucursalId);
     }
     return invoiceId;
   });
@@ -334,6 +383,58 @@ router.post('/:id/anular', (req, res) => {
 
   const updated = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id);
   res.json(updated);
+});
+
+// GET /api/invoices/:id/cobros -> historial de abonos/cobros de una venta "abonado"
+router.get('/:id/cobros', (req, res) => {
+  const invoice = db.prepare('SELECT id FROM invoices WHERE id = ? AND sucursal_id = ?').get(req.params.id, req.sucursalId);
+  if (!invoice) return res.status(404).json({ error: 'Comprobante no encontrado.' });
+  const rows = db.prepare(
+    `SELECT co.*, u.full_name AS usuario_nombre FROM cobros co
+     LEFT JOIN users u ON u.id = co.created_by
+     WHERE co.invoice_id = ? ORDER BY co.id DESC`
+  ).all(req.params.id);
+  res.json(rows);
+});
+
+// POST /api/invoices/:id/cobros { monto, medio, observacion } -> registra un cobro contra el saldo pendiente
+router.post('/:id/cobros', (req, res) => {
+  const invoice = db.prepare('SELECT * FROM invoices WHERE id = ? AND sucursal_id = ?').get(req.params.id, req.sucursalId);
+  if (!invoice) return res.status(404).json({ error: 'Comprobante no encontrado.' });
+  if (invoice.forma_pago !== 'abonado') {
+    return res.status(400).json({ error: 'Este comprobante no es una venta abonada.' });
+  }
+  if (invoice.estado !== 'emitido') {
+    return res.status(400).json({ error: 'El comprobante está anulado.' });
+  }
+  const { monto, medio, observacion } = req.body || {};
+  if (!MEDIOS_COBRO.includes(medio)) {
+    return res.status(400).json({ error: 'medio invalido. Use efectivo, tarjeta, banco u otros.' });
+  }
+  const saldoActual = round2(invoice.total - invoice.monto_pagado);
+  const montoNum = round2(Number(monto || 0));
+  if (montoNum <= 0) return res.status(400).json({ error: 'El monto debe ser mayor a 0.' });
+  if (montoNum > saldoActual + 0.005) {
+    return res.status(400).json({ error: `El monto no puede superar el saldo pendiente (S/ ${saldoActual.toFixed(2)}).` });
+  }
+  const client = db.prepare('SELECT nombre FROM clients WHERE id = ?').get(invoice.client_id);
+  const referenciaComprobante = `${invoice.serie}-${String(invoice.numero).padStart(6, '0')}`;
+  const hoy = new Date().toISOString().slice(0, 10);
+
+  const registrar = db.transaction(() => {
+    db.prepare('UPDATE invoices SET monto_pagado = monto_pagado + ? WHERE id = ?').run(montoNum, invoice.id);
+    db.prepare(
+      `INSERT INTO cobros (invoice_id, monto, medio, observacion, created_by) VALUES (?, ?, ?, ?, ?)`
+    ).run(invoice.id, montoNum, medio, observacion || null, req.user?.id || null);
+    db.prepare(
+      `INSERT INTO caja_movimientos (fecha, tipo, medio, categoria, monto, descripcion, created_by, sucursal_id)
+       VALUES (?, 'ingreso', ?, 'cuentas_cobrar', ?, ?, ?, ?)`
+    ).run(hoy, medio, montoNum, `Cobro - ${referenciaComprobante} - ${client?.nombre || ''}`, req.user?.id || null, req.sucursalId);
+  });
+  registrar();
+
+  const updated = db.prepare('SELECT * FROM invoices WHERE id = ?').get(invoice.id);
+  res.json({ ...updated, saldo: round2(updated.total - updated.monto_pagado) });
 });
 
 router.get('/:id/pdf', (req, res) => {

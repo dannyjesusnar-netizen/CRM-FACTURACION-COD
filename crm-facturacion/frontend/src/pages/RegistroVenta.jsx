@@ -31,6 +31,7 @@ export default function RegistroVenta() {
   const [descuentoGlobal, setDescuentoGlobal] = useState(0);
   const [cuenta, setCuenta] = useState('efectivo');
   const [pago, setPago] = useState('');
+  const [medioAbono, setMedioAbono] = useState('efectivo');
   const [error, setError] = useState('');
   const [showPreview, setShowPreview] = useState(false);
 
@@ -95,7 +96,8 @@ export default function RegistroVenta() {
     const total = round2(totalBruto * (1 - Number(descuentoGlobal || 0) / 100));
     const ganancia = round2(total - costoTotal);
     const vuelto = pago !== '' ? Math.max(0, round2(Number(pago) - total)) : 0;
-    return { rows, totalBruto, total, ganancia, vuelto };
+    const saldoPendiente = round2(Math.max(0, total - Number(pago || 0)));
+    return { rows, totalBruto, total, ganancia, vuelto, saldoPendiente };
   }, [items, descuentoGlobal, pago]);
 
   async function handleSubmit(e) {
@@ -107,6 +109,14 @@ export default function RegistroVenta() {
     }
     if (tipo !== 'cotizacion' && !cliente) {
       setError('Selecciona un cliente.');
+      return;
+    }
+    if (tipo !== 'cotizacion' && cuenta === 'abonado' && cliente?.numero_documento === '10000000') {
+      setError('Para una venta abonada selecciona un cliente real — no puede quedar a nombre de "Clientes Varios".');
+      return;
+    }
+    if (tipo !== 'cotizacion' && cuenta === 'abonado' && Number(pago || 0) > computed.total) {
+      setError('El abono no puede ser mayor al total de la venta.');
       return;
     }
     if (items.length === 0) {
@@ -132,7 +142,10 @@ export default function RegistroVenta() {
       if (tipo === 'cotizacion') {
         await api.post('/cotizaciones', payload);
       } else {
-        await api.post('/invoices', { ...payload, tipo_comprobante: tipo, forma_pago: cuenta });
+        const extra = cuenta === 'abonado'
+          ? { monto_pagado: Number(pago || 0), medio_abono: Number(pago || 0) > 0 ? medioAbono : undefined }
+          : {};
+        await api.post('/invoices', { ...payload, tipo_comprobante: tipo, forma_pago: cuenta, ...extra });
       }
       toast.success(`${TITULOS[tipo]} registrada correctamente.`);
       navigate('/ventas');
@@ -273,17 +286,43 @@ export default function RegistroVenta() {
                   <option value="efectivo">Efectivo</option>
                   <option value="tarjeta">Tarjeta</option>
                   <option value="banco">Banco</option>
+                  <option value="abonado">Abonado (crédito)</option>
                 </select>
               </div>
               <div className="filter-field">
-                <label>Pago</label>
+                <label>{cuenta === 'abonado' ? 'Abono inicial (opcional)' : 'Pago'}</label>
                 <input type="number" min="0" step="0.01" value={pago} onChange={(e) => setPago(e.target.value)} />
               </div>
-              <div className="filter-field">
-                <label>Vuelto</label>
-                <input readOnly value={computed.vuelto.toFixed(2)} />
-              </div>
+              {cuenta === 'abonado' ? (
+                <>
+                  {Number(pago || 0) > 0 && (
+                    <div className="filter-field">
+                      <label>Medio del abono</label>
+                      <select value={medioAbono} onChange={(e) => setMedioAbono(e.target.value)}>
+                        <option value="efectivo">Efectivo</option>
+                        <option value="tarjeta">Tarjeta</option>
+                        <option value="banco">Banco</option>
+                      </select>
+                    </div>
+                  )}
+                  <div className="filter-field">
+                    <label>Saldo pendiente</label>
+                    <input readOnly value={computed.saldoPendiente.toFixed(2)} />
+                  </div>
+                </>
+              ) : (
+                <div className="filter-field">
+                  <label>Vuelto</label>
+                  <input readOnly value={computed.vuelto.toFixed(2)} />
+                </div>
+              )}
             </div>
+          )}
+          {cuenta === 'abonado' && tipo !== 'cotizacion' && (
+            <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -8 }}>
+              El cliente debe ser real (no "Clientes Varios") — esta venta va a aparecer en Cuentas por Cobrar
+              hasta que se salde el saldo pendiente.
+            </p>
           )}
 
           {error && <div className="form-error">{error}</div>}
