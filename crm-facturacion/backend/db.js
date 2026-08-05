@@ -76,6 +76,19 @@ CREATE TABLE IF NOT EXISTS invoice_items (
   subtotal REAL NOT NULL DEFAULT 0
 );
 
+-- Historial de cobros contra una venta "abonado" (crédito): cada abono o
+-- pago posterior queda registrado aquí, además de sumarse a
+-- invoices.monto_pagado y reflejarse en Caja (categoria 'cuentas_cobrar').
+CREATE TABLE IF NOT EXISTS cobros (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  invoice_id INTEGER NOT NULL REFERENCES invoices(id),
+  monto REAL NOT NULL,
+  medio TEXT NOT NULL,                           -- efectivo | tarjeta | banco | otros
+  observacion TEXT,
+  created_by INTEGER REFERENCES users(id),
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS stock_movements (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   product_id INTEGER NOT NULL REFERENCES products(id),
@@ -366,6 +379,15 @@ for (const [col, def] of INVOICE_SUNAT_COLUMNS) {
   if (!invoiceColumns.includes(col)) {
     db.exec(`ALTER TABLE invoices ADD COLUMN ${col} ${def}`);
   }
+}
+// Ventas "abonado" (crédito): monto_pagado es lo realmente cobrado hasta
+// ahora (puede ser menor al total); para efectivo/tarjeta/banco siempre es
+// igual al total (se asume pagado por completo, como hasta ahora). Las
+// facturas/boletas que ya existían antes de esta columna quedan como
+// pagadas por completo (comportamiento anterior sin cambios).
+if (!invoiceColumns.includes('monto_pagado')) {
+  db.exec('ALTER TABLE invoices ADD COLUMN monto_pagado REAL');
+  db.exec('UPDATE invoices SET monto_pagado = total WHERE monto_pagado IS NULL');
 }
 const PRODUCT_NEW_COLUMNS = [
   ['codigo_barras', "TEXT"],

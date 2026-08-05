@@ -16,6 +16,7 @@ import Caja from './pages/Caja';
 import Traslados from './pages/Traslados';
 import Produccion from './pages/Produccion';
 import Invoices from './pages/Invoices';
+import CuentasPorCobrar from './pages/CuentasPorCobrar';
 import RegistroVenta from './pages/RegistroVenta';
 import RegistroNotaCredito from './pages/RegistroNotaCredito';
 import GuiaRemitente from './pages/GuiaRemitente';
@@ -59,6 +60,7 @@ export default function App() {
             <Route path="/traslados" element={<RequirePermiso modulo="inventario"><Traslados /></RequirePermiso>} />
             <Route path="/produccion" element={<RequirePermiso modulo="inventario"><Produccion /></RequirePermiso>} />
             <Route path="/ventas" element={<RequirePermiso modulo="ventas"><Invoices /></RequirePermiso>} />
+            <Route path="/ventas/cuentas-por-cobrar" element={<RequirePermiso modulo="ventas"><CuentasPorCobrar /></RequirePermiso>} />
             <Route path="/ventas/nuevo/:tipo" element={<RequirePermiso modulo="ventas"><RegistroVenta /></RequirePermiso>} />
             <Route path="/ventas/nota-credito/nueva" element={<RequirePermiso modulo="ventas"><RegistroNotaCredito /></RequirePermiso>} />
             <Route path="/ventas/guia-remitente/nueva" element={<RequirePermiso modulo="ventas"><GuiaRemitente /></RequirePermiso>} />

@@ -106,6 +106,7 @@ export default function Invoices() {
         <button className="ventas-action-btn" onClick={() => navigate('/ventas/guia-remitente/nueva')}>Guía Remitente</button>
         <button className="ventas-action-btn" onClick={() => navigate('/ventas/nuevo/cotizacion')}>Cotización</button>
         <button className="ventas-action-btn disabled" title="Próximamente" onClick={() => toast.info('Órdenes estará disponible próximamente.')}>Órdenes</button>
+        <button className="ventas-action-btn" onClick={() => navigate('/ventas/cuentas-por-cobrar')}>Cuentas por Cobrar</button>
       </div>
 
       <form className="filter-panel" onSubmit={handleBuscar}>
