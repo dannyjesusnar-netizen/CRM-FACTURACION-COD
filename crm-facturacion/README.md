@@ -361,11 +361,32 @@ cuenta):
   ~1 minuto en despertar (después responde normal).
 - El disco es temporal: no incluye almacenamiento persistente, así que la
   base de datos SQLite (y lo que se registre en ella) se reinicia a los
-  datos de ejemplo cada vez que se hace un nuevo deploy. Para un uso real
-  de largo plazo con datos que deban conservarse siempre, más adelante
-  conviene mover la base de datos a un servicio con almacenamiento
-  persistente (ej. Render con disco pago, o una base de datos administrada
-  como PostgreSQL) y/o pasar a un dominio propio.
+  datos de ejemplo cada vez que se hace un nuevo deploy (incluido agregar o
+  cambiar una variable de entorno). **Antes de cargar datos reales de un
+  cliente, activa el disco persistente** (ver siguiente sección) — si no,
+  se van a perder en el próximo deploy.
+
+### Activar disco persistente (evita perder los datos en cada deploy)
+
+`render.yaml` ya incluye la configuración de un disco de 1GB montado en
+`/var/data`, y el backend lee la variable `DATA_DIR` para saber dónde
+guardar la base de datos (por defecto usa una carpeta local, que es lo que
+causa el problema de arriba). Para activarlo en una instancia ya
+desplegada:
+
+1. Los discos persistentes de Render **no están disponibles en el plan
+   Free** — hay que subir ese servicio a un plan pago (el más económico,
+   Starter, ronda los $7/mes; el disco de 1GB cuesta centavos extra al mes).
+2. En el dashboard de Render, entra al servicio → **Settings** → cambia el
+   "Instance Type" de Free a Starter (o el que prefieras).
+3. Ve a la pestaña **Disks** → **Add Disk**: Mount Path `/var/data`, tamaño
+   1GB (o más).
+4. En **Environment**, agrega `DATA_DIR` = `/var/data`.
+5. Redeploy. A partir de ahí, los redeploys ya no van a borrar los datos.
+
+Si el servicio se creó vía Blueprint (`render.yaml`), sincronizar el
+blueprint después de subir el plan también debería configurar el disco
+automáticamente, sin tener que hacerlo a mano.
 
 ## Personalización
 

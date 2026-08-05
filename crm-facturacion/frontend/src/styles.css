@@ -108,6 +108,27 @@ body {
 .user-dropdown-divider { height: 1px; background: var(--border); margin: 4px 0; }
 .dropdown-icon { flex-shrink: 0; }
 
+/* ---------- Selector rápido de sede (solo Gerencia, en la barra superior) ---------- */
+
+.sede-switcher { position: relative; }
+.sede-switcher-btn {
+  display: flex; align-items: center; gap: 8px;
+  background: rgba(255,255,255,0.16);
+  border: 1px solid rgba(255,255,255,0.35);
+  color: #fff; font-weight: 700; font-size: 13px;
+  padding: 7px 14px; border-radius: 20px; cursor: pointer;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.12);
+  transition: background 0.15s, transform 0.15s, box-shadow 0.15s;
+}
+.sede-switcher-btn:hover {
+  background: rgba(255,255,255,0.26);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(0,0,0,0.18);
+}
+.sede-switcher-btn:active { transform: scale(0.96); }
+.sede-switcher-btn span { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sede-switcher-dropdown { min-width: 220px; }
+
 .subnav {
   flex-shrink: 0; background: var(--surface); border-bottom: 1px solid var(--border);
   display: flex; align-items: center; padding: 0 16px; overflow-x: auto;

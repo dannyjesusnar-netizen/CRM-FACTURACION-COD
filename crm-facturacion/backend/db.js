@@ -3,7 +3,11 @@ const fs = require('fs');
 const bcrypt = require('bcryptjs');
 const Database = require('better-sqlite3');
 
-const DATA_DIR = path.join(__dirname, 'data');
+// DATA_DIR es configurable para poder apuntar a un disco persistente de
+// Render (plan pago) montado, por ejemplo, en /var/data — sin la variable,
+// se comporta igual que siempre (carpeta local, se pierde en cada redeploy
+// en el plan Free).
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
 const db = new Database(path.join(DATA_DIR, 'crm.db'));
