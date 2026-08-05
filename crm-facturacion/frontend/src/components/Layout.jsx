@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { useTheme } from '../context/ThemeContext';
 import api from '../api';
+import SedeSwitcher from './SedeSwitcher';
 import {
   TrendingUp, ShoppingCart, Bike, Wallet, Users, Calculator, ClipboardList, FileText,
   Moon, Sun, Settings, ChevronDown, Phone, FileSignature, Lock, Video, BarChart3, LogOut, UsersRound,
@@ -67,6 +68,7 @@ export default function Layout() {
           {empresa ? `${(empresa.nombre_comercial || empresa.razon_social).toUpperCase()}${sucursal ? ` — ${sucursal.nombre.toUpperCase()}` : ''}` : ''}
         </div>
         <div className="topbar-actions">
+          <SedeSwitcher />
           <button
             type="button"
             className="icon-btn"
