@@ -16,6 +16,9 @@ const TIPO_MOV_LABEL = { ingreso: 'Ingreso', egreso: 'Egreso' };
 export default function Caja() {
   const toast = useToast();
   const [fecha, setFecha] = useState(todayStr());
+  const [empleadoId, setEmpleadoId] = useState('');
+  const [moneda, setMoneda] = useState('');
+  const [empleados, setEmpleados] = useState([]);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -30,10 +33,14 @@ export default function Caja() {
 
   function load() {
     setLoading(true);
-    api.get('/caja', { params: { fecha } }).then((res) => setData(res.data)).finally(() => setLoading(false));
+    const params = { fecha };
+    if (empleadoId) params.empleado_id = empleadoId;
+    if (moneda) params.moneda = moneda;
+    api.get('/caja', { params }).then((res) => setData(res.data)).finally(() => setLoading(false));
   }
 
-  useEffect(() => { load(); }, [fecha]);
+  useEffect(() => { load(); }, [fecha, empleadoId, moneda]);
+  useEffect(() => { api.get('/caja/empleados').then((res) => setEmpleados(res.data)); }, []);
 
   const metodoPorCodigo = useMemo(() => {
     const map = {};
@@ -123,7 +130,27 @@ export default function Caja() {
           <label>Fecha</label>
           <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} />
         </div>
+        <div className="filter-field">
+          <label>Cuenta</label>
+          <select value={empleadoId} onChange={(e) => setEmpleadoId(e.target.value)}>
+            <option value="">Todos los empleados</option>
+            {empleados.map((e) => <option key={e.id} value={e.id}>{e.full_name}</option>)}
+          </select>
+        </div>
+        <div className="filter-field">
+          <label>Moneda</label>
+          <select value={moneda} onChange={(e) => setMoneda(e.target.value)}>
+            <option value="">Todas</option>
+            <option value="PEN">Soles</option>
+            <option value="USD">Dólares</option>
+          </select>
+        </div>
       </div>
+      {(empleadoId || moneda) && (
+        <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -12, marginBottom: 16 }}>
+          Con filtros activos, el saldo inicial de Efectivo no se muestra (es un monto físico del día completo, no se puede acotar por empleado o moneda) — igual verás los ingresos y egresos que sí calzan con el filtro.
+        </p>
+      )}
 
       {loading || !data ? (
         <div className="panel"><span className="spinner" /> Cargando arqueo de caja...</div>
