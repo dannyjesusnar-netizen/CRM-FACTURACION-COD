@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
 import api from '../api';
 import { useToast } from '../context/ToastContext';
@@ -9,13 +9,8 @@ function todayStr() {
 
 const INGRESO_LABELS = { ventas: 'Ventas', cuentas_cobrar: 'Cuentas x Cobrar', transferencia: 'Transferencias', otros: 'Otros Ingresos' };
 const EGRESO_LABELS = { compras: 'Compras', cuentas_pagar: 'Cuentas x Pagar', transferencia: 'Transferencias', otros: 'Otros Egresos' };
-const INGRESO_LABELS_TB = { ventas: 'Ventas', cuentas_cobrar: 'Cuentas x Cobrar', transferencia: 'Transferencia', otros: 'Otros Ingresos' };
-const EGRESO_LABELS_TB = { compras: 'Compras', cuentas_pagar: 'Cuentas x Pagar', transferencia: 'Transferencia', otros: 'Otros Egresos' };
-const MEDIO_LABELS = { tarjeta: 'Tarjeta', banco: 'Banco', otros: 'Otros' };
 const INGRESO_CATS = ['ventas', 'cuentas_cobrar', 'transferencia', 'otros'];
 const EGRESO_CATS = ['compras', 'cuentas_pagar', 'transferencia', 'otros'];
-const MEDIOS_TB = ['tarjeta', 'banco', 'otros'];
-const CAT_MEDIOS_TB = { ventas: MEDIOS_TB, cuentas_cobrar: MEDIOS_TB, transferencia: ['tarjeta', 'banco'], compras: MEDIOS_TB, cuentas_pagar: MEDIOS_TB, otros: MEDIOS_TB };
 const TIPO_MOV_LABEL = { ingreso: 'Ingreso', egreso: 'Egreso' };
 
 export default function Caja() {
@@ -28,7 +23,7 @@ export default function Caja() {
   const [saldoInput, setSaldoInput] = useState('');
 
   const [showMovForm, setShowMovForm] = useState(false);
-  const [movContext, setMovContext] = useState(null); // { tipo, medio, categoria, label }
+  const [movContext, setMovContext] = useState(null); // { tipo, medio, categoria, label, color, icono }
   const [movMonto, setMovMonto] = useState('');
   const [movDescripcion, setMovDescripcion] = useState('');
   const [error, setError] = useState('');
@@ -40,8 +35,15 @@ export default function Caja() {
 
   useEffect(() => { load(); }, [fecha]);
 
+  const metodoPorCodigo = useMemo(() => {
+    const map = {};
+    (data?.resumen || []).forEach((m) => { map[m.codigo] = m; });
+    return map;
+  }, [data]);
+
   function openSaldoForm() {
-    setSaldoInput(data?.efectivo?.saldo_inicial ?? 0);
+    const efectivo = metodoPorCodigo.efectivo;
+    setSaldoInput(efectivo?.saldo_inicial ?? 0);
     setShowSaldoForm(true);
   }
 
@@ -57,8 +59,8 @@ export default function Caja() {
     }
   }
 
-  function openMovForm(tipo, medio, categoria, label) {
-    setMovContext({ tipo, medio, categoria, label });
+  function openMovForm(tipo, metodo, categoria) {
+    setMovContext({ tipo, medio: metodo.codigo, categoria, label: `${(tipo === 'ingreso' ? INGRESO_LABELS : EGRESO_LABELS)[categoria]} (${metodo.nombre})`, color: metodo.color, icono: metodo.icono });
     setMovMonto('');
     setMovDescripcion('');
     setError('');
@@ -106,7 +108,15 @@ export default function Caja() {
 
   return (
     <div>
-      <h1 className="page-title">Caja y Bancos</h1>
+      <div className="page-header">
+        <h1 className="page-title">Caja y Bancos</h1>
+        {data && (
+          <div className="caja-total-general">
+            <span>Total del día</span>
+            <strong>S/ {fmt(data.totalGeneral)}</strong>
+          </div>
+        )}
+      </div>
 
       <div className="caja-date-bar filter-panel">
         <div className="filter-field">
@@ -118,112 +128,72 @@ export default function Caja() {
       {loading || !data ? (
         <div className="panel"><span className="spinner" /> Cargando arqueo de caja...</div>
       ) : (
-        <div className="caja-columns">
-          {/* --- COLUMNA EFECTIVO --- */}
-          <div>
-            <div className="caja-banner">
-              <span>Saldo Inicial Efectivo</span>
-              <span className="caja-banner-value">
-                S/ {fmt(data.efectivo.saldo_inicial)}
-                <button className="caja-banner-edit" title="Editar saldo inicial" onClick={openSaldoForm}>
-                  <Pencil size={14} />
-                </button>
-              </span>
-            </div>
-
-            <div className="caja-section">
-              <div className="caja-section-header">
-                <span>Ingresos Efectivo</span>
-                <span className="caja-section-total">{fmt(data.efectivo.ingresos.total)}</span>
+        <div className="caja-metodos-grid">
+          {data.resumen.map((m) => (
+            <div key={m.codigo} className="caja-metodo-card" style={{ '--metodo-color': m.color }}>
+              <div className="caja-metodo-header">
+                <div className="caja-metodo-icon" style={{ background: m.color }}>{m.icono}</div>
+                <div className="caja-metodo-titulo">
+                  <strong>{m.nombre}</strong>
+                  {m.codigo === 'efectivo' && (
+                    <span className="caja-metodo-saldo-inicial">
+                      Inicial S/ {fmt(m.saldo_inicial)}
+                      <button className="caja-banner-edit" title="Editar saldo inicial" onClick={openSaldoForm}>
+                        <Pencil size={12} />
+                      </button>
+                    </span>
+                  )}
+                </div>
+                <div className="caja-metodo-final">
+                  <span>Saldo</span>
+                  <strong>S/ {fmt(m.saldo_final)}</strong>
+                </div>
               </div>
-              {INGRESO_CATS.map((cat) => (
-                <div className="caja-row" key={cat}>
-                  <span className="caja-row-label">{INGRESO_LABELS[cat]}</span>
-                  <span className="caja-row-right">
-                    <span className="caja-row-amount">{fmt(data.efectivo.ingresos[cat])}</span>
-                    {cat === 'ventas' ? (
-                      <span className="caja-row-auto">auto</span>
-                    ) : (
-                      <button className="caja-row-add" title="Registrar ingreso" onClick={() => openMovForm('ingreso', 'efectivo', cat, `${INGRESO_LABELS[cat]} (Efectivo)`)}>
+
+              <div className="caja-metodo-section">
+                <div className="caja-metodo-section-header ingreso">
+                  <span>Ingresos</span>
+                  <span>{fmt(m.ingresos.total)}</span>
+                </div>
+                {INGRESO_CATS.map((cat) => (
+                  <div className="caja-row" key={cat}>
+                    <span className="caja-row-label">{INGRESO_LABELS[cat]}</span>
+                    <span className="caja-row-right">
+                      <span className="caja-row-amount">{fmt(m.ingresos[cat])}</span>
+                      {cat === 'ventas' ? (
+                        <span className="caja-row-auto">auto</span>
+                      ) : (
+                        <button className="caja-row-add" title="Registrar ingreso" onClick={() => openMovForm('ingreso', m, cat)}>
+                          <Plus size={13} />
+                        </button>
+                      )}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              <div className="caja-metodo-section">
+                <div className="caja-metodo-section-header egreso">
+                  <span>Egresos</span>
+                  <span>{fmt(m.egresos.total)}</span>
+                </div>
+                {EGRESO_CATS.map((cat) => (
+                  <div className="caja-row" key={cat}>
+                    <span className="caja-row-label">{EGRESO_LABELS[cat]}</span>
+                    <span className="caja-row-right">
+                      <span className="caja-row-amount">{fmt(m.egresos[cat])}</span>
+                      <button className="caja-row-add" title="Registrar egreso" onClick={() => openMovForm('egreso', m, cat)}>
                         <Plus size={13} />
                       </button>
-                    )}
-                  </span>
-                </div>
-              ))}
-            </div>
-
-            <div className="caja-section">
-              <div className="caja-section-header">
-                <span>Egresos Efectivo</span>
-                <span className="caja-section-total">{fmt(data.efectivo.egresos.total)}</span>
+                    </span>
+                  </div>
+                ))}
               </div>
-              {EGRESO_CATS.map((cat) => (
-                <div className="caja-row" key={cat}>
-                  <span className="caja-row-label">{EGRESO_LABELS[cat]}</span>
-                  <span className="caja-row-right">
-                    <span className="caja-row-amount">{fmt(data.efectivo.egresos[cat])}</span>
-                    <button className="caja-row-add" title="Registrar egreso" onClick={() => openMovForm('egreso', 'efectivo', cat, `${EGRESO_LABELS[cat]} (Efectivo)`)}>
-                      <Plus size={13} />
-                    </button>
-                  </span>
-                </div>
-              ))}
             </div>
-
-            <div className="caja-banner">
-              <span>Efectivo Final</span>
-              <span className="caja-banner-value">S/ {fmt(data.efectivo.saldo_final)}</span>
-            </div>
-          </div>
-
-          {/* --- COLUMNA TARJETA / BANCO --- */}
-          <div>
-            <div className="caja-section">
-              <div className="caja-section-header">
-                <span>Ingresos Tarjeta Banco</span>
-                <span className="caja-section-total">{fmt(data.tarjeta_banco.ingresos.total)}</span>
-              </div>
-              {INGRESO_CATS.map((cat) => CAT_MEDIOS_TB[cat].map((medio) => (
-                <div className="caja-row" key={cat + medio}>
-                  <span className="caja-row-label">{INGRESO_LABELS_TB[cat]} {MEDIO_LABELS[medio]}</span>
-                  <span className="caja-row-right">
-                    <span className="caja-row-amount">{fmt(data.tarjeta_banco.ingresos[cat][medio])}</span>
-                    {cat === 'ventas' && medio !== 'otros' ? (
-                      <span className="caja-row-auto">auto</span>
-                    ) : (
-                      <button className="caja-row-add" title="Registrar ingreso" onClick={() => openMovForm('ingreso', medio, cat, `${INGRESO_LABELS_TB[cat]} ${MEDIO_LABELS[medio]}`)}>
-                        <Plus size={13} />
-                      </button>
-                    )}
-                  </span>
-                </div>
-              )))}
-            </div>
-
-            <div className="caja-section">
-              <div className="caja-section-header">
-                <span>Egresos Tarjeta Banco</span>
-                <span className="caja-section-total">{fmt(data.tarjeta_banco.egresos.total)}</span>
-              </div>
-              {EGRESO_CATS.map((cat) => CAT_MEDIOS_TB[cat].map((medio) => (
-                <div className="caja-row" key={cat + medio}>
-                  <span className="caja-row-label">{EGRESO_LABELS_TB[cat]} {MEDIO_LABELS[medio]}</span>
-                  <span className="caja-row-right">
-                    <span className="caja-row-amount">{fmt(data.tarjeta_banco.egresos[cat][medio])}</span>
-                    <button className="caja-row-add" title="Registrar egreso" onClick={() => openMovForm('egreso', medio, cat, `${EGRESO_LABELS_TB[cat]} ${MEDIO_LABELS[medio]}`)}>
-                      <Plus size={13} />
-                    </button>
-                  </span>
-                </div>
-              )))}
-            </div>
-
-            <div className="caja-banner">
-              <span>Saldo Final Tarjeta Banco</span>
-              <span className="caja-banner-value">S/ {fmt(data.tarjeta_banco.saldo_final)}</span>
-            </div>
-          </div>
+          ))}
+          {data.resumen.length === 0 && (
+            <p className="empty-row">No hay métodos de pago activos. Créalos en Configuración → Métodos de pago.</p>
+          )}
         </div>
       )}
 
@@ -239,17 +209,25 @@ export default function Caja() {
                 </tr>
               </thead>
               <tbody>
-                {data.movimientos.map((m) => (
-                  <tr key={m.id}>
-                    <td><span className={'badge ' + (m.tipo === 'ingreso' ? 'badge-good' : 'badge-critical')}>{TIPO_MOV_LABEL[m.tipo]}</span></td>
-                    <td style={{ textTransform: 'capitalize' }}>{m.medio}</td>
-                    <td>{(m.tipo === 'ingreso' ? INGRESO_LABELS[m.categoria] : EGRESO_LABELS[m.categoria]) || m.categoria}</td>
-                    <td style={{ textAlign: 'right' }}>S/ {fmt(m.monto)}</td>
-                    <td>{m.descripcion || '—'}</td>
-                    <td>{m.usuario_nombre || '—'}</td>
-                    <td><button className="btn-link danger" onClick={() => handleDeleteMov(m.id)} title="Eliminar"><Trash2 size={14} /></button></td>
-                  </tr>
-                ))}
+                {data.movimientos.map((m) => {
+                  const metodo = metodoPorCodigo[m.medio];
+                  return (
+                    <tr key={m.id}>
+                      <td><span className={'badge ' + (m.tipo === 'ingreso' ? 'badge-good' : 'badge-critical')}>{TIPO_MOV_LABEL[m.tipo]}</span></td>
+                      <td>
+                        <span className="caja-mov-medio">
+                          <span className="caja-mov-medio-dot" style={{ background: metodo?.color || '#94a3b8' }}>{metodo?.icono || '💳'}</span>
+                          {metodo?.nombre || m.medio}
+                        </span>
+                      </td>
+                      <td>{(m.tipo === 'ingreso' ? INGRESO_LABELS[m.categoria] : EGRESO_LABELS[m.categoria]) || m.categoria}</td>
+                      <td style={{ textAlign: 'right' }}>S/ {fmt(m.monto)}</td>
+                      <td>{m.descripcion || '—'}</td>
+                      <td>{m.usuario_nombre || '—'}</td>
+                      <td><button className="btn-link danger" onClick={() => handleDeleteMov(m.id)} title="Eliminar"><Trash2 size={14} /></button></td>
+                    </tr>
+                  );
+                })}
                 {data.movimientos.length === 0 && (
                   <tr><td colSpan={7} className="empty-row">No hay movimientos manuales registrados para esta fecha.</td></tr>
                 )}
@@ -278,7 +256,10 @@ export default function Caja() {
       {showMovForm && (
         <div className="modal-overlay" onClick={() => setShowMovForm(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h2>{movContext?.tipo === 'ingreso' ? 'Nuevo ingreso' : 'Nuevo egreso'} — {movContext?.label}</h2>
+            <h2>
+              <span className="caja-mov-medio-dot" style={{ background: movContext?.color }}>{movContext?.icono}</span>{' '}
+              {movContext?.tipo === 'ingreso' ? 'Nuevo ingreso' : 'Nuevo egreso'} — {movContext?.label}
+            </h2>
             <form onSubmit={handleMovSubmit}>
               <label>Monto (S/)</label>
               <input required type="number" step="0.01" min="0.01" value={movMonto} onChange={(e) => setMovMonto(e.target.value)} autoFocus />

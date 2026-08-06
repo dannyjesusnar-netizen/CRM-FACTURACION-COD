@@ -17,8 +17,12 @@ export default function CuentasPorCobrar() {
   const [medio, setMedio] = useState('efectivo');
   const [observacion, setObservacion] = useState('');
   const [error, setError] = useState('');
+  const [metodosPago, setMetodosPago] = useState([]);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    api.get('/metodos-pago').then((res) => setMetodosPago(res.data));
+  }, []);
 
   function load() {
     api.get('/invoices/deudas').then((res) => setDeudas(res.data));
@@ -95,10 +99,9 @@ export default function CuentasPorCobrar() {
               <input required type="number" min="0.01" step="0.01" max={cobrando.saldo} value={monto} onChange={(e) => setMonto(e.target.value)} />
               <label>Medio</label>
               <select value={medio} onChange={(e) => setMedio(e.target.value)}>
-                <option value="efectivo">Efectivo</option>
-                <option value="tarjeta">Tarjeta</option>
-                <option value="banco">Banco</option>
-                <option value="otros">Otros</option>
+                {metodosPago.map((m) => (
+                  <option key={m.codigo} value={m.codigo}>{m.icono} {m.nombre}</option>
+                ))}
               </select>
               <label>Observación (opcional)</label>
               <input value={observacion} onChange={(e) => setObservacion(e.target.value)} />

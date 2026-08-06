@@ -155,6 +155,22 @@ CREATE TABLE IF NOT EXISTS sucursales (
   created_at TEXT DEFAULT (datetime('now'))
 );
 
+-- Catálogo de métodos de pago configurable por Gerencia (Configuración ->
+-- Métodos de pago). "codigo" es el valor real que se guarda en
+-- invoices.forma_pago / cobros.medio / caja_movimientos.medio — por eso es
+-- único e inmutable una vez creado (renombrar "nombre" sí se puede).
+CREATE TABLE IF NOT EXISTS metodos_pago (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  codigo TEXT UNIQUE NOT NULL,
+  nombre TEXT NOT NULL,
+  tipo TEXT NOT NULL DEFAULT 'otro',        -- efectivo | billetera | pos | transferencia | link | otro
+  color TEXT NOT NULL DEFAULT '#0f4c81',
+  icono TEXT NOT NULL DEFAULT '💳',
+  orden INTEGER NOT NULL DEFAULT 0,
+  activo INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS sucursal_stock (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   product_id INTEGER NOT NULL REFERENCES products(id),
@@ -629,6 +645,31 @@ if (sucursalCount === 0) {
   insertSucursal.run('Miraflores', 'Av. Larco 123, Miraflores', 1);
   insertSucursal.run('San Borja', 'Av. San Borja Norte 456, San Borja', 0);
   insertSucursal.run('Jesús María', 'Av. Salaverry 789, Jesús María', 0);
+}
+
+// Métodos de pago: catálogo inicial con los medios más usados en Perú. Se
+// puede ampliar/editar/desactivar libremente desde Configuración -> Métodos
+// de pago. "tarjeta"/"banco" se mantienen inactivos solo para no romper
+// comprobantes viejos que ya los usaban antes de este catálogo dinámico.
+const metodoPagoCount = db.prepare('SELECT COUNT(*) AS n FROM metodos_pago').get().n;
+if (metodoPagoCount === 0) {
+  const insertMetodo = db.prepare(
+    'INSERT INTO metodos_pago (codigo, nombre, tipo, color, icono, orden, activo) VALUES (?, ?, ?, ?, ?, ?, ?)'
+  );
+  const metodos = [
+    ['efectivo', 'Efectivo', 'efectivo', '#16a34a', '💵', 1, 1],
+    ['yape', 'Yape', 'billetera', '#7c3aed', '📲', 2, 1],
+    ['plin', 'Plin', 'billetera', '#00bcd4', '📱', 3, 1],
+    ['pos', 'POS', 'pos', '#f59e0b', '💳', 4, 1],
+    ['qr_bbva', 'QR BBVA', 'billetera', '#004b93', '🏦', 5, 1],
+    ['transferencia_bcp', 'Transferencia BCP', 'transferencia', '#002a5c', '🏦', 6, 1],
+    ['transferencia_interbank', 'Transferencia Interbank', 'transferencia', '#00a19a', '🏦', 7, 1],
+    ['pago_link', 'Pago Link', 'link', '#e11d48', '🔗', 8, 1],
+    ['otros', 'Otros', 'otro', '#64748b', '🔖', 9, 1],
+    ['tarjeta', 'Tarjeta (antiguo)', 'pos', '#94a3b8', '💳', 90, 0],
+    ['banco', 'Banco (antiguo)', 'transferencia', '#94a3b8', '🏦', 91, 0],
+  ];
+  metodos.forEach((m) => insertMetodo.run(...m));
 }
 
 // Receta de ejemplo (Producción): envasado de pre-entreno a partir del mix a granel

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Building2, Users as UsersIcon, Store, ShieldCheck, FileText } from 'lucide-react';
+import { ArrowLeft, Building2, Users as UsersIcon, Store, ShieldCheck, FileText, Wallet } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
@@ -19,6 +19,21 @@ function emptyUserForm() {
 
 function emptySucursalForm() {
   return { nombre: '', direccion: '' };
+}
+
+const TIPOS_METODO_PAGO = [
+  { value: 'efectivo', label: 'Efectivo' },
+  { value: 'billetera', label: 'Billetera digital' },
+  { value: 'pos', label: 'Tarjeta / POS' },
+  { value: 'transferencia', label: 'Transferencia bancaria' },
+  { value: 'link', label: 'Link de pago' },
+  { value: 'otro', label: 'Otro' },
+];
+
+const ICONOS_SUGERIDOS = ['💵', '📲', '📱', '💳', '🏦', '🔗', '🔖', '💰', '🧾', '⭐'];
+
+function emptyMetodoForm() {
+  return { nombre: '', tipo: 'otro', color: '#0f4c81', icono: '💳' };
 }
 
 export default function Configuracion() {
@@ -58,12 +73,20 @@ export default function Configuracion() {
   // --- Roles de usuario ---
   const [roles, setRoles] = useState([]);
 
+  // --- Métodos de pago ---
+  const [metodosPago, setMetodosPago] = useState([]);
+  const [showMetodoForm, setShowMetodoForm] = useState(false);
+  const [editingMetodoId, setEditingMetodoId] = useState(null);
+  const [metodoForm, setMetodoForm] = useState(emptyMetodoForm());
+  const [errorMetodo, setErrorMetodo] = useState('');
+
   useEffect(() => {
     api.get('/empresa').then((res) => setEmpresa(res.data));
     loadUsuarios();
     loadSucursales();
     loadLimiteSucursales();
     loadRoles();
+    loadMetodosPago();
   }, []);
 
   function loadUsuarios() {
@@ -82,6 +105,10 @@ export default function Configuracion() {
 
   function loadRoles() {
     api.get('/roles').then((res) => setRoles(res.data));
+  }
+
+  function loadMetodosPago() {
+    api.get('/metodos-pago', { params: { todos: 1 } }).then((res) => setMetodosPago(res.data));
   }
 
   if (!user || user.role !== 'gerencia') {
@@ -298,6 +325,50 @@ export default function Configuracion() {
     }
   }
 
+  function openNewMetodo() {
+    setEditingMetodoId(null);
+    setMetodoForm(emptyMetodoForm());
+    setErrorMetodo('');
+    setShowMetodoForm(true);
+  }
+
+  function openEditMetodo(m) {
+    setEditingMetodoId(m.id);
+    setMetodoForm({ nombre: m.nombre, tipo: m.tipo, color: m.color, icono: m.icono });
+    setErrorMetodo('');
+    setShowMetodoForm(true);
+  }
+
+  async function handleSubmitMetodo(e) {
+    e.preventDefault();
+    setErrorMetodo('');
+    try {
+      if (editingMetodoId) {
+        await api.put(`/metodos-pago/${editingMetodoId}`, metodoForm);
+        toast.success('Método de pago actualizado.');
+      } else {
+        await api.post('/metodos-pago', metodoForm);
+        toast.success('Método de pago creado.');
+      }
+      setShowMetodoForm(false);
+      loadMetodosPago();
+    } catch (err) {
+      setErrorMetodo(err.response?.data?.error || 'No se pudo guardar el método de pago.');
+    }
+  }
+
+  async function handleToggleMetodoEstado(m) {
+    const accion = m.activo ? 'desactivar' : 'activar';
+    if (!window.confirm(`¿Seguro que quieres ${accion} "${m.nombre}"?`)) return;
+    try {
+      await api.put(`/metodos-pago/${m.id}/estado`, { activo: !m.activo });
+      toast.success(`"${m.nombre}" ${m.activo ? 'desactivado' : 'activado'}.`);
+      loadMetodosPago();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'No se pudo cambiar el estado.');
+    }
+  }
+
   return (
     <div>
       <h1 className="page-title" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -323,6 +394,9 @@ export default function Configuracion() {
           </div>
           <div className={'reports-sidebar-item' + (seccion === 'roles' ? ' active' : '')} onClick={() => setSeccion('roles')} role="button" tabIndex={0}>
             <ShieldCheck size={16} /><span>Roles de usuario</span>
+          </div>
+          <div className={'reports-sidebar-item' + (seccion === 'metodos_pago' ? ' active' : '')} onClick={() => setSeccion('metodos_pago')} role="button" tabIndex={0}>
+            <Wallet size={16} /><span>Métodos de pago</span>
           </div>
         </div>
 
@@ -678,6 +752,42 @@ export default function Configuracion() {
               </table>
             </>
           )}
+
+          {seccion === 'metodos_pago' && (
+            <>
+              <div className="report-toolbar">
+                <h3 style={{ margin: 0 }}>Métodos de pago</h3>
+                <button className="btn-primary" style={{ width: 'auto' }} onClick={openNewMetodo}>+ Nuevo método de pago</button>
+              </div>
+              <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -8 }}>
+                Estos son los métodos que tus vendedores pueden elegir al cobrar una venta, y con los que Caja y Bancos
+                arma el detalle de "con qué se pagó" cada día.
+              </p>
+              <div className="metodos-pago-grid">
+                {metodosPago.map((m) => (
+                  <div key={m.id} className={'metodo-pago-card' + (m.activo ? '' : ' inactivo')} style={{ '--metodo-color': m.color }}>
+                    <div className="metodo-pago-icon" style={{ background: m.color }}>{m.icono}</div>
+                    <div className="metodo-pago-info">
+                      <strong>{m.nombre}</strong>
+                      <span className="metodo-pago-tipo">{TIPOS_METODO_PAGO.find((t) => t.value === m.tipo)?.label || m.tipo}</span>
+                    </div>
+                    <span className={'badge ' + (m.activo ? 'badge-good' : 'badge-critical')}>
+                      {m.activo ? 'Activo' : 'Inactivo'}
+                    </span>
+                    <div className="metodo-pago-actions">
+                      <button className="btn-link" onClick={() => openEditMetodo(m)}>Editar</button>
+                      <button className={'btn-link' + (m.activo ? ' danger' : '')} onClick={() => handleToggleMetodoEstado(m)}>
+                        {m.activo ? 'Desactivar' : 'Activar'}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                {metodosPago.length === 0 && (
+                  <p className="empty-row">No hay métodos de pago creados todavía.</p>
+                )}
+              </div>
+            </>
+          )}
         </div>
       </div>
 
@@ -766,6 +876,56 @@ export default function Configuracion() {
               <div className="modal-actions">
                 <button type="button" className="btn-secondary" onClick={() => setShowSucursalForm(false)}>Cancelar</button>
                 <button type="submit" className="btn-primary">{editingSucursalId ? 'Guardar cambios' : 'Crear sede'}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showMetodoForm && (
+        <div className="modal-overlay" onClick={() => setShowMetodoForm(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h2>{editingMetodoId ? 'Editar método de pago' : 'Nuevo método de pago'}</h2>
+            <form onSubmit={handleSubmitMetodo}>
+              <label>Nombre *</label>
+              <input required value={metodoForm.nombre} onChange={(e) => setMetodoForm({ ...metodoForm, nombre: e.target.value })} placeholder="Ej. Yape, Plin, Transferencia BCP..." />
+              <label>Tipo</label>
+              <select value={metodoForm.tipo} onChange={(e) => setMetodoForm({ ...metodoForm, tipo: e.target.value })}>
+                {TIPOS_METODO_PAGO.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
+              <div className="form-row">
+                <div>
+                  <label>Color</label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <input
+                      type="color"
+                      value={metodoForm.color}
+                      onChange={(e) => setMetodoForm({ ...metodoForm, color: e.target.value })}
+                      style={{ width: 44, height: 34, padding: 2, cursor: 'pointer' }}
+                    />
+                    <input value={metodoForm.color} onChange={(e) => setMetodoForm({ ...metodoForm, color: e.target.value })} style={{ maxWidth: 110 }} />
+                  </div>
+                </div>
+                <div>
+                  <label>Ícono</label>
+                  <input value={metodoForm.icono} onChange={(e) => setMetodoForm({ ...metodoForm, icono: e.target.value })} style={{ maxWidth: 80, fontSize: 18, textAlign: 'center' }} maxLength={2} />
+                </div>
+              </div>
+              <div className="metodo-icono-picker">
+                {ICONOS_SUGERIDOS.map((ic) => (
+                  <button type="button" key={ic} className={'metodo-icono-opcion' + (metodoForm.icono === ic ? ' selected' : '')} onClick={() => setMetodoForm({ ...metodoForm, icono: ic })}>
+                    {ic}
+                  </button>
+                ))}
+              </div>
+              <div className="metodo-pago-preview" style={{ '--metodo-color': metodoForm.color }}>
+                <div className="metodo-pago-icon" style={{ background: metodoForm.color }}>{metodoForm.icono}</div>
+                <strong>{metodoForm.nombre || 'Nombre del método'}</strong>
+              </div>
+              {errorMetodo && <div className="form-error">{errorMetodo}</div>}
+              <div className="modal-actions">
+                <button type="button" className="btn-secondary" onClick={() => setShowMetodoForm(false)}>Cancelar</button>
+                <button type="submit" className="btn-primary">{editingMetodoId ? 'Guardar cambios' : 'Crear método'}</button>
               </div>
             </form>
           </div>

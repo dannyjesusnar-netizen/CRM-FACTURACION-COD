@@ -36,8 +36,19 @@ export default function RegistroVenta() {
   const [medioAbono, setMedioAbono] = useState('efectivo');
   const [error, setError] = useState('');
   const [showPreview, setShowPreview] = useState(false);
+  const [metodosPago, setMetodosPago] = useState([]);
 
   const endpoint = tipo === 'cotizacion' ? '/cotizaciones' : '/invoices';
+
+  useEffect(() => {
+    api.get('/metodos-pago').then((res) => {
+      setMetodosPago(res.data);
+      if (res.data.length && !res.data.some((m) => m.codigo === 'efectivo')) {
+        setCuenta((prev) => (prev === 'abonado' ? prev : res.data[0].codigo));
+        setMedioAbono(res.data[0].codigo);
+      }
+    });
+  }, []);
 
   useEffect(() => {
     const params = tipo === 'cotizacion' ? {} : { tipo };
@@ -289,9 +300,9 @@ export default function RegistroVenta() {
               <div className="filter-field">
                 <label>Cuenta</label>
                 <select value={cuenta} onChange={(e) => setCuenta(e.target.value)}>
-                  <option value="efectivo">Efectivo</option>
-                  <option value="tarjeta">Tarjeta</option>
-                  <option value="banco">Banco</option>
+                  {metodosPago.map((m) => (
+                    <option key={m.codigo} value={m.codigo}>{m.icono} {m.nombre}</option>
+                  ))}
                   <option value="abonado">Abonado (crédito)</option>
                 </select>
               </div>
@@ -305,9 +316,9 @@ export default function RegistroVenta() {
                     <div className="filter-field">
                       <label>Medio del abono</label>
                       <select value={medioAbono} onChange={(e) => setMedioAbono(e.target.value)}>
-                        <option value="efectivo">Efectivo</option>
-                        <option value="tarjeta">Tarjeta</option>
-                        <option value="banco">Banco</option>
+                        {metodosPago.map((m) => (
+                          <option key={m.codigo} value={m.codigo}>{m.icono} {m.nombre}</option>
+                        ))}
                       </select>
                     </div>
                   )}
