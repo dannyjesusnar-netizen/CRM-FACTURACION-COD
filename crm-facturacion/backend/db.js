@@ -484,6 +484,11 @@ const EMPRESA_NEW_COLUMNS = [
   ['provincia', 'TEXT'],
   ['distrito', 'TEXT'],
   ['logo_data_url', 'TEXT'],
+  ['color_acento', "TEXT DEFAULT '#0f4c81'"],
+  ['mostrar_logo_pdf', 'INTEGER NOT NULL DEFAULT 1'],
+  ['mostrar_datos_contacto_pdf', 'INTEGER NOT NULL DEFAULT 1'],
+  ['tamano_pdf', "TEXT NOT NULL DEFAULT 'A4'"],
+  ['terminos_condiciones_pdf', 'TEXT'],
 ];
 for (const [col, def] of EMPRESA_NEW_COLUMNS) {
   if (!empresaColumns.includes(col)) {

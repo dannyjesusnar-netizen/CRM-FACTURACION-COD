@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Building2, Users as UsersIcon, Store, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, Building2, Users as UsersIcon, Store, ShieldCheck, FileText } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
@@ -31,6 +31,13 @@ export default function Configuracion() {
   const [empresa, setEmpresa] = useState(null);
   const [errorEmpresa, setErrorEmpresa] = useState('');
   const [savingEmpresa, setSavingEmpresa] = useState(false);
+
+  // --- Comprobantes (diseño del PDF) ---
+  const [errorComprobantes, setErrorComprobantes] = useState('');
+  const [savingComprobantes, setSavingComprobantes] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState(null);
+  const previewUrlRef = useRef(null);
+  const [loadingPreview, setLoadingPreview] = useState(false);
 
   // --- Empleados ---
   const [usuarios, setUsuarios] = useState([]);
@@ -101,6 +108,43 @@ export default function Configuracion() {
       setSavingEmpresa(false);
     }
   }
+
+  async function handleGuardarComprobantes(e) {
+    e.preventDefault();
+    setErrorComprobantes('');
+    setSavingComprobantes(true);
+    try {
+      const res = await api.put('/empresa', empresa);
+      setEmpresa(res.data);
+      toast.success('Diseño del comprobante actualizado.');
+      loadPreview();
+    } catch (err) {
+      setErrorComprobantes(err.response?.data?.error || 'No se pudo guardar.');
+    } finally {
+      setSavingComprobantes(false);
+    }
+  }
+
+  function loadPreview() {
+    setLoadingPreview(true);
+    api.get('/empresa/comprobante-preview', { responseType: 'blob' })
+      .then((res) => {
+        if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+        const url = URL.createObjectURL(res.data);
+        previewUrlRef.current = url;
+        setPreviewUrl(url);
+      })
+      .finally(() => setLoadingPreview(false));
+  }
+
+  useEffect(() => {
+    if (seccion === 'comprobantes' && !previewUrl) loadPreview();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seccion]);
+
+  useEffect(() => {
+    return () => { if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current); };
+  }, []);
 
   function handleLogoChange(e) {
     const file = e.target.files?.[0];
@@ -268,6 +312,9 @@ export default function Configuracion() {
           <div className={'reports-sidebar-item' + (seccion === 'empresa' ? ' active' : '')} onClick={() => setSeccion('empresa')} role="button" tabIndex={0}>
             <Building2 size={16} /><span>Empresa</span>
           </div>
+          <div className={'reports-sidebar-item' + (seccion === 'comprobantes' ? ' active' : '')} onClick={() => setSeccion('comprobantes')} role="button" tabIndex={0}>
+            <FileText size={16} /><span>Comprobantes</span>
+          </div>
           <div className={'reports-sidebar-item' + (seccion === 'sucursales' ? ' active' : '')} onClick={() => setSeccion('sucursales')} role="button" tabIndex={0}>
             <Store size={16} /><span>Sucursales</span>
           </div>
@@ -370,6 +417,105 @@ export default function Configuracion() {
                   </div>
                 </div>
               </div>
+            </>
+          )}
+
+          {seccion === 'comprobantes' && empresa && (
+            <>
+              <h3 style={{ marginTop: 0 }}>Diseño de comprobantes</h3>
+              <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -8 }}>
+                Personaliza cómo se ven las facturas, boletas, notas de crédito, cotizaciones y guías en PDF. La vista
+                previa de la derecha usa un comprobante de ejemplo con los ajustes actuales.
+              </p>
+              {(!empresa.razon_social || !empresa.ruc) ? (
+                <p className="form-error">
+                  Antes de personalizar el comprobante, completa el RUC de tu empresa en la pestaña{' '}
+                  <a href="#" onClick={(e) => { e.preventDefault(); setSeccion('empresa'); }}>Empresa</a> — se imprime en cada comprobante.
+                </p>
+              ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 420px', gap: 20, alignItems: 'flex-start' }}>
+                <form onSubmit={handleGuardarComprobantes}>
+                  <label>Color de acento</label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <input
+                      type="color"
+                      value={empresa.color_acento || '#0f4c81'}
+                      onChange={(e) => setEmpresa({ ...empresa, color_acento: e.target.value })}
+                      style={{ width: 44, height: 34, padding: 2, cursor: 'pointer' }}
+                    />
+                    <input
+                      value={empresa.color_acento || '#0f4c81'}
+                      onChange={(e) => setEmpresa({ ...empresa, color_acento: e.target.value })}
+                      style={{ maxWidth: 120 }}
+                    />
+                  </div>
+                  <p style={{ fontSize: 11, color: 'var(--ink-muted)', marginTop: -6 }}>
+                    Se usa en los títulos, el recuadro del tipo de comprobante y los totales del PDF.
+                  </p>
+
+                  <label>Tamaño de papel</label>
+                  <select value={empresa.tamano_pdf || 'A4'} onChange={(e) => setEmpresa({ ...empresa, tamano_pdf: e.target.value })} style={{ maxWidth: 260 }}>
+                    <option value="A4">Hoja A4</option>
+                    <option value="ticket_80mm">Ticket / rollo térmico (80mm)</option>
+                  </select>
+
+                  <div className="role-permiso-row" style={{ marginTop: 16 }}>
+                    <span>Mostrar el logo de la empresa en el PDF</span>
+                    <button
+                      type="button"
+                      className={'toggle-switch' + (empresa.mostrar_logo_pdf ? ' on' : '')}
+                      onClick={() => setEmpresa({ ...empresa, mostrar_logo_pdf: empresa.mostrar_logo_pdf ? 0 : 1 })}
+                      aria-pressed={!!empresa.mostrar_logo_pdf}
+                    >
+                      <span className="toggle-knob" />
+                    </button>
+                  </div>
+                  {!empresa.logo_data_url && (
+                    <p style={{ fontSize: 11, color: 'var(--ink-muted)', marginTop: -6 }}>
+                      Todavía no subiste un logo — hazlo en la pestaña "Empresa" para que aparezca aquí.
+                    </p>
+                  )}
+                  <div className="role-permiso-row">
+                    <span>Mostrar teléfono / email en el encabezado</span>
+                    <button
+                      type="button"
+                      className={'toggle-switch' + (empresa.mostrar_datos_contacto_pdf ? ' on' : '')}
+                      onClick={() => setEmpresa({ ...empresa, mostrar_datos_contacto_pdf: empresa.mostrar_datos_contacto_pdf ? 0 : 1 })}
+                      aria-pressed={!!empresa.mostrar_datos_contacto_pdf}
+                    >
+                      <span className="toggle-knob" />
+                    </button>
+                  </div>
+
+                  <label style={{ marginTop: 16 }}>Términos y condiciones / pie de página</label>
+                  <textarea
+                    rows={3}
+                    placeholder="Ej. Cambios y devoluciones solo con comprobante, dentro de los 7 días."
+                    value={empresa.terminos_condiciones_pdf || ''}
+                    onChange={(e) => setEmpresa({ ...empresa, terminos_condiciones_pdf: e.target.value })}
+                  />
+
+                  {errorComprobantes && <div className="form-error">{errorComprobantes}</div>}
+                  <button type="submit" className="btn-primary" style={{ width: 'auto', marginTop: 16 }} disabled={savingComprobantes}>
+                    {savingComprobantes ? 'Guardando…' : 'Guardar'}
+                  </button>
+                </form>
+
+                <div className="panel" style={{ padding: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 6px 10px' }}>
+                    <strong style={{ fontSize: 12 }}>Vista previa</strong>
+                    <button type="button" className="btn-link" onClick={loadPreview} disabled={loadingPreview}>
+                      {loadingPreview ? 'Actualizando…' : 'Actualizar vista previa'}
+                    </button>
+                  </div>
+                  {previewUrl ? (
+                    <iframe title="Vista previa del comprobante" src={previewUrl} style={{ width: '100%', height: 560, border: '1px solid var(--border)', borderRadius: 6, background: '#fff' }} />
+                  ) : (
+                    <p className="empty-row">Generando vista previa…</p>
+                  )}
+                </div>
+              </div>
+              )}
             </>
           )}
 
