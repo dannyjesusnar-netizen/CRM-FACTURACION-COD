@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import api from '../api';
 import { useToast } from '../context/ToastContext';
 import ProductSearchBar from '../components/ProductSearchBar';
@@ -19,6 +19,8 @@ export default function RegistroVenta() {
   const { tipo } = useParams(); // 'factura' | 'boleta' | 'cotizacion'
   const navigate = useNavigate();
   const toast = useToast();
+  const [searchParams] = useSearchParams();
+  const modoAbonado = searchParams.get('abonado') === '1';
 
   const [serie, setSerie] = useState('');
   const [numero, setNumero] = useState('');
@@ -29,7 +31,7 @@ export default function RegistroVenta() {
   const [items, setItems] = useState([]);
   const [observaciones, setObservaciones] = useState('');
   const [descuentoGlobal, setDescuentoGlobal] = useState(0);
-  const [cuenta, setCuenta] = useState('efectivo');
+  const [cuenta, setCuenta] = useState(modoAbonado ? 'abonado' : 'efectivo');
   const [pago, setPago] = useState('');
   const [medioAbono, setMedioAbono] = useState('efectivo');
   const [error, setError] = useState('');
@@ -44,7 +46,10 @@ export default function RegistroVenta() {
       setNumero(res.data.numero);
     });
     setItems([]);
-    if (tipo === 'boleta') {
+    // En modo Abonado el cliente tiene que ser real (no "Clientes Varios" —
+    // sin saber quién es, no hay a quién cobrarle), así que no lo
+    // preseleccionamos como en una boleta normal.
+    if (tipo === 'boleta' && !modoAbonado) {
       api.get('/clients', { params: { q: '10000000' } }).then((res) => {
         const clientesVarios = res.data.find((c) => c.numero_documento === '10000000');
         setCliente(clientesVarios || null);
@@ -52,6 +57,7 @@ export default function RegistroVenta() {
     } else {
       setCliente(null);
     }
+    if (modoAbonado) setCuenta('abonado');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tipo]);
 
@@ -156,7 +162,7 @@ export default function RegistroVenta() {
 
   return (
     <div className="venta-page">
-      <h1 className="page-title">Registro de {TITULOS[tipo] || tipo}</h1>
+      <h1 className="page-title">Registro de {modoAbonado ? 'Abonado' : (TITULOS[tipo] || tipo)}</h1>
 
       <form onSubmit={handleSubmit}>
         <div className="venta-panel">
