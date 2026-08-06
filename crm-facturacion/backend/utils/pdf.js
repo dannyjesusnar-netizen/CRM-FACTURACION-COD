@@ -1,5 +1,7 @@
 const PDFDocument = require('pdfkit');
+const QRCode = require('qrcode');
 const db = require('../db');
+const { montoEnLetras } = require('./numeroALetras');
 
 const TIPO_LABEL = {
   factura: 'FACTURA ELECTRONICA',
@@ -12,6 +14,17 @@ const COLOR_ACENTO_DEFAULT = '#0f4c81';
 function money(n, moneda) {
   const symbol = moneda === 'USD' ? '$' : 'S/';
   return `${symbol} ${Number(n).toFixed(2)}`;
+}
+
+function monedaLabel(moneda) {
+  return moneda === 'USD' ? 'DOLARES' : 'SOLES';
+}
+
+function formaPagoLabel(codigo) {
+  if (!codigo) return 'EFECTIVO';
+  if (codigo === 'abonado') return 'CREDITO';
+  const metodo = db.prepare('SELECT nombre FROM metodos_pago WHERE codigo = ?').get(codigo);
+  return (metodo?.nombre || codigo).toUpperCase();
 }
 
 // logo_data_url viene como "data:image/png;base64,AAAA..." (o jpeg). pdfkit
@@ -27,116 +40,223 @@ function logoBuffer(dataUrl) {
   }
 }
 
-function buildInvoicePdf(invoice, items) {
+// Texto representativo del comprobante para el QR. Si SUNAT ya devolvió un
+// enlace de consulta real, se usa ese; si no, un resumen local (no es el
+// formato oficial de SUNAT, solo una referencia legible al escanear).
+async function qrBuffer(invoice, empresa) {
+  const esReal = invoice.modo_emision === 'real' && invoice.sunat_estado === 'aceptado';
+  const contenido = esReal && invoice.sunat_pdf_url
+    ? invoice.sunat_pdf_url
+    : [
+      empresa.ruc || '', invoice.tipo_comprobante, invoice.serie, invoice.numero,
+      invoice.fecha_emision, invoice.moneda, Number(invoice.total).toFixed(2),
+      invoice.cliente_tipo_documento || '', invoice.cliente_documento || '',
+    ].join('|');
+  try {
+    return await QRCode.toBuffer(contenido, { type: 'png', margin: 1, width: 200 });
+  } catch {
+    return null;
+  }
+}
+
+// Fila "● Etiqueta: valor" — sin fuente de iconos disponible en pdfkit, se
+// usa un punto de color como marcador visual en vez de un pictograma real.
+function bulletRow(doc, x, y, width, label, valor, acento) {
+  doc.circle(x + 3, y + 4, 3).fill(acento);
+  doc.fillColor('#333').font('Helvetica-Bold').fontSize(8).text(`${label}:`, x + 12, y, { continued: false, width: 70 });
+  doc.font('Helvetica').fillColor('#000').fontSize(8.5).text(valor || '—', x + 12, y + 11, { width: width - 12 });
+}
+
+async function buildInvoicePdf(invoice, items, cobros) {
   const empresa = db.prepare('SELECT * FROM empresa_config WHERE id = 1').get() || {};
   const acento = /^#[0-9a-fA-F]{6}$/.test(empresa.color_acento || '') ? empresa.color_acento : COLOR_ACENTO_DEFAULT;
   const mostrarLogo = empresa.mostrar_logo_pdf !== 0 && !!empresa.logo_data_url;
-  const mostrarContacto = empresa.mostrar_datos_contacto_pdf !== 0;
   const logo = mostrarLogo ? logoBuffer(empresa.logo_data_url) : null;
+  const qr = await qrBuffer(invoice, empresa);
 
   if (empresa.tamano_pdf === 'ticket_80mm') {
-    return buildTicketPdf(invoice, items, empresa, acento, mostrarContacto, logo);
+    return buildTicketPdf(invoice, items, empresa, acento, logo, qr, cobros);
   }
-  return buildA4Pdf(invoice, items, empresa, acento, mostrarContacto, logo);
+  return buildA4Pdf(invoice, items, empresa, acento, logo, qr, cobros);
 }
 
-function buildA4Pdf(invoice, items, empresa, acento, mostrarContacto, logo) {
+function buildA4Pdf(invoice, items, empresa, acento, logo, qr, cobros) {
   const doc = new PDFDocument({ margin: 40, size: 'A4' });
   const esReal = invoice.modo_emision === 'real' && invoice.sunat_estado === 'aceptado';
+  const esAbonado = invoice.forma_pago === 'abonado';
 
-  // Encabezado
-  let textX = 40;
+  // ---------- Encabezado: logo + empresa + recuadro de comprobante ----------
   if (logo) {
-    try { doc.image(logo, 40, 38, { fit: [55, 55] }); textX = 105; } catch { /* logo corrupto, se ignora */ }
+    try {
+      doc.save();
+      doc.circle(40 + 32, 40 + 32, 32).clip();
+      doc.image(logo, 40, 40, { width: 64, height: 64, fit: [64, 64] });
+      doc.restore();
+    } catch { /* logo corrupto, se ignora */ }
   }
-  doc.fontSize(16).fillColor(acento).text(empresa.razon_social || 'CRM Facturacion', textX, 40, { width: 320 - (textX - 40) });
-  doc.fontSize(9).fillColor('#333');
-  let headY = 60;
-  if (empresa.ruc) { doc.text(`RUC: ${empresa.ruc}`, textX, headY); headY += 13; }
-  if (empresa.direccion_fiscal) { doc.text(empresa.direccion_fiscal, textX, headY, { width: 320 - (textX - 40) }); headY += 13; }
-  if (mostrarContacto && (empresa.telefono || empresa.email)) {
-    doc.text([empresa.telefono, empresa.email].filter(Boolean).join(' — '), textX, headY, { width: 320 - (textX - 40) });
-    headY += 13;
+  const textX = logo ? 115 : 40;
+  doc.font('Helvetica-Bold').fontSize(17).fillColor(acento).text(empresa.razon_social || 'CRM Facturacion', textX, 44, { width: 260 });
+
+  let infoY = 66;
+  doc.font('Helvetica').fontSize(7.5).fillColor('#444');
+  if (empresa.direccion_fiscal) {
+    doc.circle(textX + 3, infoY + 3, 2.5).fill(acento).fillColor('#444');
+    doc.text(empresa.direccion_fiscal, textX + 10, infoY, { width: 250 });
+    infoY += doc.heightOfString(empresa.direccion_fiscal, { width: 250 }) + 3;
   }
+  const contactoLinea = [empresa.email ? `Email: ${empresa.email}` : null, empresa.telefono ? `Cel: ${empresa.telefono}` : null].filter(Boolean).join('   ');
+  if (contactoLinea) {
+    doc.circle(textX + 3, infoY + 3, 2.5).fill(acento).fillColor('#444');
+    doc.text(contactoLinea, textX + 10, infoY, { width: 250 });
+    infoY += 12;
+  }
+  if (invoice.sucursal_direccion && invoice.sucursal_direccion !== empresa.direccion_fiscal) {
+    doc.circle(textX + 3, infoY + 3, 2.5).fill(acento).fillColor('#444');
+    doc.text(`Sede ${invoice.sucursal_nombre || ''}: ${invoice.sucursal_direccion}`, textX + 10, infoY, { width: 250 });
+    infoY += doc.heightOfString(`Sede ${invoice.sucursal_nombre || ''}: ${invoice.sucursal_direccion}`, { width: 250 }) + 3;
+  }
+
+  doc.roundedRect(390, 38, 165, 78, 5).stroke(acento);
+  doc.font('Helvetica').fontSize(9).fillColor('#000').text(`RUC: ${empresa.ruc || '-'}`, 398, 46, { width: 150, align: 'center' });
+  doc.font('Helvetica-Bold').fontSize(11).fillColor(acento).text(TIPO_LABEL[invoice.tipo_comprobante] || invoice.tipo_comprobante, 398, 61, { width: 150, align: 'center' });
+  doc.font('Helvetica-Bold').fontSize(13).fillColor('#000').text(`${invoice.serie}-${String(invoice.numero).padStart(3, '0')}`, 398, 90, { width: 150, align: 'center' });
+
   if (esReal) {
-    doc.fontSize(9).fillColor('#0ca30c').text(`Comprobante electronico aceptado por SUNAT — Hash: ${invoice.sunat_hash || '-'}`, 40, headY);
+    doc.fontSize(7).fillColor('#0ca30c').text(`Aceptado por SUNAT — Hash: ${invoice.sunat_hash || '-'}`, 40, 118, { width: 515 });
   } else {
-    doc.fontSize(9).fillColor('#666').text('Documento generado en modo SIMULADO (sin validez tributaria real)', 40, headY);
+    doc.fontSize(7).fillColor('#999').text('Documento generado en modo SIMULADO (sin validez tributaria real)', 40, 118, { width: 515 });
   }
 
-  doc.roundedRect(380, 35, 175, 60, 4).stroke(acento);
-  doc.fontSize(11).fillColor(acento).text(TIPO_LABEL[invoice.tipo_comprobante] || invoice.tipo_comprobante, 388, 42, { width: 160 });
-  doc.fontSize(13).fillColor('#000').text(`${invoice.serie} - ${String(invoice.numero).padStart(6, '0')}`, 388, 68, { width: 160 });
+  // ---------- Panel de cliente / comprobante ----------
+  const panelTop = 132;
+  const panelHeight = 145;
+  doc.roundedRect(40, panelTop, 515, panelHeight, 6).stroke('#ddd');
 
-  doc.moveDown(3);
-  doc.fillColor('#000').fontSize(10);
-  const infoTop = 115;
-  doc.text(`Fecha de emision: ${invoice.fecha_emision}`, 40, infoTop);
-  doc.text(`Moneda: ${invoice.moneda}`, 40, infoTop + 15);
-  doc.text(`Estado: ${invoice.estado.toUpperCase()}`, 40, infoTop + 30);
+  const leftX = 52;
+  const rightX = 310;
+  let ly = panelTop + 12;
+  bulletRow(doc, leftX, ly, 240, 'Cliente', invoice.cliente_nombre, acento);
+  bulletRow(doc, rightX, ly, 200, 'RUC/DNI', invoice.cliente_documento, acento);
+  ly += 26;
+  bulletRow(doc, leftX, ly, 240, 'Direccion', invoice.cliente_direccion, acento);
+  bulletRow(doc, rightX, ly, 200, 'Fecha', invoice.fecha_emision, acento);
+  ly += 26;
+  bulletRow(doc, leftX, ly, 240, 'Referencia', invoice.cliente_referencia, acento);
+  bulletRow(doc, rightX, ly, 200, 'Celular', invoice.cliente_telefono, acento);
+  ly += 26;
+  bulletRow(doc, leftX, ly, 240, 'Contacto', invoice.cliente_contacto, acento);
+  bulletRow(doc, rightX, ly, 200, 'Moneda', monedaLabel(invoice.moneda), acento);
+  ly += 26;
+  bulletRow(doc, leftX, ly, 240, 'Forma de Pago', formaPagoLabel(invoice.forma_pago), acento);
+  bulletRow(doc, rightX, ly, 200, 'Vendedor', invoice.vendedor_nombre, acento);
 
-  doc.text(`Cliente: ${invoice.cliente_nombre}`, 300, infoTop);
-  doc.text(`${invoice.cliente_tipo_documento}: ${invoice.cliente_documento}`, 300, infoTop + 15);
-  if (invoice.cliente_direccion) {
-    doc.text(`Direccion: ${invoice.cliente_direccion}`, 300, infoTop + 30, { width: 260 });
-  }
+  // ---------- Tabla de items ----------
+  let y = panelTop + panelHeight + 14;
+  const cols = [
+    { key: 'item', label: 'ITEM', x: 40, w: 25, align: 'center' },
+    { key: 'cant', label: 'CANT.', x: 65, w: 35, align: 'right' },
+    { key: 'um', label: 'U.M.', x: 100, w: 40, align: 'center' },
+    { key: 'codigo', label: 'CODIGO', x: 140, w: 60, align: 'left' },
+    { key: 'desc', label: 'DESCRIPCION', x: 200, w: 170, align: 'left' },
+    { key: 'pu', label: 'P.U.', x: 370, w: 60, align: 'right' },
+    { key: 'dsc', label: 'DESC', x: 430, w: 45, align: 'right' },
+    { key: 'imp', label: 'IMPORTE', x: 475, w: 80, align: 'right' },
+  ];
+  doc.rect(40, y, 515, 18).fill(acento);
+  doc.font('Helvetica-Bold').fontSize(7.5).fillColor('#fff');
+  cols.forEach((c) => doc.text(c.label, c.x + 3, y + 5, { width: c.w - 6, align: c.align }));
+  y += 18;
 
-  // Tabla de items
-  let y = infoTop + 60;
-  doc.moveTo(40, y).lineTo(555, y).stroke('#ccc');
-  y += 8;
-  doc.fontSize(9).fillColor(acento);
-  doc.text('Descripcion', 40, y, { width: 250 });
-  doc.text('Cant.', 300, y, { width: 50, align: 'right' });
-  doc.text('P. Unit.', 360, y, { width: 80, align: 'right' });
-  doc.text('Subtotal', 450, y, { width: 100, align: 'right' });
-  y += 14;
-  doc.moveTo(40, y).lineTo(555, y).stroke('#ccc');
-  y += 6;
-
-  doc.fillColor('#000');
-  items.forEach((it) => {
-    doc.fontSize(9).text(it.descripcion, 40, y, { width: 250 });
-    doc.text(String(it.cantidad), 300, y, { width: 50, align: 'right' });
-    doc.text(money(it.precio_unitario, invoice.moneda), 360, y, { width: 80, align: 'right' });
-    doc.text(money(it.subtotal, invoice.moneda), 450, y, { width: 100, align: 'right' });
-    y += 18;
+  doc.font('Helvetica').fontSize(8).fillColor('#000');
+  items.forEach((it, idx) => {
+    const rowStartY = y;
+    const descHeight = doc.heightOfString(it.descripcion || '', { width: cols[4].w - 6 });
+    const rowHeight = Math.max(16, descHeight + 6);
+    if (idx % 2 === 1) doc.rect(40, rowStartY, 515, rowHeight).fill('#f7f9fb').fillColor('#000');
+    doc.fillColor('#000');
+    doc.text(String(idx + 1), cols[0].x + 3, rowStartY + 4, { width: cols[0].w - 6, align: cols[0].align });
+    doc.text(String(it.cantidad), cols[1].x + 3, rowStartY + 4, { width: cols[1].w - 6, align: cols[1].align });
+    doc.text(it.unidad || 'NIU', cols[2].x + 3, rowStartY + 4, { width: cols[2].w - 6, align: cols[2].align });
+    doc.text(it.codigo || '-', cols[3].x + 3, rowStartY + 4, { width: cols[3].w - 6, align: cols[3].align });
+    doc.text(it.descripcion || '', cols[4].x + 3, rowStartY + 4, { width: cols[4].w - 6, align: cols[4].align });
+    doc.text(money(it.precio_unitario, invoice.moneda), cols[5].x + 3, rowStartY + 4, { width: cols[5].w - 6, align: cols[5].align });
+    doc.text(it.descuento_pct ? `${it.descuento_pct}%` : '-', cols[6].x + 3, rowStartY + 4, { width: cols[6].w - 6, align: cols[6].align });
+    doc.text(money(it.subtotal, invoice.moneda), cols[7].x + 3, rowStartY + 4, { width: cols[7].w - 6, align: cols[7].align });
+    y = rowStartY + rowHeight;
   });
+  doc.moveTo(40, y).lineTo(555, y).stroke('#ddd');
+  y += 10;
 
-  y += 6;
-  doc.moveTo(350, y).lineTo(555, y).stroke('#ccc');
-  y += 8;
-  doc.fontSize(10);
-  doc.text('Subtotal (sin IGV):', 350, y, { width: 130, align: 'left' });
-  doc.text(money(invoice.subtotal, invoice.moneda), 450, y, { width: 100, align: 'right' });
-  y += 16;
-  doc.text('IGV (18%):', 350, y, { width: 130, align: 'left' });
-  doc.text(money(invoice.igv, invoice.moneda), 450, y, { width: 100, align: 'right' });
-  y += 16;
-  doc.fontSize(12).fillColor(acento);
-  doc.text('TOTAL:', 350, y, { width: 130, align: 'left' });
-  doc.text(money(invoice.total, invoice.moneda), 450, y, { width: 100, align: 'right' });
+  // ---------- Totales + monto en letras ----------
+  const totalsBoxY = y;
+  doc.font('Helvetica').fontSize(9).fillColor('#000');
+  doc.text('Op. gravada:', 350, totalsBoxY, { width: 120, align: 'left' });
+  doc.text(money(invoice.subtotal, invoice.moneda), 475, totalsBoxY, { width: 80, align: 'right' });
+  doc.text('IGV (18%):', 350, totalsBoxY + 15, { width: 120, align: 'left' });
+  doc.text(money(invoice.igv, invoice.moneda), 475, totalsBoxY + 15, { width: 80, align: 'right' });
+  doc.font('Helvetica-Bold').fontSize(12).fillColor(acento);
+  doc.text('TOTAL:', 350, totalsBoxY + 33, { width: 120, align: 'left' });
+  doc.text(money(invoice.total, invoice.moneda), 475, totalsBoxY + 33, { width: 80, align: 'right' });
 
-  if (invoice.observaciones) {
-    y += 40;
-    doc.fontSize(9).fillColor('#444').text(`Observaciones: ${invoice.observaciones}`, 40, y, { width: 500 });
+  doc.font('Helvetica-Bold').fontSize(8).fillColor('#333');
+  doc.text(montoEnLetras(invoice.total, invoice.moneda), 40, totalsBoxY + 8, { width: 290 });
+
+  y = totalsBoxY + 56;
+
+  // ---------- Crédito (solo ventas "abonado") ----------
+  if (esAbonado) {
+    const saldo = Math.max(0, Number(invoice.total) - Number(invoice.monto_pagado || 0));
+    const boxH = 90;
+    doc.roundedRect(40, y, 250, boxH, 5).stroke('#ddd');
+    doc.font('Helvetica-Bold').fontSize(9).fillColor(acento).text('Informacion del credito', 50, y + 10);
+    doc.font('Helvetica').fontSize(8.5).fillColor('#000');
+    doc.text(`Monto abonado: ${money(invoice.monto_pagado || 0, invoice.moneda)}`, 50, y + 28);
+    doc.font('Helvetica-Bold').text(`Saldo pendiente: ${money(saldo, invoice.moneda)}`, 50, y + 44);
+    doc.font('Helvetica').text(saldo > 0.005 ? 'Pendiente de pago.' : 'Totalmente cancelado.', 50, y + 62);
+
+    doc.roundedRect(300, y, 255, boxH, 5).stroke('#ddd');
+    doc.font('Helvetica-Bold').fontSize(9).fillColor(acento).text('Abonos registrados', 310, y + 10);
+    doc.font('Helvetica').fontSize(7.5).fillColor('#000');
+    if (cobros && cobros.length) {
+      let cy = y + 26;
+      cobros.slice(0, 4).forEach((c) => {
+        doc.text(`${(c.created_at || '').slice(0, 10)} — ${formaPagoLabel(c.medio)} — ${money(c.monto, invoice.moneda)}`, 310, cy, { width: 235 });
+        cy += 12;
+      });
+    } else {
+      doc.fillColor('#999').text('Sin abonos registrados todavia.', 310, y + 26, { width: 235 });
+    }
+    y += boxH + 14;
   }
 
+  // ---------- Observaciones + QR ----------
+  const obsBoxH = 60;
+  doc.roundedRect(40, y, qr ? 420 : 515, obsBoxH, 5).stroke('#ddd');
+  doc.font('Helvetica-Bold').fontSize(8).fillColor(acento).text('OBSERVACIONES:', 50, y + 8);
+  doc.font('Helvetica').fontSize(8).fillColor('#333').text(invoice.observaciones || 'Sin observaciones.', 50, y + 22, { width: (qr ? 420 : 515) - 20 });
+  if (qr) {
+    try { doc.image(qr, 470, y + 5, { width: 50, height: 50 }); } catch { /* ignore */ }
+  }
+  y += obsBoxH + 12;
+
+  // ---------- Pie: condiciones + agradecimiento ----------
   if (empresa.terminos_condiciones_pdf) {
-    doc.fontSize(8).fillColor('#555').text(empresa.terminos_condiciones_pdf, 40, 725, { width: 515, align: 'center' });
+    doc.font('Helvetica-Bold').fontSize(8).fillColor(acento).text('CONDICIONES DE CAMBIO Y DEVOLUCION', 40, y, { width: 515 });
+    y += 12;
+    doc.font('Helvetica').fontSize(7.5).fillColor('#555').text(empresa.terminos_condiciones_pdf, 40, y, { width: 515 });
+    y += doc.heightOfString(empresa.terminos_condiciones_pdf, { width: 515 }) + 10;
   }
 
-  if (esReal) {
-    doc.fontSize(8).fillColor('#0ca30c').text(
-      'Representacion impresa de un comprobante electronico aceptado por SUNAT. Consulta el CDR/XML oficial en el enlace del OSE.',
-      40, 760, { width: 515, align: 'center' }
-    );
-  } else {
-    doc.fontSize(8).fillColor('#999').text(
+  const barY = y + 8;
+  doc.rect(0, barY, 595, 62).fill(acento);
+  doc.font('Helvetica-Bold').fontSize(10).fillColor('#fff').text('¡Gracias por su preferencia!', 40, barY + 14, { width: 515, align: 'center' });
+  doc.font('Helvetica').fontSize(8).fillColor('#fff').text(empresa.razon_social || '', 40, barY + 32, { width: 515, align: 'center' });
+  if (!esReal) {
+    doc.fontSize(6.5).fillColor('#fff').text(
       invoice.modo_emision === 'real'
-        ? `Este comprobante fue enviado a SUNAT pero no fue aceptado (estado: ${invoice.sunat_estado || 'desconocido'}). No tiene validez tributaria. ${invoice.sunat_mensaje || ''}`
-        : 'Este comprobante fue generado por un sistema en modo simulado, sin conexion real a SUNAT. No tiene validez tributaria.',
-      40, 760, { width: 515, align: 'center' }
+        ? `Enviado a SUNAT pero no aceptado (estado: ${invoice.sunat_estado || 'desconocido'}). No tiene validez tributaria.`
+        : 'Documento en modo simulado, sin conexion real a SUNAT. No tiene validez tributaria.',
+      40, barY + 46, { width: 515, align: 'center' }
     );
   }
 
@@ -147,48 +267,75 @@ function buildA4Pdf(invoice, items, empresa, acento, mostrarContacto, logo) {
 // impresoras de punto de venta. Al no tener el alto fijo de una hoja A4, se
 // estima según la cantidad de items para no dejar espacio de más ni cortar
 // contenido.
-function buildTicketPdf(invoice, items, empresa, acento, mostrarContacto, logo) {
+function buildTicketPdf(invoice, items, empresa, acento, logo, qr, cobros) {
   const width = 227; // 80mm
   const margin = 10;
   const contentWidth = width - margin * 2;
-  const estimatedHeight = 260 + items.length * 24 + (empresa.terminos_condiciones_pdf ? 40 : 0) + (invoice.observaciones ? 30 : 0) + (logo ? 60 : 0);
+  const esAbonado = invoice.forma_pago === 'abonado';
+  const estimatedHeight = 420 + items.length * 34
+    + (empresa.terminos_condiciones_pdf ? 60 : 0)
+    + (invoice.observaciones ? 40 : 0)
+    + (logo ? 60 : 0)
+    + (qr ? 130 : 0)
+    + (invoice.cliente_direccion ? 20 : 0)
+    + (invoice.cliente_referencia ? 20 : 0)
+    + (esAbonado ? 90 + (cobros?.length || 0) * 12 : 0);
   const doc = new PDFDocument({ margin, size: [width, estimatedHeight] });
   const esReal = invoice.modo_emision === 'real' && invoice.sunat_estado === 'aceptado';
+
+  // Escribe texto y avanza "y" según el alto real ya envuelto (heightOfString),
+  // en vez de un incremento fijo — el ticket es angosto y las direcciones
+  // largas se parten en varias líneas, así que un incremento fijo pisaba la
+  // línea siguiente.
+  function linea(texto, opts = {}) {
+    if (!texto) return;
+    const textOpts = { width: contentWidth, ...opts };
+    doc.text(texto, margin, y, textOpts);
+    y += doc.heightOfString(texto, textOpts) + (opts.gap ?? 2);
+  }
 
   let y = margin;
   if (logo) {
     try { doc.image(logo, (width - 50) / 2, y, { fit: [50, 50] }); y += 56; } catch { /* logo corrupto, se ignora */ }
   }
-  doc.fontSize(11).fillColor(acento).text(empresa.razon_social || 'CRM Facturacion', margin, y, { width: contentWidth, align: 'center' });
-  y += 16;
-  doc.fontSize(7).fillColor('#333');
-  if (empresa.ruc) { doc.text(`RUC: ${empresa.ruc}`, margin, y, { width: contentWidth, align: 'center' }); y += 10; }
-  if (empresa.direccion_fiscal) { doc.text(empresa.direccion_fiscal, margin, y, { width: contentWidth, align: 'center' }); y += 10; }
-  if (mostrarContacto && (empresa.telefono || empresa.email)) {
-    doc.text([empresa.telefono, empresa.email].filter(Boolean).join(' / '), margin, y, { width: contentWidth, align: 'center' });
-    y += 10;
-  }
+  doc.font('Helvetica-Bold').fontSize(11).fillColor(acento);
+  linea(empresa.razon_social || 'CRM Facturacion', { align: 'center', gap: 4 });
+  doc.font('Helvetica').fontSize(7).fillColor('#333');
+  if (empresa.ruc) linea(`RUC: ${empresa.ruc}`, { align: 'center' });
+  if (empresa.direccion_fiscal) linea(empresa.direccion_fiscal, { align: 'center' });
+  const contacto = [empresa.telefono, empresa.email].filter(Boolean).join(' / ');
+  if (contacto) linea(contacto, { align: 'center' });
   y += 4;
   doc.moveTo(margin, y).lineTo(width - margin, y).stroke('#000');
   y += 8;
 
-  doc.fontSize(9).fillColor(acento).text(TIPO_LABEL[invoice.tipo_comprobante] || invoice.tipo_comprobante, margin, y, { width: contentWidth, align: 'center' });
-  y += 12;
-  doc.fontSize(10).fillColor('#000').text(`${invoice.serie}-${String(invoice.numero).padStart(6, '0')}`, margin, y, { width: contentWidth, align: 'center' });
-  y += 16;
+  doc.font('Helvetica-Bold').fontSize(9).fillColor(acento);
+  linea(TIPO_LABEL[invoice.tipo_comprobante] || invoice.tipo_comprobante, { align: 'center', gap: 4 });
+  doc.font('Helvetica-Bold').fontSize(10).fillColor('#000');
+  linea(`${invoice.serie}-${String(invoice.numero).padStart(3, '0')}`, { align: 'center', gap: 6 });
 
-  doc.fontSize(7).fillColor('#000');
-  doc.text(`Fecha: ${invoice.fecha_emision}`, margin, y); y += 10;
-  doc.text(`Cliente: ${invoice.cliente_nombre}`, margin, y, { width: contentWidth }); y += 10;
-  doc.text(`${invoice.cliente_tipo_documento}: ${invoice.cliente_documento}`, margin, y); y += 12;
+  doc.font('Helvetica').fontSize(7).fillColor('#000');
+  const filaTicket = (label, valor) => {
+    if (!valor) return;
+    linea(`${label}: ${valor}`, { gap: 3 });
+  };
+  filaTicket('Fecha', invoice.fecha_emision);
+  filaTicket('Cliente', invoice.cliente_nombre);
+  filaTicket(invoice.cliente_tipo_documento, invoice.cliente_documento);
+  filaTicket('Direccion', invoice.cliente_direccion);
+  filaTicket('Referencia', invoice.cliente_referencia);
+  filaTicket('Contacto', invoice.cliente_contacto);
+  filaTicket('F. Pago', formaPagoLabel(invoice.forma_pago));
+  filaTicket('Vendedor', invoice.vendedor_nombre);
+  y += 2;
 
   doc.moveTo(margin, y).lineTo(width - margin, y).stroke('#000');
   y += 8;
 
   items.forEach((it) => {
-    doc.fontSize(7).fillColor('#000').text(it.descripcion, margin, y, { width: contentWidth });
-    y += 9;
-    doc.text(`${it.cantidad} x ${money(it.precio_unitario, invoice.moneda)}`, margin, y, { width: contentWidth - 70 });
+    doc.fontSize(7).fillColor('#000');
+    linea(`${it.descripcion} ${it.codigo ? `(${it.codigo})` : ''}`, { gap: 1 });
+    doc.text(`${it.cantidad} ${it.unidad || 'NIU'} x ${money(it.precio_unitario, invoice.moneda)}`, margin, y, { width: contentWidth - 70 });
     doc.text(money(it.subtotal, invoice.moneda), margin, y, { width: contentWidth, align: 'right' });
     y += 13;
   });
@@ -205,21 +352,47 @@ function buildTicketPdf(invoice, items, empresa, acento, mostrarContacto, logo) 
   doc.fontSize(9).fillColor(acento);
   doc.text('TOTAL:', margin, y, { width: contentWidth - 60 });
   doc.text(money(invoice.total, invoice.moneda), margin, y, { width: contentWidth, align: 'right' });
-  y += 16;
+  y += 14;
+
+  doc.fontSize(6.5).fillColor('#333').text(montoEnLetras(invoice.total, invoice.moneda), margin, y, { width: contentWidth, align: 'center' });
+  y += doc.heightOfString(montoEnLetras(invoice.total, invoice.moneda), { width: contentWidth, align: 'center' }) + 8;
+
+  if (esAbonado) {
+    const saldo = Math.max(0, Number(invoice.total) - Number(invoice.monto_pagado || 0));
+    doc.moveTo(margin, y).lineTo(width - margin, y).stroke('#000');
+    y += 8;
+    doc.fontSize(7).fillColor(acento).text('INFORMACION DEL CREDITO', margin, y, { width: contentWidth, align: 'center' });
+    y += 10;
+    doc.fillColor('#000');
+    doc.text(`Abonado: ${money(invoice.monto_pagado || 0, invoice.moneda)}`, margin, y, { width: contentWidth }); y += 10;
+    doc.font('Helvetica-Bold').text(`Saldo: ${money(saldo, invoice.moneda)}`, margin, y, { width: contentWidth }); y += 12;
+    doc.font('Helvetica');
+    if (cobros && cobros.length) {
+      cobros.forEach((c) => {
+        doc.fontSize(6.5).text(`${(c.created_at || '').slice(0, 10)} ${formaPagoLabel(c.medio)} ${money(c.monto, invoice.moneda)}`, margin, y, { width: contentWidth });
+        y += 9;
+      });
+    }
+    y += 4;
+  }
 
   if (invoice.observaciones) {
     doc.fontSize(6).fillColor('#444').text(invoice.observaciones, margin, y, { width: contentWidth, align: 'center' });
-    y += 20;
+    y += doc.heightOfString(invoice.observaciones, { width: contentWidth, align: 'center' }) + 6;
+  }
+  if (qr) {
+    try {
+      doc.image(qr, (width - 60) / 2, y, { width: 60, height: 60 });
+      y += 66;
+    } catch { /* ignore */ }
   }
   if (empresa.terminos_condiciones_pdf) {
     doc.fontSize(6).fillColor('#555').text(empresa.terminos_condiciones_pdf, margin, y, { width: contentWidth, align: 'center' });
-    y += 24;
+    y += doc.heightOfString(empresa.terminos_condiciones_pdf, { width: contentWidth, align: 'center' }) + 6;
   }
 
-  doc.fontSize(6).fillColor(esReal ? '#0ca30c' : '#999').text(
-    esReal
-      ? 'Comprobante electronico aceptado por SUNAT.'
-      : 'Documento en modo simulado, sin validez tributaria.',
+  doc.fontSize(6.5).fillColor(esReal ? '#0ca30c' : '#999').text(
+    esReal ? 'Comprobante electronico aceptado por SUNAT.' : 'Documento en modo simulado, sin validez tributaria.',
     margin, y, { width: contentWidth, align: 'center' }
   );
 

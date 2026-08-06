@@ -66,7 +66,8 @@ router.put('/', requireGerencia, (req, res) => {
 
 // GET /api/empresa/comprobante-preview -> PDF de ejemplo con los datos/ajustes actuales,
 // para previsualizar cómo se ve un comprobante real sin necesidad de emitir uno.
-router.get('/comprobante-preview', requireGerencia, (req, res) => {
+router.get('/comprobante-preview', requireGerencia, async (req, res) => {
+  const primeraSucursal = db.prepare('SELECT nombre, direccion FROM sucursales ORDER BY es_principal DESC, id ASC LIMIT 1').get();
   const sampleInvoice = {
     tipo_comprobante: 'factura',
     serie: 'F001',
@@ -74,6 +75,8 @@ router.get('/comprobante-preview', requireGerencia, (req, res) => {
     fecha_emision: new Date().toISOString().slice(0, 10),
     moneda: 'PEN',
     estado: 'emitido',
+    forma_pago: 'efectivo',
+    monto_pagado: 179.80,
     modo_emision: 'simulado',
     sunat_estado: null,
     sunat_hash: null,
@@ -82,18 +85,24 @@ router.get('/comprobante-preview', requireGerencia, (req, res) => {
     cliente_tipo_documento: 'RUC',
     cliente_documento: '20123456789',
     cliente_direccion: 'Av. Ejemplo 123, Miraflores, Lima',
+    cliente_telefono: '987 654 321',
+    cliente_referencia: 'Cerca al parque, edificio azul',
+    cliente_contacto: 'Ana Torres',
+    vendedor_nombre: req.user?.full_name || 'Vendedor de ejemplo',
+    sucursal_nombre: primeraSucursal?.nombre || null,
+    sucursal_direccion: primeraSucursal?.direccion || null,
     subtotal: 152.37,
     igv: 27.43,
     total: 179.80,
     observaciones: 'Comprobante de ejemplo — solo para previsualizar el diseño.',
   };
   const sampleItems = [
-    { descripcion: 'Producto de ejemplo A', cantidad: 2, precio_unitario: 45.9, subtotal: 91.8 },
-    { descripcion: 'Producto de ejemplo B', cantidad: 1, precio_unitario: 87.99, subtotal: 87.99 },
+    { descripcion: 'Producto de ejemplo A', cantidad: 2, unidad: 'NIU', codigo: 'P001', precio_unitario: 45.9, descuento_pct: 0, subtotal: 91.8 },
+    { descripcion: 'Producto de ejemplo B', cantidad: 1, unidad: 'NIU', codigo: 'P002', precio_unitario: 87.99, descuento_pct: 5, subtotal: 87.99 },
   ];
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', 'inline; filename="vista-previa-comprobante.pdf"');
-  const doc = buildInvoicePdf(sampleInvoice, sampleItems);
+  const doc = await buildInvoicePdf(sampleInvoice, sampleItems, []);
   doc.pipe(res);
   doc.end();
 });

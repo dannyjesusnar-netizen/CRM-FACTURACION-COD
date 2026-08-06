@@ -448,18 +448,30 @@ router.post('/:id/cobros', requireAccion('ventas', 'registrar_cobro'), (req, res
   res.json({ ...updated, saldo: round2(updated.total - updated.monto_pagado) });
 });
 
-router.get('/:id/pdf', (req, res) => {
+router.get('/:id/pdf', async (req, res) => {
   const invoice = db.prepare(
     `SELECT i.*, c.nombre AS cliente_nombre, c.numero_documento AS cliente_documento,
-            c.tipo_documento AS cliente_tipo_documento, c.direccion AS cliente_direccion
-     FROM invoices i JOIN clients c ON c.id = i.client_id WHERE i.id = ? AND i.sucursal_id = ?`
+            c.tipo_documento AS cliente_tipo_documento, c.direccion AS cliente_direccion,
+            c.telefono AS cliente_telefono, c.referencia AS cliente_referencia, c.contacto AS cliente_contacto,
+            u.full_name AS vendedor_nombre, s.nombre AS sucursal_nombre, s.direccion AS sucursal_direccion
+     FROM invoices i
+     JOIN clients c ON c.id = i.client_id
+     LEFT JOIN users u ON u.id = i.created_by
+     LEFT JOIN sucursales s ON s.id = i.sucursal_id
+     WHERE i.id = ? AND i.sucursal_id = ?`
   ).get(req.params.id, req.sucursalId);
   if (!invoice) return res.status(404).json({ error: 'Comprobante no encontrado.' });
-  const items = db.prepare('SELECT * FROM invoice_items WHERE invoice_id = ?').all(req.params.id);
+  const items = db.prepare(
+    `SELECT ii.*, p.codigo AS codigo, p.unidad AS unidad FROM invoice_items ii
+     LEFT JOIN products p ON p.id = ii.product_id WHERE ii.invoice_id = ?`
+  ).all(req.params.id);
+  const cobros = invoice.forma_pago === 'abonado'
+    ? db.prepare('SELECT * FROM cobros WHERE invoice_id = ? ORDER BY id ASC').all(invoice.id)
+    : [];
 
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `inline; filename="${invoice.serie}-${invoice.numero}.pdf"`);
-  const doc = buildInvoicePdf(invoice, items);
+  const doc = await buildInvoicePdf(invoice, items, cobros);
   doc.pipe(res);
   doc.end();
 });

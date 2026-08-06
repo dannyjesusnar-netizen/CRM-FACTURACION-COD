@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import api from '../api';
 import { useToast } from '../context/ToastContext';
 
-const EMPTY_FORM = { tipo_documento: 'DNI', numero_documento: '', nombre: '', direccion: '', telefono: '', email: '', notas: '', sucursal_id: '', turno: '' };
+const EMPTY_FORM = { tipo_documento: 'DNI', numero_documento: '', nombre: '', direccion: '', telefono: '', email: '', notas: '', sucursal_id: '', turno: '', referencia: '', contacto: '' };
 
 export default function Clients() {
   const toast = useToast();
@@ -46,6 +46,8 @@ export default function Clients() {
       notas: client.notas || '',
       sucursal_id: client.sucursal_id || '',
       turno: client.turno || '',
+      referencia: client.referencia || '',
+      contacto: client.contacto || '',
     });
     setEditingId(client.id);
     setError('');
@@ -173,6 +175,16 @@ export default function Clients() {
                 <div>
                   <label>Turno</label>
                   <input value={form.turno} onChange={(e) => setForm({ ...form, turno: e.target.value })} placeholder="Ej. Mañana, Tarde, Noche..." />
+                </div>
+              </div>
+              <div className="form-row">
+                <div>
+                  <label>Referencia</label>
+                  <input value={form.referencia} onChange={(e) => setForm({ ...form, referencia: e.target.value })} placeholder="Ej. Cerca al parque, edificio azul..." />
+                </div>
+                <div>
+                  <label>Contacto</label>
+                  <input value={form.contacto} onChange={(e) => setForm({ ...form, contacto: e.target.value })} placeholder="Ej. Persona de contacto adicional" />
                 </div>
               </div>
               <label>Notas</label>
