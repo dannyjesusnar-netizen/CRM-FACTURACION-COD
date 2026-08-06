@@ -522,6 +522,39 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--b
 .toggle-switch .toggle-knob { position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: transform 0.15s; box-shadow: 0 1px 2px rgba(0,0,0,0.25); }
 .toggle-switch.on { background: var(--good); }
 .toggle-switch.on .toggle-knob { transform: translateX(18px); }
+.toggle-switch.small { width: 32px; height: 18px; }
+.toggle-switch.small .toggle-knob { width: 14px; height: 14px; }
+.toggle-switch.small.on .toggle-knob { transform: translateX(14px); }
+.toggle-switch:disabled { cursor: not-allowed; opacity: 0.5; }
+
+/* ---------- Roles: módulos (izquierda) + acciones desglosables (derecha) ---------- */
+.rol-modulos-shell { display: flex; gap: 16px; align-items: flex-start; }
+.rol-modulos-list { width: 260px; flex-shrink: 0; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--surface); }
+.rol-modulo-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 12px 14px; font-size: 13px; font-weight: 500; cursor: pointer;
+  border-bottom: 1px solid var(--border); color: var(--ink-secondary);
+  background: var(--surface); transition: background 0.12s;
+}
+.rol-modulo-row:last-child { border-bottom: none; }
+.rol-modulo-row:hover { background: var(--surface-hover); }
+.rol-modulo-row.active { background: var(--surface-hover); color: var(--brand-blue-dark); font-weight: 700; }
+.rol-acciones-panel { flex: 1; min-width: 0; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); padding: 16px; }
+.rol-acciones-panel-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding-bottom: 12px; margin-bottom: 4px; border-bottom: 1px solid var(--border);
+}
+.rol-acciones-panel-header h4 { margin: 0; font-size: 14px; }
+.rol-acciones-grupo-titulo {
+  display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700;
+  color: var(--ink-muted); text-transform: uppercase; letter-spacing: 0.04em;
+  margin: 14px 0 2px;
+}
+.rol-accion-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 4px; font-size: 13px; }
+.rol-accion-row .rol-accion-label { display: flex; align-items: center; gap: 8px; color: var(--ink); }
+.rol-accion-row .rol-accion-check { color: var(--good); flex-shrink: 0; }
+.rol-accion-row.off .rol-accion-check { color: var(--ink-muted); }
+.rol-acciones-empty { font-size: 13px; color: var(--ink-muted); padding: 8px 4px; }
 
 /* ---------- Modo oscuro: ajustes puntuales sobre colores literales ---------- */
 

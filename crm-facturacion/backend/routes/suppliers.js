@@ -1,7 +1,7 @@
 const express = require('express');
 const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
-const { requirePermiso } = require('../utils/permisos');
+const { requirePermiso, requireAccion } = require('../utils/permisos');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -20,7 +20,7 @@ router.get('/', (req, res) => {
   res.json(rows);
 });
 
-router.post('/', (req, res) => {
+router.post('/', requireAccion('compras', 'proveedores'), (req, res) => {
   const { ruc, nombre, direccion, telefono, email } = req.body || {};
   if (!nombre) return res.status(400).json({ error: 'nombre es requerido.' });
   const info = db.prepare(
@@ -30,7 +30,7 @@ router.post('/', (req, res) => {
   res.status(201).json(row);
 });
 
-router.put('/:id', (req, res) => {
+router.put('/:id', requireAccion('compras', 'proveedores'), (req, res) => {
   const existing = db.prepare('SELECT * FROM suppliers WHERE id = ?').get(req.params.id);
   if (!existing) return res.status(404).json({ error: 'Proveedor no encontrado.' });
   const { ruc, nombre, direccion, telefono, email } = req.body || {};
@@ -48,7 +48,7 @@ router.put('/:id', (req, res) => {
   res.json(row);
 });
 
-router.delete('/:id', (req, res) => {
+router.delete('/:id', requireAccion('compras', 'proveedores'), (req, res) => {
   const existing = db.prepare('SELECT * FROM suppliers WHERE id = ?').get(req.params.id);
   if (!existing) return res.status(404).json({ error: 'Proveedor no encontrado.' });
   const used = db.prepare('SELECT COUNT(*) AS n FROM purchases WHERE supplier_id = ?').get(req.params.id).n;

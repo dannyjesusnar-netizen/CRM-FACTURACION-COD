@@ -1,7 +1,7 @@
 const express = require('express');
 const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
-const { requirePermiso } = require('../utils/permisos');
+const { requirePermiso, requireAccion } = require('../utils/permisos');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -55,7 +55,7 @@ router.get('/:id', (req, res) => {
   res.json({ ...guia, items });
 });
 
-router.post('/', (req, res) => {
+router.post('/', requireAccion('ventas', 'guia_remision'), (req, res) => {
   const {
     client_id, items, motivo_traslado, punto_partida, punto_llegada,
     cantidad_bultos, observaciones, numero: numeroManual,

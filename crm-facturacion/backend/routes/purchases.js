@@ -2,7 +2,7 @@ const express = require('express');
 const db = require('../db');
 const { requireAuth, resolveSucursal } = require('../middleware/auth');
 const { incrementarStock, ajustarStockSucursal, round2 } = require('../utils/stock');
-const { requirePermiso } = require('../utils/permisos');
+const { requirePermiso, requireAccion } = require('../utils/permisos');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -55,7 +55,7 @@ router.get('/:id', (req, res) => {
   res.json({ ...purchase, items });
 });
 
-router.post('/', (req, res) => {
+router.post('/', requireAccion('compras', 'registrar_compra'), (req, res) => {
   const { supplier_id, items, fecha, forma_pago, observaciones } = req.body || {};
 
   if (!supplier_id) return res.status(400).json({ error: 'supplier_id es requerido.' });
@@ -132,7 +132,7 @@ router.post('/', (req, res) => {
   res.status(201).json({ ...purchase, items: purchaseItems });
 });
 
-router.post('/:id/anular', (req, res) => {
+router.post('/:id/anular', requireAccion('compras', 'anular_compra'), (req, res) => {
   const purchase = db.prepare('SELECT * FROM purchases WHERE id = ? AND sucursal_id = ?').get(req.params.id, req.sucursalId);
   if (!purchase) return res.status(404).json({ error: 'Compra no encontrada.' });
   if (purchase.estado === 'anulada') {

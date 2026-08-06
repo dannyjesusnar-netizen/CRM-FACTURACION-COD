@@ -436,6 +436,14 @@ CREATE TABLE IF NOT EXISTS role_permisos (
   habilitado INTEGER NOT NULL DEFAULT 0,
   UNIQUE(role_id, modulo)
 );
+CREATE TABLE IF NOT EXISTS role_acciones (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  role_id INTEGER NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+  modulo TEXT NOT NULL,
+  accion TEXT NOT NULL,
+  habilitado INTEGER NOT NULL DEFAULT 1,
+  UNIQUE(role_id, modulo, accion)
+);
 `);
 
 const userColumns = db.prepare("PRAGMA table_info(users)").all().map((c) => c.name);

@@ -14,6 +14,54 @@ const MODULOS = [
   { key: 'reportes', label: 'Reportes' },
 ];
 
+// Acciones específicas dentro de cada módulo. Cuando un rol tiene el módulo
+// habilitado, estas son las que se muestran como sub-permisos (desglosable).
+// Si un módulo está deshabilitado, ninguna de sus acciones aplica sin
+// importar lo que diga esta tabla.
+const ACCIONES_POR_MODULO = {
+  dashboard: [],
+  ventas: [
+    { key: 'factura', label: 'Facturas', grupo: 'Comprobantes' },
+    { key: 'boleta', label: 'Boletas', grupo: 'Comprobantes' },
+    { key: 'nota_credito', label: 'Notas de crédito', grupo: 'Comprobantes' },
+    { key: 'cotizacion', label: 'Cotizaciones', grupo: 'Comprobantes' },
+    { key: 'guia_remision', label: 'Guías de remisión', grupo: 'Comprobantes' },
+    { key: 'abonado', label: 'Abonados (venta a crédito)', grupo: 'Cuentas por cobrar' },
+    { key: 'cuentas_por_cobrar', label: 'Ver cuentas por cobrar', grupo: 'Cuentas por cobrar' },
+    { key: 'registrar_cobro', label: 'Registrar cobro', grupo: 'Cuentas por cobrar' },
+    { key: 'anular_comprobante', label: 'Anular comprobante', grupo: 'Otros' },
+  ],
+  compras: [
+    { key: 'registrar_compra', label: 'Registrar compra', grupo: 'Compras' },
+    { key: 'anular_compra', label: 'Anular compra', grupo: 'Compras' },
+    { key: 'proveedores', label: 'Gestionar proveedores', grupo: 'Proveedores' },
+  ],
+  inventario: [
+    { key: 'productos', label: 'Crear / editar productos', grupo: 'Catálogo' },
+    { key: 'lotes', label: 'Lotes y vencimientos', grupo: 'Catálogo' },
+    { key: 'ajustes', label: 'Ajustes de stock', grupo: 'Movimientos' },
+    { key: 'conteo', label: 'Conteo de inventario', grupo: 'Movimientos' },
+    { key: 'importacion', label: 'Importación masiva', grupo: 'Movimientos' },
+    { key: 'traslados', label: 'Traslados entre sedes', grupo: 'Movimientos' },
+    { key: 'produccion', label: 'Producción / recetas', grupo: 'Movimientos' },
+  ],
+  clientes: [
+    { key: 'crear_editar', label: 'Crear / editar clientes', grupo: 'Clientes' },
+    { key: 'eliminar', label: 'Eliminar clientes', grupo: 'Clientes' },
+  ],
+  caja: [
+    { key: 'apertura', label: 'Apertura / saldo inicial', grupo: 'Caja' },
+    { key: 'movimientos', label: 'Registrar ingresos / egresos', grupo: 'Caja' },
+    { key: 'eliminar_movimiento', label: 'Eliminar movimiento', grupo: 'Caja' },
+  ],
+  reportes: [
+    { key: 'tributario', label: 'Reporte tributario', grupo: 'Reportes' },
+    { key: 'vendedor', label: 'Reporte por vendedor', grupo: 'Reportes' },
+    { key: 'producto', label: 'Reporte por producto', grupo: 'Reportes' },
+    { key: 'financieros', label: 'Reportes financieros', grupo: 'Reportes' },
+  ],
+};
+
 // gerencia = acceso total siempre. Sin rol asignado = compatibilidad (acceso
 // total, como antes de que existiera este sistema). Con rol asignado, cada
 // módulo depende de su toggle en role_permisos.
@@ -43,6 +91,24 @@ function tienePermiso(user, modulo) {
   return !!(perm && perm.habilitado);
 }
 
+// Acción específica dentro de un módulo (p.ej. ventas -> "abonado"). Si el
+// módulo en sí está apagado, la acción tampoco aplica. Si el módulo está
+// prendido pero no hay fila para esa acción todavía (rol creado antes de que
+// existiera esta tabla, o acción nueva agregada después), se permite por
+// defecto — así no se le quita acceso a nadie de golpe.
+function tieneAccion(user, modulo, accion) {
+  if (!user) return false;
+  if (user.role === 'gerencia') return true;
+  const userRow = db.prepare('SELECT custom_role_id FROM users WHERE id = ?').get(user.id);
+  if (!userRow || !userRow.custom_role_id) return true;
+  if (!tienePermiso(user, modulo)) return false;
+  const fila = db.prepare(
+    'SELECT habilitado FROM role_acciones WHERE role_id = ? AND modulo = ? AND accion = ?'
+  ).get(userRow.custom_role_id, modulo, accion);
+  if (!fila) return true;
+  return !!fila.habilitado;
+}
+
 function requirePermiso(modulo) {
   return (req, res, next) => {
     if (!req.user) return res.status(401).json({ error: 'No autenticado.' });
@@ -62,4 +128,23 @@ function requireAlgunPermiso(modulos) {
   };
 }
 
-module.exports = { MODULOS, permisosDeUsuario, requirePermiso, requireAlgunPermiso };
+// requireAccion('ventas', 'abonado') como middleware de ruta completa.
+// Para casos donde la acción depende del body (p.ej. tipo_comprobante),
+// usar tieneAccion(...) directamente dentro del handler.
+function requireAccion(modulo, accion) {
+  return (req, res, next) => {
+    if (!req.user) return res.status(401).json({ error: 'No autenticado.' });
+    if (tieneAccion(req.user, modulo, accion)) return next();
+    return res.status(403).json({ error: 'No tienes permiso para esta acción.' });
+  };
+}
+
+module.exports = {
+  MODULOS,
+  ACCIONES_POR_MODULO,
+  permisosDeUsuario,
+  requirePermiso,
+  requireAlgunPermiso,
+  tieneAccion,
+  requireAccion,
+};

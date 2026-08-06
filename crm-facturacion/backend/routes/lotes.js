@@ -2,7 +2,7 @@ const express = require('express');
 const db = require('../db');
 const { requireAuth, resolveSucursal } = require('../middleware/auth');
 const { ajustarStockSucursal } = require('../utils/stock');
-const { requirePermiso } = require('../utils/permisos');
+const { requirePermiso, requireAccion } = require('../utils/permisos');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -46,7 +46,7 @@ router.get('/', (req, res) => {
   res.json(withStatus);
 });
 
-router.post('/', (req, res) => {
+router.post('/', requireAccion('inventario', 'lotes'), (req, res) => {
   const { product_id, codigo_lote, tipo, fecha_vencimiento, cantidad_inicial } = req.body || {};
   if (!product_id || !codigo_lote || !cantidad_inicial) {
     return res.status(400).json({ error: 'product_id, codigo_lote y cantidad_inicial son requeridos.' });

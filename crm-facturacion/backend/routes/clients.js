@@ -1,7 +1,7 @@
 const express = require('express');
 const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
-const { requirePermiso } = require('../utils/permisos');
+const { requirePermiso, requireAccion } = require('../utils/permisos');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -39,7 +39,7 @@ router.get('/:id', (req, res) => {
   res.json({ ...row, invoices });
 });
 
-router.post('/', (req, res) => {
+router.post('/', requireAccion('clientes', 'crear_editar'), (req, res) => {
   const { tipo_documento, numero_documento, nombre, direccion, telefono, email, notas, sucursal_id, turno } = req.body || {};
   if (!numero_documento || !nombre) {
     return res.status(400).json({ error: 'numero_documento y nombre son requeridos.' });
@@ -61,7 +61,7 @@ router.post('/', (req, res) => {
   }
 });
 
-router.put('/:id', (req, res) => {
+router.put('/:id', requireAccion('clientes', 'crear_editar'), (req, res) => {
   const existing = db.prepare('SELECT * FROM clients WHERE id = ?').get(req.params.id);
   if (!existing) return res.status(404).json({ error: 'Cliente no encontrado.' });
   const { tipo_documento, numero_documento, nombre, direccion, telefono, email, notas, sucursal_id, turno } = req.body || {};
@@ -94,7 +94,7 @@ router.put('/:id', (req, res) => {
   }
 });
 
-router.delete('/:id', (req, res) => {
+router.delete('/:id', requireAccion('clientes', 'eliminar'), (req, res) => {
   const existing = db.prepare('SELECT * FROM clients WHERE id = ?').get(req.params.id);
   if (!existing) return res.status(404).json({ error: 'Cliente no encontrado.' });
   const used = db.prepare('SELECT COUNT(*) AS n FROM invoices WHERE client_id = ?').get(req.params.id).n;

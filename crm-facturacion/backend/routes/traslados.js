@@ -2,7 +2,7 @@ const express = require('express');
 const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { getStockSucursal, setStockSucursal } = require('../utils/stock');
-const { requirePermiso } = require('../utils/permisos');
+const { requirePermiso, requireAccion } = require('../utils/permisos');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -56,7 +56,7 @@ router.get('/stock/:productId', (req, res) => {
   res.json(rows);
 });
 
-router.post('/', (req, res) => {
+router.post('/', requireAccion('inventario', 'traslados'), (req, res) => {
   const { sucursal_origen_id, sucursal_destino_id, items, observaciones } = req.body || {};
   if (!sucursal_origen_id || !sucursal_destino_id) {
     return res.status(400).json({ error: 'sucursal_origen_id y sucursal_destino_id son requeridos.' });
@@ -107,7 +107,7 @@ router.post('/', (req, res) => {
   res.status(201).json({ ...traslado, items: items2 });
 });
 
-router.post('/:id/anular', (req, res) => {
+router.post('/:id/anular', requireAccion('inventario', 'traslados'), (req, res) => {
   const traslado = db.prepare('SELECT * FROM traslados WHERE id = ?').get(req.params.id);
   if (!traslado) return res.status(404).json({ error: 'Traslado no encontrado.' });
   if (traslado.estado === 'anulado') return res.status(400).json({ error: 'El traslado ya está anulado.' });
