@@ -331,6 +331,13 @@ const invoiceColumns = db.prepare("PRAGMA table_info(invoices)").all().map((c) =
 if (!invoiceColumns.includes('created_by')) {
   db.exec('ALTER TABLE invoices ADD COLUMN created_by INTEGER REFERENCES users(id)');
 }
+const clientColumns = db.prepare("PRAGMA table_info(clients)").all().map((c) => c.name);
+if (!clientColumns.includes('sucursal_id')) {
+  db.exec('ALTER TABLE clients ADD COLUMN sucursal_id INTEGER REFERENCES sucursales(id)');
+}
+if (!clientColumns.includes('turno')) {
+  db.exec('ALTER TABLE clients ADD COLUMN turno TEXT');
+}
 const productColumns = db.prepare("PRAGMA table_info(products)").all().map((c) => c.name);
 if (!productColumns.includes('categoria')) {
   db.exec("ALTER TABLE products ADD COLUMN categoria TEXT DEFAULT 'General'");

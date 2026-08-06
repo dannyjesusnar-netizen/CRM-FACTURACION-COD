@@ -7,21 +7,31 @@ const router = express.Router();
 router.use(requireAuth);
 router.use(requirePermiso('clientes'));
 
+function sucursalIdOrError(sucursalId) {
+  if (sucursalId === undefined || sucursalId === null || sucursalId === '') return { value: null };
+  const suc = db.prepare('SELECT id FROM sucursales WHERE id = ? AND activo = 1').get(Number(sucursalId));
+  if (!suc) return { error: 'La sede seleccionada no existe o está desactivada.' };
+  return { value: suc.id };
+}
+
 router.get('/', (req, res) => {
   const q = (req.query.q || '').trim();
+  const base = `SELECT c.*, s.nombre AS sucursal_nombre FROM clients c LEFT JOIN sucursales s ON s.id = c.sucursal_id`;
   let rows;
   if (q) {
     rows = db.prepare(
-      `SELECT * FROM clients WHERE nombre LIKE ? OR numero_documento LIKE ? ORDER BY nombre ASC`
+      `${base} WHERE c.nombre LIKE ? OR c.numero_documento LIKE ? ORDER BY c.nombre ASC`
     ).all(`%${q}%`, `%${q}%`);
   } else {
-    rows = db.prepare('SELECT * FROM clients ORDER BY nombre ASC').all();
+    rows = db.prepare(`${base} ORDER BY c.nombre ASC`).all();
   }
   res.json(rows);
 });
 
 router.get('/:id', (req, res) => {
-  const row = db.prepare('SELECT * FROM clients WHERE id = ?').get(req.params.id);
+  const row = db.prepare(
+    `SELECT c.*, s.nombre AS sucursal_nombre FROM clients c LEFT JOIN sucursales s ON s.id = c.sucursal_id WHERE c.id = ?`
+  ).get(req.params.id);
   if (!row) return res.status(404).json({ error: 'Cliente no encontrado.' });
   const invoices = db.prepare(
     'SELECT * FROM invoices WHERE client_id = ? ORDER BY fecha_emision DESC'
@@ -30,15 +40,17 @@ router.get('/:id', (req, res) => {
 });
 
 router.post('/', (req, res) => {
-  const { tipo_documento, numero_documento, nombre, direccion, telefono, email, notas } = req.body || {};
+  const { tipo_documento, numero_documento, nombre, direccion, telefono, email, notas, sucursal_id, turno } = req.body || {};
   if (!numero_documento || !nombre) {
     return res.status(400).json({ error: 'numero_documento y nombre son requeridos.' });
   }
+  const sucursal = sucursalIdOrError(sucursal_id);
+  if (sucursal.error) return res.status(400).json({ error: sucursal.error });
   try {
     const info = db.prepare(
-      `INSERT INTO clients (tipo_documento, numero_documento, nombre, direccion, telefono, email, notas)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
-    ).run(tipo_documento || 'DNI', numero_documento, nombre, direccion || null, telefono || null, email || null, notas || null);
+      `INSERT INTO clients (tipo_documento, numero_documento, nombre, direccion, telefono, email, notas, sucursal_id, turno)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(tipo_documento || 'DNI', numero_documento, nombre, direccion || null, telefono || null, email || null, notas || null, sucursal.value, turno || null);
     const row = db.prepare('SELECT * FROM clients WHERE id = ?').get(info.lastInsertRowid);
     res.status(201).json(row);
   } catch (err) {
@@ -52,10 +64,16 @@ router.post('/', (req, res) => {
 router.put('/:id', (req, res) => {
   const existing = db.prepare('SELECT * FROM clients WHERE id = ?').get(req.params.id);
   if (!existing) return res.status(404).json({ error: 'Cliente no encontrado.' });
-  const { tipo_documento, numero_documento, nombre, direccion, telefono, email, notas } = req.body || {};
+  const { tipo_documento, numero_documento, nombre, direccion, telefono, email, notas, sucursal_id, turno } = req.body || {};
+  let sucursalId = existing.sucursal_id;
+  if (sucursal_id !== undefined) {
+    const sucursal = sucursalIdOrError(sucursal_id);
+    if (sucursal.error) return res.status(400).json({ error: sucursal.error });
+    sucursalId = sucursal.value;
+  }
   try {
     db.prepare(
-      `UPDATE clients SET tipo_documento = ?, numero_documento = ?, nombre = ?, direccion = ?, telefono = ?, email = ?, notas = ?
+      `UPDATE clients SET tipo_documento = ?, numero_documento = ?, nombre = ?, direccion = ?, telefono = ?, email = ?, notas = ?, sucursal_id = ?, turno = ?
        WHERE id = ?`
     ).run(
       tipo_documento ?? existing.tipo_documento,
@@ -65,6 +83,8 @@ router.put('/:id', (req, res) => {
       telefono ?? existing.telefono,
       email ?? existing.email,
       notas ?? existing.notas,
+      sucursalId,
+      turno !== undefined ? (turno || null) : existing.turno,
       req.params.id
     );
     const row = db.prepare('SELECT * FROM clients WHERE id = ?').get(req.params.id);
