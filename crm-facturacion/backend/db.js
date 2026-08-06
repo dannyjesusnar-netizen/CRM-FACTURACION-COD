@@ -354,6 +354,12 @@ if (!clientColumns.includes('sucursal_id')) {
 if (!clientColumns.includes('turno')) {
   db.exec('ALTER TABLE clients ADD COLUMN turno TEXT');
 }
+if (!clientColumns.includes('referencia')) {
+  db.exec('ALTER TABLE clients ADD COLUMN referencia TEXT');
+}
+if (!clientColumns.includes('contacto')) {
+  db.exec('ALTER TABLE clients ADD COLUMN contacto TEXT');
+}
 const productColumns = db.prepare("PRAGMA table_info(products)").all().map((c) => c.name);
 if (!productColumns.includes('categoria')) {
   db.exec("ALTER TABLE products ADD COLUMN categoria TEXT DEFAULT 'General'");
