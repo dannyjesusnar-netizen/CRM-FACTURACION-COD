@@ -4,7 +4,6 @@ import api from '../api';
 import { useToast } from '../context/ToastContext';
 
 const TIPO_LABEL = { factura: 'Factura', boleta: 'Boleta', nota_credito: 'Nota de crédito' };
-const FORMA_PAGO_LABEL = { efectivo: 'Efectivo', tarjeta: 'Tarjeta', banco: 'Transferencia/Banco' };
 
 function envioBadgeLabel(inv) {
   if (inv.estado === 'anulado') return 'Anulado';
@@ -31,6 +30,7 @@ export default function Invoices() {
   const toast = useToast();
   const navigate = useNavigate();
   const [invoices, setInvoices] = useState([]);
+  const [metodosPago, setMetodosPago] = useState([]);
 
   // filtros de busqueda (panel tipo RapiFac)
   const [q, setQ] = useState('');
@@ -47,7 +47,17 @@ export default function Invoices() {
     api.get('/invoices', { params }).then((res) => setInvoices(res.data));
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    api.get('/metodos-pago', { params: { todos: 1 } }).then((res) => setMetodosPago(res.data));
+  }, []);
+
+  function formaPagoLabel(codigo) {
+    if (!codigo) return 'Efectivo';
+    if (codigo === 'abonado') return '🧾 Abonado (crédito)';
+    const metodo = metodosPago.find((m) => m.codigo === codigo);
+    return metodo ? `${metodo.icono} ${metodo.nombre}` : codigo;
+  }
 
   function handleBuscar(e) {
     e.preventDefault();
@@ -171,7 +181,7 @@ export default function Invoices() {
                   <td>{inv.cliente_nombre}</td>
                   <td style={{ textAlign: 'right' }}>S/ {Number(inv.subtotal).toFixed(2)}</td>
                   <td style={{ textAlign: 'right' }}>S/ {Number(inv.total).toFixed(2)}</td>
-                  <td style={{ textTransform: 'capitalize' }}>{FORMA_PAGO_LABEL[inv.forma_pago] || inv.forma_pago || 'Efectivo'}</td>
+                  <td>{formaPagoLabel(inv.forma_pago)}</td>
                   <td>
                     <span className={'badge ' + envioBadgeClass(inv)} title={inv.sunat_mensaje || ''}>
                       {envioBadgeLabel(inv)}

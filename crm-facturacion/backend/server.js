@@ -24,6 +24,7 @@ const empresaRoutes = require('./routes/empresa');
 const userRoutes = require('./routes/users');
 const roleRoutes = require('./routes/roles');
 const platformRoutes = require('./routes/platform');
+const metodoPagoRoutes = require('./routes/metodosPago');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -55,6 +56,7 @@ app.use('/api/empresa', empresaRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/roles', roleRoutes);
 app.use('/api/platform', platformRoutes);
+app.use('/api/metodos-pago', metodoPagoRoutes);
 
 // Si existe el build del frontend (frontend/dist), lo servimos desde el mismo
 // servidor. Asi el despliegue queda como un unico servicio (una sola URL).

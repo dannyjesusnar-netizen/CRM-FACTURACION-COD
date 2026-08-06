@@ -388,30 +388,50 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--b
 
 /* ---------- Caja y Bancos ---------- */
 
-.caja-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
-@media (max-width: 980px) { .caja-columns { grid-template-columns: 1fr; } }
-
-.caja-banner {
-  background: linear-gradient(135deg, #5c1414, #7a1f1f); color: #fff; border-radius: 8px;
-  padding: 14px 18px; display: flex; align-items: center; justify-content: space-between;
-  font-weight: 700; font-size: 15px; margin-bottom: 16px; transition: transform 0.15s;
+.caja-total-general {
+  display: flex; flex-direction: column; align-items: flex-end; gap: 2px;
+  font-size: 12px; color: var(--ink-muted);
 }
-.caja-banner:hover { transform: translateY(-1px); }
-.caja-banner .caja-banner-value { font-variant-numeric: tabular-nums; font-size: 17px; }
+.caja-total-general strong { font-size: 20px; color: var(--ink); font-variant-numeric: tabular-nums; }
+
+.caja-metodos-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; align-items: start; }
+
+.caja-metodo-card {
+  background: var(--surface); border: 1px solid var(--border); border-top: 4px solid var(--metodo-color, var(--brand-blue));
+  border-radius: 10px; overflow: hidden; transition: box-shadow 0.15s, transform 0.15s;
+}
+.caja-metodo-card:hover { box-shadow: 0 6px 18px rgba(0,0,0,0.10); transform: translateY(-1px); }
+.caja-metodo-header { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--border); }
+.caja-metodo-icon {
+  width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center;
+  font-size: 18px; flex-shrink: 0; box-shadow: 0 2px 6px rgba(0,0,0,0.18);
+}
+.caja-metodo-titulo { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.caja-metodo-titulo strong { font-size: 14px; }
+.caja-metodo-saldo-inicial { display: flex; align-items: center; font-size: 11px; color: var(--ink-muted); }
 .caja-banner-edit {
-  background: none; border: none; color: rgba(255,255,255,0.85); cursor: pointer; margin-left: 8px;
+  background: none; border: none; color: var(--ink-muted); cursor: pointer; margin-left: 6px;
   display: inline-flex; align-items: center; transition: color 0.12s, transform 0.12s;
 }
-.caja-banner-edit:hover { color: #fff; transform: scale(1.15); }
+.caja-banner-edit:hover { color: var(--brand-blue); transform: scale(1.15); }
+.caja-metodo-final { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; flex-shrink: 0; }
+.caja-metodo-final span { font-size: 10px; color: var(--ink-muted); text-transform: uppercase; letter-spacing: 0.03em; }
+.caja-metodo-final strong { font-size: 15px; font-variant-numeric: tabular-nums; color: var(--metodo-color, var(--ink)); }
 
-.caja-section {
-  background: var(--surface); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 16px; overflow: hidden;
+.caja-metodo-section { padding: 4px 16px; }
+.caja-metodo-section-header {
+  display: flex; align-items: center; justify-content: space-between; padding: 8px 0 4px;
+  font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: 0.03em;
 }
-.caja-section-header {
-  background: linear-gradient(135deg, #1f8a5c, #29a86f); color: #fff; padding: 10px 16px;
-  display: flex; align-items: center; justify-content: space-between; font-weight: 700; font-size: 14px;
+.caja-metodo-section-header.ingreso { color: var(--good); }
+.caja-metodo-section-header.egreso { color: var(--critical); }
+
+.caja-mov-medio { display: inline-flex; align-items: center; gap: 6px; }
+.caja-mov-medio-dot {
+  width: 20px; height: 20px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center;
+  font-size: 11px; flex-shrink: 0;
 }
-.caja-section-header .caja-section-total { font-variant-numeric: tabular-nums; }
+
 .caja-row {
   display: flex; align-items: center; justify-content: space-between; padding: 10px 16px;
   border-bottom: 1px solid var(--border); font-size: 13px; transition: background 0.12s;
@@ -555,6 +575,36 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--b
 .rol-accion-row .rol-accion-check { color: var(--good); flex-shrink: 0; }
 .rol-accion-row.off .rol-accion-check { color: var(--ink-muted); }
 .rol-acciones-empty { font-size: 13px; color: var(--ink-muted); padding: 8px 4px; }
+
+/* ---------- Métodos de pago ---------- */
+.metodos-pago-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; margin-top: 12px; }
+.metodo-pago-card {
+  display: flex; flex-direction: column; gap: 8px; padding: 14px; border-radius: 12px;
+  border: 1px solid var(--border); border-top: 3px solid var(--metodo-color, var(--brand-blue));
+  background: var(--surface); transition: box-shadow 0.15s, transform 0.15s;
+}
+.metodo-pago-card:hover { box-shadow: 0 4px 14px rgba(0,0,0,0.08); transform: translateY(-1px); }
+.metodo-pago-card.inactivo { opacity: 0.55; }
+.metodo-pago-icon {
+  width: 38px; height: 38px; border-radius: 10px; display: flex; align-items: center; justify-content: center;
+  font-size: 19px; box-shadow: 0 2px 6px rgba(0,0,0,0.18); flex-shrink: 0;
+}
+.metodo-pago-info { display: flex; flex-direction: column; gap: 2px; }
+.metodo-pago-info strong { font-size: 14px; }
+.metodo-pago-tipo { font-size: 11px; color: var(--ink-muted); text-transform: uppercase; letter-spacing: 0.03em; }
+.metodo-pago-actions { display: flex; gap: 14px; margin-top: 2px; }
+.metodo-icono-picker { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 14px; }
+.metodo-icono-opcion {
+  width: 34px; height: 34px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface);
+  font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: border-color 0.12s;
+}
+.metodo-icono-opcion:hover { border-color: var(--brand-blue); }
+.metodo-icono-opcion.selected { border-color: var(--brand-blue); border-width: 2px; background: var(--surface-hover); }
+.metodo-pago-preview {
+  display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px;
+  border: 1px solid var(--border); border-left: 3px solid var(--metodo-color, var(--brand-blue));
+  background: var(--surface-hover); margin-bottom: 14px;
+}
 
 /* ---------- Modo oscuro: ajustes puntuales sobre colores literales ---------- */
 

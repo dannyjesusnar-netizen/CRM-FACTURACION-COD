@@ -109,9 +109,14 @@ router.get('/:id', (req, res) => {
   res.json({ ...invoice, items });
 });
 
-const FORMAS_PAGO = ['efectivo', 'tarjeta', 'banco', 'abonado'];
-const MEDIOS_COBRO = ['efectivo', 'tarjeta', 'banco', 'otros'];
 const CLIENTE_GENERICO_DOCUMENTO = '10000000'; // "CLIENTES VARIOS", sembrado en db.js
+
+// El único valor "especial" que no es un método de pago real (venta a
+// crédito). Todo lo demás sale del catálogo dinámico de metodos_pago.
+function esMetodoPagoValido(codigo) {
+  if (!codigo) return false;
+  return !!db.prepare('SELECT 1 FROM metodos_pago WHERE codigo = ? AND activo = 1').get(codigo);
+}
 
 router.post('/', async (req, res) => {
   const {
@@ -131,8 +136,8 @@ router.post('/', async (req, res) => {
   if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: 'Debe incluir al menos un item.' });
   }
-  if (forma_pago && !FORMAS_PAGO.includes(forma_pago)) {
-    return res.status(400).json({ error: 'forma_pago invalida. Use efectivo, tarjeta, banco o abonado.' });
+  if (forma_pago && forma_pago !== 'abonado' && !esMetodoPagoValido(forma_pago)) {
+    return res.status(400).json({ error: 'forma_pago invalida. Debe ser un método de pago activo o "abonado".' });
   }
   if (forma_pago === 'abonado' && !tieneAccion(req.user, 'ventas', 'abonado')) {
     return res.status(403).json({ error: 'No tienes permiso para registrar ventas abonadas.' });
@@ -151,8 +156,8 @@ router.post('/', async (req, res) => {
   }
   let medioAbono = null;
   if (esAbonado && Number(montoPagadoBody || 0) > 0) {
-    if (!MEDIOS_COBRO.includes(medio_abono)) {
-      return res.status(400).json({ error: 'Selecciona el medio del abono (efectivo, tarjeta o banco).' });
+    if (!esMetodoPagoValido(medio_abono)) {
+      return res.status(400).json({ error: 'Selecciona un método de pago válido para el abono.' });
     }
     medioAbono = medio_abono;
   }
@@ -414,8 +419,8 @@ router.post('/:id/cobros', requireAccion('ventas', 'registrar_cobro'), (req, res
     return res.status(400).json({ error: 'El comprobante está anulado.' });
   }
   const { monto, medio, observacion } = req.body || {};
-  if (!MEDIOS_COBRO.includes(medio)) {
-    return res.status(400).json({ error: 'medio invalido. Use efectivo, tarjeta, banco u otros.' });
+  if (!esMetodoPagoValido(medio)) {
+    return res.status(400).json({ error: 'Selecciona un método de pago válido.' });
   }
   const saldoActual = round2(invoice.total - invoice.monto_pagado);
   const montoNum = round2(Number(monto || 0));
