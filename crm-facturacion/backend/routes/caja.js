@@ -1,7 +1,7 @@
 const express = require('express');
 const db = require('../db');
 const { requireAuth, resolveSucursal } = require('../middleware/auth');
-const { requirePermiso } = require('../utils/permisos');
+const { requirePermiso, requireAccion } = require('../utils/permisos');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -105,7 +105,7 @@ router.get('/', (req, res) => {
 });
 
 // PUT /api/caja/saldo-inicial { fecha, monto }
-router.put('/saldo-inicial', (req, res) => {
+router.put('/saldo-inicial', requireAccion('caja', 'apertura'), (req, res) => {
   const { fecha, monto } = req.body || {};
   if (!fecha || monto === undefined || monto === null || monto === '') {
     return res.status(400).json({ error: 'fecha y monto son requeridos.' });
@@ -131,7 +131,7 @@ const VALID_CATEGORIAS = {
 };
 
 // POST /api/caja/movimientos { fecha, tipo, medio, categoria, monto, descripcion }
-router.post('/movimientos', (req, res) => {
+router.post('/movimientos', requireAccion('caja', 'movimientos'), (req, res) => {
   const { fecha, tipo, medio, categoria, monto, descripcion } = req.body || {};
   if (!fecha || !tipo || !medio || !categoria || !monto) {
     return res.status(400).json({ error: 'fecha, tipo, medio, categoria y monto son requeridos.' });
@@ -160,7 +160,7 @@ router.post('/movimientos', (req, res) => {
 });
 
 // DELETE /api/caja/movimientos/:id
-router.delete('/movimientos/:id', (req, res) => {
+router.delete('/movimientos/:id', requireAccion('caja', 'eliminar_movimiento'), (req, res) => {
   const row = db.prepare('SELECT * FROM caja_movimientos WHERE id = ? AND sucursal_id = ?').get(req.params.id, req.sucursalId);
   if (!row) return res.status(404).json({ error: 'Movimiento no encontrado.' });
   db.prepare('DELETE FROM caja_movimientos WHERE id = ?').run(req.params.id);

@@ -1,7 +1,7 @@
 const express = require('express');
 const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
-const { requirePermiso } = require('../utils/permisos');
+const { requirePermiso, requireAccion } = require('../utils/permisos');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -55,7 +55,7 @@ router.get('/:id', (req, res) => {
   res.json({ ...cot, items });
 });
 
-router.post('/', (req, res) => {
+router.post('/', requireAccion('ventas', 'cotizacion'), (req, res) => {
   const { client_id, items, moneda, observaciones, fecha_emision, descuento_global_pct, numero: numeroManual } = req.body || {};
 
   if (!Array.isArray(items) || items.length === 0) {

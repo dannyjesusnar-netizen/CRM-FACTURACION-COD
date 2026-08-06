@@ -2,7 +2,7 @@ const express = require('express');
 const db = require('../db');
 const { requireAuth, resolveSucursal } = require('../middleware/auth');
 const { getStockSucursal, setStockSucursal, round2 } = require('../utils/stock');
-const { requirePermiso } = require('../utils/permisos');
+const { requirePermiso, requireAccion } = require('../utils/permisos');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -64,7 +64,7 @@ function tipoDesdeUnidad(unidad) {
   return unidad === 'ZZ' ? 'servicio' : 'producto';
 }
 
-router.post('/', (req, res) => {
+router.post('/', requireAccion('inventario', 'productos'), (req, res) => {
   const {
     codigo, codigo_barras, nombre, descripcion, categoria, unidad,
     afectacion_igv, control, tipo_inventario, tipo_clasificacion, subtipo_clasificacion,
@@ -123,7 +123,7 @@ router.post('/', (req, res) => {
 // Crea productos nuevos (por código) o actualiza los que ya existen. El
 // stock de cada fila es el de la sede activa, igual que en el alta/edición
 // individual.
-router.post('/carga-masiva', (req, res) => {
+router.post('/carga-masiva', requireAccion('inventario', 'productos'), (req, res) => {
   const { rows } = req.body || {};
   if (!Array.isArray(rows) || rows.length === 0) {
     return res.status(400).json({ error: 'rows es requerido y debe tener al menos una fila.' });
@@ -176,7 +176,7 @@ router.post('/carga-masiva', (req, res) => {
   res.json({ creados, actualizados, errores });
 });
 
-router.put('/:id', (req, res) => {
+router.put('/:id', requireAccion('inventario', 'productos'), (req, res) => {
   const existing = db.prepare('SELECT * FROM products WHERE id = ?').get(req.params.id);
   if (!existing) return res.status(404).json({ error: 'Producto no encontrado.' });
   const {
@@ -232,7 +232,7 @@ router.put('/:id', (req, res) => {
   res.json(conStockDeSede(row, req.sucursalId));
 });
 
-router.delete('/:id', (req, res) => {
+router.delete('/:id', requireAccion('inventario', 'productos'), (req, res) => {
   const existing = db.prepare('SELECT * FROM products WHERE id = ?').get(req.params.id);
   if (!existing) return res.status(404).json({ error: 'Producto no encontrado.' });
   // Soft delete para no romper historicos de facturas

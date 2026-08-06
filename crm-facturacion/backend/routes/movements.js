@@ -2,7 +2,7 @@ const express = require('express');
 const db = require('../db');
 const { requireAuth, resolveSucursal } = require('../middleware/auth');
 const { round2, ajustarStockSucursal, getStockSucursal, setStockSucursal } = require('../utils/stock');
-const { requirePermiso } = require('../utils/permisos');
+const { requirePermiso, requireAccion } = require('../utils/permisos');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -47,7 +47,7 @@ router.get('/', (req, res) => {
 });
 
 // POST /api/movements  { product_id, cantidad, motivo }  -- ajuste manual (+ ingreso / - salida)
-router.post('/', (req, res) => {
+router.post('/', requireAccion('inventario', 'ajustes'), (req, res) => {
   const { product_id, cantidad, motivo } = req.body || {};
   if (!product_id || !cantidad) {
     return res.status(400).json({ error: 'product_id y cantidad son requeridos.' });
@@ -78,7 +78,7 @@ router.post('/', (req, res) => {
 });
 
 // POST /api/movements/conteo  { product_id, cantidad_contada, motivo }  -- Inventario Físico
-router.post('/conteo', (req, res) => {
+router.post('/conteo', requireAccion('inventario', 'conteo'), (req, res) => {
   const { product_id, cantidad_contada, motivo } = req.body || {};
   if (!product_id || cantidad_contada === undefined || cantidad_contada === null || cantidad_contada === '') {
     return res.status(400).json({ error: 'product_id y cantidad_contada son requeridos.' });
@@ -109,7 +109,7 @@ router.post('/conteo', (req, res) => {
 });
 
 // POST /api/movements/importar  { rows: [{ codigo, stock_real }] }  -- Importar Stock Real
-router.post('/importar', (req, res) => {
+router.post('/importar', requireAccion('inventario', 'importacion'), (req, res) => {
   const { rows } = req.body || {};
   if (!Array.isArray(rows) || rows.length === 0) {
     return res.status(400).json({ error: 'rows es requerido y debe tener al menos una fila.' });

@@ -2,7 +2,7 @@ const express = require('express');
 const db = require('../db');
 const { requireAuth, resolveSucursal } = require('../middleware/auth');
 const { consumirStock, incrementarStock, getStockSucursal } = require('../utils/stock');
-const { requirePermiso } = require('../utils/permisos');
+const { requirePermiso, requireAccion } = require('../utils/permisos');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -36,7 +36,7 @@ router.get('/:id', (req, res) => {
   res.json({ ...receta, items });
 });
 
-router.post('/', (req, res) => {
+router.post('/', requireAccion('inventario', 'produccion'), (req, res) => {
   const { nombre, descripcion, product_id_salida, cantidad_salida, tipo_produccion, items } = req.body || {};
   if (!nombre || !product_id_salida || !Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: 'nombre, product_id_salida e items (insumos) son requeridos.' });
@@ -65,7 +65,7 @@ router.post('/', (req, res) => {
   res.status(201).json({ ...receta, items: items2 });
 });
 
-router.delete('/:id', (req, res) => {
+router.delete('/:id', requireAccion('inventario', 'produccion'), (req, res) => {
   const row = db.prepare('SELECT * FROM recetas WHERE id = ?').get(req.params.id);
   if (!row) return res.status(404).json({ error: 'Receta no encontrada.' });
   db.prepare('UPDATE recetas SET activo = 0 WHERE id = ?').run(req.params.id);
@@ -73,7 +73,7 @@ router.delete('/:id', (req, res) => {
 });
 
 // POST /api/recetas/:id/producir { cantidad_lotes }
-router.post('/:id/producir', (req, res) => {
+router.post('/:id/producir', requireAccion('inventario', 'produccion'), (req, res) => {
   const { cantidad_lotes } = req.body || {};
   const lotes = Number(cantidad_lotes || 1);
   if (!lotes || lotes <= 0) return res.status(400).json({ error: 'cantidad_lotes debe ser mayor a 0.' });

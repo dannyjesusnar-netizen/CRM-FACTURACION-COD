@@ -4,7 +4,7 @@ const { requireAuth, resolveSucursal } = require('../middleware/auth');
 const { buildInvoicePdf } = require('../utils/pdf');
 const { consumirStock, incrementarStock, ajustarStockSucursal, StockInsuficienteError } = require('../utils/stock');
 const { emitirComprobante, estaConfigurado } = require('../utils/facturacionElectronica');
-const { requirePermiso } = require('../utils/permisos');
+const { requirePermiso, requireAccion, tieneAccion } = require('../utils/permisos');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -58,7 +58,7 @@ router.get('/buscar', (req, res) => {
 });
 
 // GET /api/invoices/deudas -> ventas "abonado" con saldo pendiente (cuentas por cobrar)
-router.get('/deudas', (req, res) => {
+router.get('/deudas', requireAccion('ventas', 'cuentas_por_cobrar'), (req, res) => {
   const rows = db.prepare(`
     SELECT i.id, i.tipo_comprobante, i.serie, i.numero, i.fecha_emision, i.total, i.monto_pagado,
            (i.total - i.monto_pagado) AS saldo,
@@ -124,12 +124,18 @@ router.post('/', async (req, res) => {
   if (!['factura', 'boleta', 'nota_credito'].includes(tipo_comprobante)) {
     return res.status(400).json({ error: 'tipo_comprobante invalido. Use factura, boleta o nota_credito.' });
   }
+  if (!tieneAccion(req.user, 'ventas', tipo_comprobante)) {
+    return res.status(403).json({ error: 'No tienes permiso para emitir este tipo de comprobante.' });
+  }
   if (!client_id) return res.status(400).json({ error: 'client_id es requerido.' });
   if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: 'Debe incluir al menos un item.' });
   }
   if (forma_pago && !FORMAS_PAGO.includes(forma_pago)) {
     return res.status(400).json({ error: 'forma_pago invalida. Use efectivo, tarjeta, banco o abonado.' });
+  }
+  if (forma_pago === 'abonado' && !tieneAccion(req.user, 'ventas', 'abonado')) {
+    return res.status(403).json({ error: 'No tienes permiso para registrar ventas abonadas.' });
   }
 
   const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(client_id);
@@ -318,7 +324,7 @@ router.post('/', async (req, res) => {
   res.status(201).json({ ...invoice, items: invoiceItems });
 });
 
-router.post('/:id/anular', (req, res) => {
+router.post('/:id/anular', requireAccion('ventas', 'anular_comprobante'), (req, res) => {
   const invoice = db.prepare('SELECT * FROM invoices WHERE id = ? AND sucursal_id = ?').get(req.params.id, req.sucursalId);
   if (!invoice) return res.status(404).json({ error: 'Comprobante no encontrado.' });
   if (invoice.estado === 'anulado') {
@@ -386,7 +392,7 @@ router.post('/:id/anular', (req, res) => {
 });
 
 // GET /api/invoices/:id/cobros -> historial de abonos/cobros de una venta "abonado"
-router.get('/:id/cobros', (req, res) => {
+router.get('/:id/cobros', requireAccion('ventas', 'cuentas_por_cobrar'), (req, res) => {
   const invoice = db.prepare('SELECT id FROM invoices WHERE id = ? AND sucursal_id = ?').get(req.params.id, req.sucursalId);
   if (!invoice) return res.status(404).json({ error: 'Comprobante no encontrado.' });
   const rows = db.prepare(
@@ -398,7 +404,7 @@ router.get('/:id/cobros', (req, res) => {
 });
 
 // POST /api/invoices/:id/cobros { monto, medio, observacion } -> registra un cobro contra el saldo pendiente
-router.post('/:id/cobros', (req, res) => {
+router.post('/:id/cobros', requireAccion('ventas', 'registrar_cobro'), (req, res) => {
   const invoice = db.prepare('SELECT * FROM invoices WHERE id = ? AND sucursal_id = ?').get(req.params.id, req.sucursalId);
   if (!invoice) return res.status(404).json({ error: 'Comprobante no encontrado.' });
   if (invoice.forma_pago !== 'abonado') {
