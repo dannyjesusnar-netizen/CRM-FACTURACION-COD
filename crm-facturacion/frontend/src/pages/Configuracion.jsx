@@ -11,8 +11,10 @@ const DEPARTAMENTOS_PERU = [
   'Madre de Dios', 'Moquegua', 'Pasco', 'Piura', 'Puno', 'San Martín', 'Tacna', 'Tumbes', 'Ucayali',
 ];
 
+const PASSWORD_PREDETERMINADA = 'Lima2026*';
+
 function emptyUserForm() {
-  return { username: '', password: '', nombres: '', apellidos: '', email: '', telefono: '', dni: '', role: 'vendedor', sucursal_id: '', custom_role_id: '' };
+  return { username: '', password: PASSWORD_PREDETERMINADA, nombres: '', apellidos: '', email: '', telefono: '', dni: '', role: 'vendedor', sucursal_id: '', custom_role_id: '' };
 }
 
 function emptySucursalForm() {
@@ -163,6 +165,16 @@ export default function Configuracion() {
       loadUsuarios();
     } catch (err) {
       toast.error(err.response?.data?.error || 'No se pudo cambiar el estado.');
+    }
+  }
+
+  async function handleRestablecerContrasena(u) {
+    if (!window.confirm(`¿Restablecer la contraseña de ${u.full_name} a la predeterminada (${PASSWORD_PREDETERMINADA})?`)) return;
+    try {
+      await api.put(`/users/${u.id}`, { password: PASSWORD_PREDETERMINADA });
+      toast.success(`Contraseña de ${u.full_name} restablecida a ${PASSWORD_PREDETERMINADA}.`);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'No se pudo restablecer la contraseña.');
     }
   }
 
@@ -466,6 +478,7 @@ export default function Configuracion() {
                       </td>
                       <td className="row-actions">
                         <button className="btn-link" onClick={() => openEditUser(u)}>Editar</button>
+                        <button className="btn-link" onClick={() => handleRestablecerContrasena(u)}>Restablecer contraseña</button>
                         {u.id === user.id ? (
                           <span className="icon-link muted" title="No puedes desactivar tu propia cuenta">—</span>
                         ) : (
@@ -578,7 +591,12 @@ export default function Configuracion() {
                 ))}
               </select>
               <label>{editingId ? 'Nueva contraseña (dejar en blanco para no cambiarla)' : 'Contraseña * (mínimo 8 caracteres, mayúscula, minúscula, número y carácter especial)'}</label>
-              <input required={!editingId} type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
+              <input required={!editingId} type="text" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
+              {!editingId && (
+                <p style={{ fontSize: 11, color: 'var(--ink-muted)', marginTop: -10 }}>
+                  Contraseña predeterminada — puedes dejarla así o cambiarla antes de guardar.
+                </p>
+              )}
               {errorForm && <div className="form-error">{errorForm}</div>}
               <div className="modal-actions">
                 <button type="button" className="btn-secondary" onClick={() => setShowForm(false)}>Cancelar</button>

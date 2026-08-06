@@ -2,11 +2,12 @@ import { useEffect, useState } from 'react';
 import api from '../api';
 import { useToast } from '../context/ToastContext';
 
-const EMPTY_FORM = { tipo_documento: 'DNI', numero_documento: '', nombre: '', direccion: '', telefono: '', email: '', notas: '' };
+const EMPTY_FORM = { tipo_documento: 'DNI', numero_documento: '', nombre: '', direccion: '', telefono: '', email: '', notas: '', sucursal_id: '', turno: '' };
 
 export default function Clients() {
   const toast = useToast();
   const [clients, setClients] = useState([]);
+  const [sucursales, setSucursales] = useState([]);
   const [q, setQ] = useState('');
   const [form, setForm] = useState(EMPTY_FORM);
   const [editingId, setEditingId] = useState(null);
@@ -17,7 +18,10 @@ export default function Clients() {
     api.get('/clients', { params: query ? { q: query } : {} }).then((res) => setClients(res.data));
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    api.get('/sucursales').then((res) => setSucursales(res.data));
+  }, []);
 
   function handleSearch(e) {
     e.preventDefault();
@@ -40,6 +44,8 @@ export default function Clients() {
       telefono: client.telefono || '',
       email: client.email || '',
       notas: client.notas || '',
+      sucursal_id: client.sucursal_id || '',
+      turno: client.turno || '',
     });
     setEditingId(client.id);
     setError('');
@@ -95,6 +101,8 @@ export default function Clients() {
               <th>Nombre / Razón social</th>
               <th>Teléfono</th>
               <th>Email</th>
+              <th>Sede</th>
+              <th>Turno</th>
               <th></th>
             </tr>
           </thead>
@@ -105,6 +113,8 @@ export default function Clients() {
                 <td>{c.nombre}</td>
                 <td>{c.telefono || '—'}</td>
                 <td>{c.email || '—'}</td>
+                <td>{c.sucursal_nombre || '—'}</td>
+                <td>{c.turno || '—'}</td>
                 <td className="row-actions">
                   <button className="btn-link" onClick={() => openEdit(c)}>Editar</button>
                   <button className="btn-link danger" onClick={() => handleDelete(c.id)}>Eliminar</button>
@@ -112,7 +122,7 @@ export default function Clients() {
               </tr>
             ))}
             {clients.length === 0 && (
-              <tr><td colSpan={5} className="empty-row">No hay clientes registrados.</td></tr>
+              <tr><td colSpan={7} className="empty-row">No hay clientes registrados.</td></tr>
             )}
           </tbody>
         </table>
@@ -148,6 +158,21 @@ export default function Clients() {
                 <div>
                   <label>Email</label>
                   <input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+                </div>
+              </div>
+              <div className="form-row">
+                <div>
+                  <label>Sede</label>
+                  <select value={form.sucursal_id} onChange={(e) => setForm({ ...form, sucursal_id: e.target.value })}>
+                    <option value="">Sin sede asignada</option>
+                    {sucursales.map((s) => (
+                      <option key={s.id} value={s.id}>{s.nombre}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label>Turno</label>
+                  <input value={form.turno} onChange={(e) => setForm({ ...form, turno: e.target.value })} placeholder="Ej. Mañana, Tarde, Noche..." />
                 </div>
               </div>
               <label>Notas</label>
