@@ -41,11 +41,15 @@ export default function RegistroNotaCredito() {
   const [cuenta, setCuenta] = useState('efectivo');
   const [error, setError] = useState('');
   const [loadingRecuperar, setLoadingRecuperar] = useState(false);
+  const [igvRate, setIgvRate] = useState(0.18);
 
   useEffect(() => {
     api.get('/invoices/siguiente-numero', { params: { tipo: 'nota_credito' } }).then((res) => {
       setSerie(res.data.serie);
       setNumero(res.data.numero);
+    });
+    api.get('/empresa').then((res) => {
+      if (res.data?.igv_rate) setIgvRate(Number(res.data.igv_rate));
     });
   }, []);
 
@@ -124,12 +128,12 @@ export default function RegistroNotaCredito() {
       const lineBruta = cantidad * precio;
       const lineNeta = round2(lineBruta - lineBruta * (desc / 100));
       const gravado = !it.afectacion_igv || it.afectacion_igv === 'gravado' || it.afectacion_igv === 'gratuito';
-      const igvLinea = gravado ? round2(lineNeta - lineNeta / 1.18) : 0;
+      const igvLinea = gravado ? round2(lineNeta - lineNeta / (1 + igvRate)) : 0;
       total += lineNeta;
       return { ...it, importe: lineNeta, igv: igvLinea };
     });
     return { rows, total: round2(total) };
-  }, [items]);
+  }, [items, igvRate]);
 
   async function handleSubmit(e) {
     e.preventDefault();

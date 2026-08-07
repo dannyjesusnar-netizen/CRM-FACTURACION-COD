@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Building2, Users as UsersIcon, Store, ShieldCheck, FileText, Wallet } from 'lucide-react';
+import { ArrowLeft, Building2, Users as UsersIcon, Store, ShieldCheck, FileText, Wallet, Hash } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
@@ -35,6 +35,14 @@ const ICONOS_SUGERIDOS = ['💵', '📲', '📱', '💳', '🏦', '🔗', '🔖'
 function emptyMetodoForm() {
   return { nombre: '', tipo: 'otro', color: '#0f4c81', icono: '💳' };
 }
+
+const DOC_LABELS = {
+  factura: 'Factura Electrónica',
+  boleta: 'Boleta Electrónica',
+  nota_credito: 'Nota de Crédito',
+  cotizacion: 'Cotización',
+  guia_remitente: 'Guía Remitente',
+};
 
 export default function Configuracion() {
   const { user } = useAuth();
@@ -80,6 +88,19 @@ export default function Configuracion() {
   const [metodoForm, setMetodoForm] = useState(emptyMetodoForm());
   const [errorMetodo, setErrorMetodo] = useState('');
 
+  // --- Series y Sucursal ---
+  const [series, setSeries] = useState([]);
+  const [errorSeries, setErrorSeries] = useState('');
+  const [savingSeries, setSavingSeries] = useState(false);
+  const [direccionPrincipal, setDireccionPrincipal] = useState('');
+  const [savingDireccion, setSavingDireccion] = useState(false);
+  const [sucursalSeleccionadaId, setSucursalSeleccionadaId] = useState('');
+  const [sucursalEditNombre, setSucursalEditNombre] = useState('');
+  const [sucursalEditDireccion, setSucursalEditDireccion] = useState('');
+  const [savingSucursalSerie, setSavingSucursalSerie] = useState(false);
+  const [igvPct, setIgvPct] = useState(18);
+  const [savingIgv, setSavingIgv] = useState(false);
+
   useEffect(() => {
     api.get('/empresa').then((res) => setEmpresa(res.data));
     loadUsuarios();
@@ -87,7 +108,29 @@ export default function Configuracion() {
     loadLimiteSucursales();
     loadRoles();
     loadMetodosPago();
+    loadSeries();
   }, []);
+
+  useEffect(() => {
+    if (!empresa) return;
+    setDireccionPrincipal(empresa.direccion_fiscal || '');
+    setIgvPct(empresa.igv_rate ? Math.round(Number(empresa.igv_rate) * 1000) / 10 : 18);
+  }, [empresa]);
+
+  useEffect(() => {
+    if (sucursales.length && !sucursalSeleccionadaId) {
+      const principal = sucursales.find((s) => s.es_principal) || sucursales[0];
+      setSucursalSeleccionadaId(String(principal.id));
+    }
+  }, [sucursales, sucursalSeleccionadaId]);
+
+  useEffect(() => {
+    const s = sucursales.find((x) => String(x.id) === String(sucursalSeleccionadaId));
+    if (s) {
+      setSucursalEditNombre(s.nombre);
+      setSucursalEditDireccion(s.direccion || '');
+    }
+  }, [sucursalSeleccionadaId, sucursales]);
 
   function loadUsuarios() {
     const params = {};
@@ -109,6 +152,75 @@ export default function Configuracion() {
 
   function loadMetodosPago() {
     api.get('/metodos-pago', { params: { todos: 1 } }).then((res) => setMetodosPago(res.data));
+  }
+
+  function loadSeries() {
+    // El correlativo editable arranca en el número real que se va a usar
+    // (ya combinado con lo que se emitió), no en el valor crudo guardado —
+    // así el admin ve y edita el número que de verdad importa.
+    api.get('/series').then((res) => setSeries(res.data.map((s) => ({ ...s, siguiente_numero: s.siguiente_numero_real }))));
+  }
+
+  async function handleModificarDireccion() {
+    setErrorSeries('');
+    setSavingDireccion(true);
+    try {
+      const res = await api.put('/empresa/direccion', { direccion_fiscal: direccionPrincipal });
+      setEmpresa(res.data);
+      toast.success('Dirección principal actualizada.');
+    } catch (err) {
+      setErrorSeries(err.response?.data?.error || 'No se pudo actualizar la dirección.');
+    } finally {
+      setSavingDireccion(false);
+    }
+  }
+
+  async function handleModificarSucursalSerie() {
+    if (!sucursalSeleccionadaId) return;
+    setErrorSeries('');
+    setSavingSucursalSerie(true);
+    try {
+      await api.put(`/sucursales/${sucursalSeleccionadaId}`, { nombre: sucursalEditNombre, direccion: sucursalEditDireccion });
+      await loadSucursales();
+      toast.success('Nombre y dirección de la sede actualizados.');
+    } catch (err) {
+      setErrorSeries(err.response?.data?.error || 'No se pudo actualizar la sede.');
+    } finally {
+      setSavingSucursalSerie(false);
+    }
+  }
+
+  async function handleModificarIgv() {
+    setErrorSeries('');
+    setSavingIgv(true);
+    try {
+      const res = await api.put('/empresa/igv-rate', { igv_rate_pct: Number(igvPct) });
+      setEmpresa(res.data);
+      toast.success('Tasa de IGV actualizada.');
+    } catch (err) {
+      setErrorSeries(err.response?.data?.error || 'No se pudo actualizar la tasa de IGV.');
+    } finally {
+      setSavingIgv(false);
+    }
+  }
+
+  function updateSerieField(tipo, patch) {
+    setSeries((prev) => prev.map((s) => (s.tipo_documento === tipo ? { ...s, ...patch } : s)));
+  }
+
+  async function handleModificarSeries() {
+    setErrorSeries('');
+    setSavingSeries(true);
+    try {
+      const payload = series.map((s) => ({ tipo_documento: s.tipo_documento, serie: s.serie, siguiente_numero: s.siguiente_numero }));
+      const res = await api.put('/series', { series: payload });
+      setSeries(res.data.map((s) => ({ ...s, siguiente_numero: s.siguiente_numero_real })));
+      toast.success('Series actualizadas.');
+    } catch (err) {
+      setErrorSeries(err.response?.data?.error || 'No se pudieron actualizar las series.');
+    } finally {
+      setSavingSeries(false);
+    }
   }
 
   if (!user || user.role !== 'gerencia') {
@@ -390,6 +502,9 @@ export default function Configuracion() {
           <div className={'reports-sidebar-item' + (seccion === 'sucursales' ? ' active' : '')} onClick={() => setSeccion('sucursales')} role="button" tabIndex={0}>
             <Store size={16} /><span>Sucursales</span>
           </div>
+          <div className={'reports-sidebar-item' + (seccion === 'series' ? ' active' : '')} onClick={() => setSeccion('series')} role="button" tabIndex={0}>
+            <Hash size={16} /><span>Series y Sucursal</span>
+          </div>
           <div className={'reports-sidebar-item' + (seccion === 'empleados' ? ' active' : '')} onClick={() => setSeccion('empleados')} role="button" tabIndex={0}>
             <UsersIcon size={16} /><span>Empleados</span>
           </div>
@@ -654,6 +769,106 @@ export default function Configuracion() {
                   )}
                 </tbody>
               </table>
+            </>
+          )}
+
+          {seccion === 'series' && (
+            <>
+              <h3 style={{ marginTop: 0 }}>Series y Sucursal</h3>
+              <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -8 }}>
+                Dirección principal, datos de cada sede, la tasa de IGV con la que se calculan tus ventas y compras,
+                y la serie + correlativo de cada documento que emite el sistema.
+              </p>
+
+              <div className="filter-panel" style={{ alignItems: 'flex-end' }}>
+                <div className="filter-field grow">
+                  <label>Editar Dirección Principal</label>
+                  <input value={direccionPrincipal} onChange={(e) => setDireccionPrincipal(e.target.value)} />
+                </div>
+                <div className="filter-actions">
+                  <button type="button" className="btn-primary" style={{ width: 'auto' }} onClick={handleModificarDireccion} disabled={savingDireccion}>
+                    {savingDireccion ? 'Guardando...' : 'Modificar Dirección'}
+                  </button>
+                </div>
+              </div>
+
+              <div className="filter-panel" style={{ alignItems: 'flex-end' }}>
+                <div className="filter-field">
+                  <label>Editar Series de la Sucursal</label>
+                  <select value={sucursalSeleccionadaId} onChange={(e) => setSucursalSeleccionadaId(e.target.value)}>
+                    {sucursales.map((s) => (
+                      <option key={s.id} value={s.id}>{s.nombre}{s.es_principal ? ' (principal)' : ''}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="filter-field">
+                  <label>Nombre</label>
+                  <input value={sucursalEditNombre} onChange={(e) => setSucursalEditNombre(e.target.value)} />
+                </div>
+                <div className="filter-field grow">
+                  <label>Dirección</label>
+                  <input value={sucursalEditDireccion} onChange={(e) => setSucursalEditDireccion(e.target.value)} />
+                </div>
+                <div className="filter-actions">
+                  <button type="button" className="btn-primary" style={{ width: 'auto' }} onClick={handleModificarSucursalSerie} disabled={savingSucursalSerie || !sucursalSeleccionadaId}>
+                    {savingSucursalSerie ? 'Guardando...' : 'Modificar Nombre y Dirección'}
+                  </button>
+                </div>
+              </div>
+
+              <div className="filter-panel" style={{ alignItems: 'flex-end' }}>
+                <div className="filter-field">
+                  <label>Tasas IGV</label>
+                  <select value={igvPct} onChange={(e) => setIgvPct(Number(e.target.value))}>
+                    <option value={18}>18%</option>
+                    <option value={10}>10%</option>
+                    <option value={0}>0% (exonerado)</option>
+                  </select>
+                </div>
+                <div className="filter-actions">
+                  <button type="button" className="btn-primary" style={{ width: 'auto' }} onClick={handleModificarIgv} disabled={savingIgv}>
+                    {savingIgv ? 'Guardando...' : 'Modificar Tasa'}
+                  </button>
+                </div>
+              </div>
+
+              {errorSeries && <div className="form-error">{errorSeries}</div>}
+
+              <h3>Series y correlativos</h3>
+              <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -8 }}>
+                El correlativo es el siguiente número que se va a usar al emitir. Nunca puede quedar por debajo de lo
+                que ya se emitió — subirlo es seguro (por ejemplo, para retomar una numeración física ya usada).
+              </p>
+              <table className="data-table">
+                <thead>
+                  <tr><th>Documento</th><th>Serie</th><th>Correlativo</th></tr>
+                </thead>
+                <tbody>
+                  {series.map((s) => (
+                    <tr key={s.tipo_documento}>
+                      <td>{DOC_LABELS[s.tipo_documento] || s.tipo_documento}</td>
+                      <td>
+                        <input value={s.serie} maxLength={10}
+                          onChange={(e) => updateSerieField(s.tipo_documento, { serie: e.target.value.toUpperCase() })}
+                          style={{ width: 90 }} />
+                      </td>
+                      <td>
+                        <input type="number" min="1" value={s.siguiente_numero}
+                          onChange={(e) => updateSerieField(s.tipo_documento, { siguiente_numero: e.target.value })}
+                          style={{ width: 100 }} />
+                      </td>
+                    </tr>
+                  ))}
+                  {series.length === 0 && (
+                    <tr><td colSpan={3} className="empty-row">Cargando series...</td></tr>
+                  )}
+                </tbody>
+              </table>
+              <div className="report-toolbar" style={{ justifyContent: 'flex-end' }}>
+                <button type="button" className="btn-primary" style={{ width: 'auto' }} onClick={handleModificarSeries} disabled={savingSeries || series.length === 0}>
+                  {savingSeries ? 'Guardando...' : 'Modificar Series'}
+                </button>
+              </div>
             </>
           )}
 

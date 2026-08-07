@@ -35,6 +35,7 @@ export default function Compras() {
   const [observaciones, setObservaciones] = useState('');
   const [formaPago, setFormaPago] = useState('efectivo');
   const [newSupplier, setNewSupplier] = useState(emptySupplier());
+  const [igvRate, setIgvRate] = useState(0.18);
 
   function load() {
     const params = {};
@@ -52,6 +53,9 @@ export default function Compras() {
   useEffect(() => {
     loadSuppliers();
     api.get('/products').then((res) => setProducts(res.data.filter((p) => p.tipo === 'producto')));
+    api.get('/empresa').then((res) => {
+      if (res.data?.igv_rate) setIgvRate(Number(res.data.igv_rate));
+    });
   }, []);
 
   function handleBuscar(e) {
@@ -86,7 +90,7 @@ export default function Compras() {
   }
 
   const total = items.reduce((sum, it) => sum + Number(it.cantidad || 0) * Number(it.costo_unitario || 0), 0);
-  const subtotal = total / 1.18;
+  const subtotal = total / (1 + igvRate);
   const igv = total - subtotal;
 
   async function handleSubmit(e) {
@@ -299,7 +303,7 @@ export default function Compras() {
 
               <div className="totals-box">
                 <div><span>Subtotal (sin IGV):</span><span>S/ {subtotal.toFixed(2)}</span></div>
-                <div><span>IGV (18%):</span><span>S/ {igv.toFixed(2)}</span></div>
+                <div><span>IGV ({Math.round(igvRate * 100)}%):</span><span>S/ {igv.toFixed(2)}</span></div>
                 <div className="totals-final"><span>Total:</span><span>S/ {total.toFixed(2)}</span></div>
               </div>
 

@@ -2,25 +2,23 @@ const express = require('express');
 const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { requirePermiso, requireAccion } = require('../utils/permisos');
+const { siguienteNumero } = require('../utils/series');
 
 const router = express.Router();
 router.use(requireAuth);
 router.use(requirePermiso('ventas'));
 
-const IGV_RATE = 0.18;
-const SERIE = 'CL02';
+function igvRate() {
+  const row = db.prepare('SELECT igv_rate FROM empresa_config WHERE id = 1').get();
+  return Number(row?.igv_rate) || 0.18;
+}
 
 function round2(n) {
   return Math.round((n + Number.EPSILON) * 100) / 100;
 }
 
-function nextNumero() {
-  const row = db.prepare('SELECT MAX(numero) AS maxNum FROM cotizaciones WHERE serie = ?').get(SERIE);
-  return (row.maxNum || 0) + 1;
-}
-
 router.get('/siguiente-numero', (req, res) => {
-  res.json({ serie: SERIE, numero: nextNumero() });
+  res.json(siguienteNumero('cotizacion'));
 });
 
 // GET /api/cotizaciones?estado=&client_id=&from=&to=&q=
@@ -88,16 +86,17 @@ router.post('/', requireAccion('ventas', 'cotizacion'), (req, res) => {
 
   totalBruto = round2(totalBruto);
   const total = round2(totalBruto * (1 - descuentoGlobalPct / 100));
-  const subtotal = round2(total / (1 + IGV_RATE));
+  const subtotal = round2(total / (1 + igvRate()));
   const igv = round2(total - subtotal);
 
+  const { serie, numero: numeroSugerido } = siguienteNumero('cotizacion');
   const insertAll = db.transaction(() => {
-    const numero = numeroManual ? Number(numeroManual) : nextNumero();
+    const numero = numeroManual ? Number(numeroManual) : numeroSugerido;
     const info = db.prepare(
       `INSERT INTO cotizaciones (serie, numero, client_id, created_by, fecha_emision, moneda, subtotal, igv, descuento_global_pct, total, estado, observaciones)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'vigente', ?)`
     ).run(
-      SERIE,
+      serie,
       numero,
       client_id || null,
       req.user?.id || null,

@@ -9,8 +9,12 @@ router.use(requireAuth);
 router.use(requirePermiso('compras'));
 router.use(resolveSucursal);
 
-const IGV_RATE = 0.18;
 const FORMAS_PAGO = ['efectivo', 'tarjeta', 'banco'];
+
+function igvRate() {
+  const row = db.prepare('SELECT igv_rate FROM empresa_config WHERE id = 1').get();
+  return Number(row?.igv_rate) || 0.18;
+}
 
 function nextNumero() {
   const row = db.prepare('SELECT MAX(numero) AS maxNum FROM purchases').get();
@@ -86,7 +90,7 @@ router.post('/', requireAccion('compras', 'registrar_compra'), (req, res) => {
   }
 
   total = round2(total);
-  const subtotal = round2(total / (1 + IGV_RATE));
+  const subtotal = round2(total / (1 + igvRate()));
   const igv = round2(total - subtotal);
 
   const insertAll = db.transaction(() => {

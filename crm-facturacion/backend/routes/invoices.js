@@ -5,42 +5,36 @@ const { buildInvoicePdf } = require('../utils/pdf');
 const { consumirStock, incrementarStock, ajustarStockSucursal, StockInsuficienteError } = require('../utils/stock');
 const { emitirComprobante, estaConfigurado } = require('../utils/facturacionElectronica');
 const { requirePermiso, requireAccion, tieneAccion } = require('../utils/permisos');
+const { siguienteNumero } = require('../utils/series');
 
 const router = express.Router();
 router.use(requireAuth);
 router.use(requirePermiso('ventas'));
 router.use(resolveSucursal);
 
-const IGV_RATE = 0.18;
+// Tipos de comprobante que este router emite (deben existir en series_config).
+const TIPOS_COMPROBANTE = ['factura', 'boleta', 'nota_credito'];
+
+function igvRate() {
+  const row = db.prepare('SELECT igv_rate FROM empresa_config WHERE id = 1').get();
+  return Number(row?.igv_rate) || 0.18;
+}
 
 // Tipos de Nota de Crédito que revierten una entrega física de mercadería
 // (por eso devuelven stock); el resto son ajustes puramente financieros y
 // no mueven inventario (descuentos, corrección de descripción, etc.).
 const TIPOS_NOTA_DEVUELVEN_STOCK = ['anulacion_operacion', 'anulacion_error_ruc', 'devolucion_total', 'devolucion_item'];
 
-const SERIES_BY_TIPO = {
-  factura: 'F001',
-  boleta: 'B001',
-  nota_credito: 'FC01',
-};
-
 function round2(n) {
   return Math.round((n + Number.EPSILON) * 100) / 100;
-}
-
-function nextNumero(tipo_comprobante, serie) {
-  const row = db.prepare(
-    'SELECT MAX(numero) AS maxNum FROM invoices WHERE tipo_comprobante = ? AND serie = ?'
-  ).get(tipo_comprobante, serie);
-  return (row.maxNum || 0) + 1;
 }
 
 // GET /api/invoices/siguiente-numero?tipo=factura -> { serie, numero } sugerido para el formulario
 router.get('/siguiente-numero', (req, res) => {
   const tipo = req.query.tipo;
-  if (!SERIES_BY_TIPO[tipo]) return res.status(400).json({ error: 'tipo invalido.' });
-  const serie = SERIES_BY_TIPO[tipo];
-  res.json({ serie, numero: nextNumero(tipo, serie) });
+  if (!TIPOS_COMPROBANTE.includes(tipo)) return res.status(400).json({ error: 'tipo invalido.' });
+  const sugerido = siguienteNumero(tipo);
+  res.json(sugerido);
 });
 
 // GET /api/invoices/buscar?tipo=&serie=&numero= -> comprobante original (para Nota de Credito -> Recuperar)
@@ -183,6 +177,7 @@ router.post('/', async (req, res) => {
 
   const descuentoGlobalPct = Math.min(100, Math.max(0, Number(descuento_global_pct || 0)));
 
+  const tasaIgv = igvRate();
   let totalBruto = 0;
   let igvBruto = 0;
   const preparedItems = items.map((it) => {
@@ -194,7 +189,7 @@ router.post('/', async (req, res) => {
 
     const prod = it.product_id ? db.prepare('SELECT afectacion_igv FROM products WHERE id = ?').get(it.product_id) : null;
     const gravado = !prod || prod.afectacion_igv === 'gravado' || prod.afectacion_igv === 'gratuito';
-    const subtotalLinea = gravado ? round2(lineNeta / (1 + IGV_RATE)) : lineNeta;
+    const subtotalLinea = gravado ? round2(lineNeta / (1 + tasaIgv)) : lineNeta;
     const igvLinea = gravado ? round2(lineNeta - subtotalLinea) : 0;
 
     totalBruto += lineNeta;
@@ -229,11 +224,11 @@ router.post('/', async (req, res) => {
   // 0 hasta el total) — el resto queda como saldo pendiente.
   const montoPagado = esAbonado ? Math.min(total, Math.max(0, round2(Number(montoPagadoBody || 0)))) : total;
 
-  const serie = SERIES_BY_TIPO[tipo_comprobante];
+  const { serie, numero: numeroSugerido } = siguienteNumero(tipo_comprobante);
   const fechaEmisionFinal = fecha_emision || new Date().toISOString().slice(0, 10);
 
   const insertAll = db.transaction(() => {
-    const numero = numeroManual ? Number(numeroManual) : nextNumero(tipo_comprobante, serie);
+    const numero = numeroManual ? Number(numeroManual) : numeroSugerido;
     const info = db.prepare(
       `INSERT INTO invoices (
          tipo_comprobante, serie, numero, client_id, created_by, fecha_emision, moneda,
@@ -389,6 +384,7 @@ router.post('/preview-pdf', async (req, res) => {
   const client = client_id ? db.prepare('SELECT * FROM clients WHERE id = ?').get(client_id) : null;
   const descuentoGlobalPct = Math.min(100, Math.max(0, Number(descuento_global_pct || 0)));
 
+  const tasaIgvPreview = igvRate();
   let totalBruto = 0;
   let igvBruto = 0;
   const preparedItems = items.map((it) => {
@@ -399,7 +395,7 @@ router.post('/preview-pdf', async (req, res) => {
     const lineNeta = round2(lineBruta - lineBruta * (descuentoPct / 100));
     const prod = it.product_id ? db.prepare('SELECT afectacion_igv, codigo, unidad FROM products WHERE id = ?').get(it.product_id) : null;
     const gravado = !prod || prod.afectacion_igv === 'gravado' || prod.afectacion_igv === 'gratuito';
-    const subtotalLinea = gravado ? round2(lineNeta / (1 + IGV_RATE)) : lineNeta;
+    const subtotalLinea = gravado ? round2(lineNeta / (1 + tasaIgvPreview)) : lineNeta;
     const igvLinea = gravado ? round2(lineNeta - subtotalLinea) : 0;
     totalBruto += lineNeta;
     igvBruto += igvLinea;
@@ -424,7 +420,7 @@ router.post('/preview-pdf', async (req, res) => {
 
   const invoicePreview = {
     tipo_comprobante: ['factura', 'boleta', 'nota_credito', 'cotizacion'].includes(tipo_comprobante) ? tipo_comprobante : 'boleta',
-    serie: serie || SERIES_BY_TIPO[tipo_comprobante] || 'B001',
+    serie: serie || siguienteNumero(tipo_comprobante)?.serie || 'B001',
     numero: numero || 0,
     fecha_emision: fechaFinal,
     moneda: moneda || 'PEN',
