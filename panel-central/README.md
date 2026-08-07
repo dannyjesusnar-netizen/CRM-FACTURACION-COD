@@ -22,6 +22,10 @@ empresa registrada:
 - Restaurar la contraseña de una cuenta.
 - Restaurar el rol "Gerencia" de una cuenta (por si quedó mal configurada y
   ya nadie en esa empresa puede repararlo desde dentro de su propio CRM).
+- Aprobar o rechazar las empresas que se auto-registraron (multi-empresa).
+- Asignar el **costo mensual de suscripción** de cada empresa registrada —
+  ver "Suscripción a la plataforma" en `crm-facturacion/README.md` para el
+  cobro recurrente (Culqi) del lado del CRM.
 
 ## Cómo funciona
 

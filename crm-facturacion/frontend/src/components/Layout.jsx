@@ -7,7 +7,7 @@ import SedeSwitcher from './SedeSwitcher';
 import {
   TrendingUp, ShoppingCart, Bike, Wallet, Users, Calculator, ClipboardList, FileText,
   Moon, Sun, Settings, ChevronDown, Phone, FileSignature, Lock, Video, BarChart3, LogOut, UsersRound,
-  Building2,
+  Building2, CreditCard,
 } from 'lucide-react';
 
 const SUBNAV_ITEMS = [
@@ -95,6 +95,11 @@ export default function Layout() {
               <div className="user-dropdown-item" onClick={() => navigate('/cambiar-contrasena')}>
                 <Lock size={15} className="dropdown-icon" /> Cambiar contraseña
               </div>
+              {user?.role === 'gerencia' && (
+                <div className="user-dropdown-item" onClick={() => navigate('/mis-pagos')}>
+                  <CreditCard size={15} className="dropdown-icon" /> Mis pagos
+                </div>
+              )}
               <div className="user-dropdown-item" onClick={() => toast.info('Capacitación en línea disponible próximamente.')}>
                 <Video size={15} className="dropdown-icon" /> Capacitación en línea
               </div>

@@ -26,6 +26,8 @@ const roleRoutes = require('./routes/roles');
 const platformRoutes = require('./routes/platform');
 const metodoPagoRoutes = require('./routes/metodosPago');
 const serieRoutes = require('./routes/series');
+const suscripcionRoutes = require('./routes/suscripcion');
+const { procesarCobrosVencidos } = require('./utils/facturacionPlataforma');
 
 // panel-central es una app hermana en este mismo repo (login propio, por
 // correo+contraseña, con su propia base de datos — ver panel-central/README.md).
@@ -69,6 +71,7 @@ app.use('/api/roles', roleRoutes);
 app.use('/api/platform', platformRoutes);
 app.use('/api/metodos-pago', metodoPagoRoutes);
 app.use('/api/series', serieRoutes);
+app.use('/api/suscripcion', suscripcionRoutes);
 
 // panel-central: su API vive en /panel-api (no /api, para no chocar con la
 // de este CRM) y su login/base de datos son completamente independientes
@@ -109,3 +112,14 @@ app.use((err, req, res, next) => {
 app.listen(PORT, () => {
   console.log(`CRM Facturacion backend escuchando en puerto ${PORT}`);
 });
+
+// Cobro recurrente de suscripciones a la plataforma (empresas con tarjeta
+// guardada y costo mensual asignado, ver routes/suscripcion.js). Corre cada
+// 6 horas — de sobra para que ningún cobro vencido espere más de eso, sin
+// necesitar un cron externo. Si Culqi no está configurado, no hace nada
+// (ver utils/culqi.js).
+const SEIS_HORAS_MS = 6 * 60 * 60 * 1000;
+setInterval(() => {
+  procesarCobrosVencidos().catch((err) => console.error('Error procesando cobros de suscripción:', err));
+}, SEIS_HORAS_MS);
+procesarCobrosVencidos().catch((err) => console.error('Error procesando cobros de suscripción:', err));

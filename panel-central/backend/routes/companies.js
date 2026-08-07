@@ -124,4 +124,16 @@ router.put('/:id/live/registros/:ruc/rechazar', (req, res) =>
   proxy(req, res, `/registros/${req.params.ruc}/rechazar`, { method: 'PUT', body: {} })
 );
 
+// PUT /api/companies/:id/live/registros/:ruc/costo { costo_mensual } — lo
+// que le corresponde pagar a esa empresa por mes de suscripción a la
+// plataforma (ver "Mis pagos" del lado del CRM).
+router.put('/:id/live/registros/:ruc/costo', (req, res) =>
+  proxy(req, res, `/registros/${req.params.ruc}/costo`, { method: 'PUT', body: { costo_mensual: req.body?.costo_mensual } })
+);
+
+// GET /api/companies/:id/live/registros/:ruc/pagos — historial de cobros.
+router.get('/:id/live/registros/:ruc/pagos', (req, res) =>
+  proxy(req, res, `/registros/${req.params.ruc}/pagos`)
+);
+
 module.exports = router;
