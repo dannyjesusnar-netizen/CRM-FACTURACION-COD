@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api';
 import { useToast } from '../context/ToastContext';
+import ConfirmDialog from '../components/ConfirmDialog';
 
 const TIPOS_NOTA = [
   { value: 'anulacion_operacion', label: 'Anulación de la operación' },
@@ -41,6 +42,8 @@ export default function RegistroNotaCredito() {
   const [cuenta, setCuenta] = useState('efectivo');
   const [error, setError] = useState('');
   const [loadingRecuperar, setLoadingRecuperar] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [emitiendo, setEmitiendo] = useState(false);
   const [igvRate, setIgvRate] = useState(0.18);
 
   useEffect(() => {
@@ -135,11 +138,16 @@ export default function RegistroNotaCredito() {
     return { rows, total: round2(total) };
   }, [items, igvRate]);
 
-  async function handleSubmit(e) {
+  function handleSubmit(e) {
     e.preventDefault();
     setError('');
     if (!original) { setError('Primero recupera el comprobante que quieres modificar (Serie y Número + Recuperar).'); return; }
     if (items.length === 0) { setError('No hay items para la nota de crédito.'); return; }
+    setShowConfirm(true);
+  }
+
+  async function confirmarEmision() {
+    setEmitiendo(true);
     try {
       await api.post('/invoices', {
         tipo_comprobante: 'nota_credito',
@@ -164,6 +172,9 @@ export default function RegistroNotaCredito() {
       navigate('/ventas');
     } catch (err) {
       setError(err.response?.data?.error || 'Error al registrar la nota de crédito.');
+      setShowConfirm(false);
+    } finally {
+      setEmitiendo(false);
     }
   }
 
@@ -311,6 +322,14 @@ export default function RegistroNotaCredito() {
           </div>
         </div>
       </form>
+
+      <ConfirmDialog
+        open={showConfirm}
+        message="Se emitirá la nota de crédito y ya no podrás editarla."
+        loading={emitiendo}
+        onConfirm={confirmarEmision}
+        onCancel={() => setShowConfirm(false)}
+      />
     </div>
   );
 }

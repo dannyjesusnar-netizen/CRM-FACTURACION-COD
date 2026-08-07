@@ -1,11 +1,47 @@
 import { useEffect, useState } from 'react';
 import api from '../api';
 import { useToast } from '../context/ToastContext';
+import { useAuth } from '../context/AuthContext';
+import PeriodoContable from '../components/PeriodoContable';
 
 const FORMA_PAGO_LABEL = { efectivo: 'Efectivo', tarjeta: 'Tarjeta', banco: 'Transferencia/Banco' };
 
+const TIPOS_COMPROBANTE = [
+  { value: 'factura', label: '01 - FACTURA' },
+  { value: 'boleta', label: '03 - BOLETA' },
+  { value: 'ticket', label: 'TICKET' },
+  { value: 'recibo_honorarios', label: 'RECIBO POR HONORARIOS' },
+  { value: 'otros', label: 'OTROS' },
+];
+const MONEDAS = [
+  { value: 'PEN', label: 'SOLES' },
+  { value: 'USD', label: 'DÓLARES' },
+];
+const TIPOS_COMPRA = [
+  { value: 'mercaderia', label: 'Mercadería' },
+  { value: 'servicio', label: 'Servicio' },
+  { value: 'activo_fijo', label: 'Activo Fijo' },
+  { value: 'envase_embalaje', label: 'Envase/Embalaje' },
+  { value: 'otros', label: 'Otros' },
+];
+const TIPOS_OPERACION = [
+  { value: 'gravada_exportacion', label: 'Con IGV Destinadas a Operaciones Gravadas y/o De Exportación' },
+  { value: 'no_gravada', label: 'Con IGV Destinadas a Operaciones No Gravadas' },
+  { value: 'sin_derecho_credito', label: 'Sin derecho a crédito fiscal' },
+  { value: 'no_gravado', label: 'No Gravado' },
+];
+const AFECTACIONES_IGV = [
+  { value: 'gravado', label: 'Gravado' },
+  { value: 'exonerado', label: 'Exonerado' },
+  { value: 'inafecto', label: 'Inafecto' },
+];
+
+function round2(n) {
+  return Math.round((n + Number.EPSILON) * 100) / 100;
+}
+
 function emptyItem() {
-  return { product_id: '', cantidad: 1, costo_unitario: 0 };
+  return { product_id: '', cantidad: 1, costo_unitario: 0, unidad: 'UND', afectacion_igv: 'gravado', observacion: '' };
 }
 
 function emptySupplier() {
@@ -18,6 +54,7 @@ function todayStr() {
 
 export default function Compras() {
   const toast = useToast();
+  const { sucursal } = useAuth();
   const [purchases, setPurchases] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [products, setProducts] = useState([]);
@@ -25,6 +62,9 @@ export default function Compras() {
   const [q, setQ] = useState('');
   const [desde, setDesde] = useState(todayStr().slice(0, 8) + '01');
   const [hasta, setHasta] = useState(todayStr());
+  const hoy = new Date();
+  const [periodoMes, setPeriodoMes] = useState(hoy.getMonth() + 1);
+  const [periodoAnio, setPeriodoAnio] = useState(hoy.getFullYear());
 
   const [showForm, setShowForm] = useState(false);
   const [showSupplierForm, setShowSupplierForm] = useState(false);
@@ -37,12 +77,33 @@ export default function Compras() {
   const [newSupplier, setNewSupplier] = useState(emptySupplier());
   const [igvRate, setIgvRate] = useState(0.18);
 
-  function load() {
+  const [tipoComprobante, setTipoComprobante] = useState('factura');
+  const [docSerie, setDocSerie] = useState('');
+  const [docNumero, setDocNumero] = useState('');
+  const [fechaEmision, setFechaEmision] = useState(todayStr());
+  const [moneda, setMoneda] = useState('PEN');
+  const [tipoCambio, setTipoCambio] = useState(1);
+  const [tipoCompra, setTipoCompra] = useState('mercaderia');
+  const [tipoOperacion, setTipoOperacion] = useState('gravada_exportacion');
+  const [descuentoPct, setDescuentoPct] = useState(0);
+  const [percepcion, setPercepcion] = useState(0);
+
+  function load(overrides = {}) {
     const params = {};
-    if (desde) params.from = desde;
-    if (hasta) params.to = hasta;
+    const d = overrides.desde ?? desde;
+    const h = overrides.hasta ?? hasta;
+    if (d) params.from = d;
+    if (h) params.to = h;
     if (q) params.q = q;
     api.get('/purchases', { params }).then((res) => setPurchases(res.data));
+  }
+
+  function aplicarPeriodo({ mes, anio, desde: d, hasta: h }) {
+    setPeriodoMes(mes);
+    setPeriodoAnio(anio);
+    setDesde(d);
+    setHasta(h);
+    load({ desde: d, hasta: h });
   }
 
   function loadSuppliers() {
@@ -68,6 +129,16 @@ export default function Compras() {
     setItems([emptyItem()]);
     setObservaciones('');
     setFormaPago('efectivo');
+    setTipoComprobante('factura');
+    setDocSerie('');
+    setDocNumero('');
+    setFechaEmision(todayStr());
+    setMoneda('PEN');
+    setTipoCambio(1);
+    setTipoCompra('mercaderia');
+    setTipoOperacion('gravada_exportacion');
+    setDescuentoPct(0);
+    setPercepcion(0);
     setError('');
     setShowForm(true);
   }
@@ -89,14 +160,30 @@ export default function Compras() {
     setItems((prev) => prev.filter((_, i) => i !== idx));
   }
 
-  const total = items.reduce((sum, it) => sum + Number(it.cantidad || 0) * Number(it.costo_unitario || 0), 0);
-  const subtotal = total / (1 + igvRate);
-  const igv = total - subtotal;
+  const computedTotals = items.reduce((acc, it) => {
+    const bruta = Number(it.cantidad || 0) * Number(it.costo_unitario || 0);
+    const neta = bruta * (1 - Number(descuentoPct || 0) / 100);
+    if ((it.afectacion_igv || 'gravado') === 'gravado') {
+      const igvLinea = neta - neta / (1 + igvRate);
+      acc.subtotal += neta - igvLinea;
+      acc.igv += igvLinea;
+    } else {
+      acc.noGravado += neta;
+    }
+    return acc;
+  }, { subtotal: 0, igv: 0, noGravado: 0 });
+  const subtotal = round2(computedTotals.subtotal);
+  const igv = round2(computedTotals.igv);
+  const noGravado = round2(computedTotals.noGravado);
+  const total = round2(subtotal + igv + noGravado + Number(percepcion || 0));
 
   async function handleSubmit(e) {
     e.preventDefault();
     setError('');
     if (!supplierId) { setError('Selecciona un proveedor.'); return; }
+    if (!docSerie || !docNumero) { setError('Ingresa la serie y el número del documento.'); return; }
+    if (!fechaEmision) { setError('Ingresa la fecha de emisión.'); return; }
+    if (moneda === 'USD' && Number(tipoCambio) <= 0) { setError('Ingresa un tipo de cambio válido.'); return; }
     if (items.length === 0 || items.some((it) => !it.product_id || !it.cantidad)) {
       setError('Completa todos los items (producto y cantidad).');
       return;
@@ -108,9 +195,22 @@ export default function Compras() {
           product_id: Number(it.product_id),
           cantidad: Number(it.cantidad),
           costo_unitario: Number(it.costo_unitario),
+          unidad: it.unidad,
+          afectacion_igv: it.afectacion_igv,
+          observacion: it.observacion,
         })),
         observaciones,
         forma_pago: formaPago,
+        tipo_comprobante: tipoComprobante,
+        serie: docSerie,
+        numero_doc: docNumero,
+        fecha: fechaEmision,
+        moneda,
+        tipo_cambio: Number(tipoCambio),
+        tipo_compra: tipoCompra,
+        tipo_operacion: tipoOperacion,
+        descuento_pct: Number(descuentoPct || 0),
+        percepcion: Number(percepcion || 0),
       });
       setShowForm(false);
       toast.success('Compra registrada correctamente.');
@@ -151,10 +251,13 @@ export default function Compras() {
 
   return (
     <div>
-      <h1 className="page-title">Compras</h1>
+      <div className="page-header">
+        <h1 className="page-title">Compras</h1>
+        <PeriodoContable mes={periodoMes} anio={periodoAnio} onChange={aplicarPeriodo} />
+      </div>
 
       <div className="ventas-actions">
-        <button className="ventas-action-btn" onClick={openNew}>+ Nueva compra</button>
+        <button className="ventas-action-btn" onClick={openNew}>Registrar Compras</button>
       </div>
 
       <form className="filter-panel" onSubmit={handleBuscar}>
@@ -233,10 +336,16 @@ export default function Compras() {
 
       {showForm && (
         <div className="modal-overlay" onClick={() => setShowForm(false)}>
-          <div className="modal modal-lg" onClick={(e) => e.stopPropagation()}>
-            <h2>Nueva compra</h2>
+          <div className="modal modal-xl" onClick={(e) => e.stopPropagation()}>
+            <h2>Registrar Compra</h2>
             <form onSubmit={handleSubmit}>
-              <div className="form-row">
+              <div className="compra-header-grid">
+                <div>
+                  <label>Documento</label>
+                  <select required value={tipoComprobante} onChange={(e) => setTipoComprobante(e.target.value)}>
+                    {TIPOS_COMPROBANTE.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                  </select>
+                </div>
                 <div>
                   <label>Proveedor</label>
                   <select required value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
@@ -249,6 +358,55 @@ export default function Compras() {
                     + Nuevo proveedor
                   </button>
                 </div>
+
+                <div>
+                  <label>Serie - Nro</label>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <input required placeholder="Serie" value={docSerie} onChange={(e) => setDocSerie(e.target.value)} style={{ width: 90 }} />
+                    <span>-</span>
+                    <input required placeholder="Número" value={docNumero} onChange={(e) => setDocNumero(e.target.value)} />
+                  </div>
+                </div>
+                <div>
+                  <label>Compra (destino de la operación)</label>
+                  <select required value={tipoOperacion} onChange={(e) => setTipoOperacion(e.target.value)}>
+                    {TIPOS_OPERACION.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                  </select>
+                </div>
+
+                <div className="form-row" style={{ margin: 0 }}>
+                  <div>
+                    <label>Fecha Emisión</label>
+                    <input required type="date" value={fechaEmision} onChange={(e) => setFechaEmision(e.target.value)} />
+                  </div>
+                  <div>
+                    <label>T.C.</label>
+                    <input type="number" min="0" step="0.001" value={tipoCambio} disabled={moneda === 'PEN'}
+                      onChange={(e) => setTipoCambio(e.target.value)} />
+                  </div>
+                </div>
+                <div>
+                  <label>Observación</label>
+                  <textarea rows={1} value={observaciones} onChange={(e) => setObservaciones(e.target.value)} />
+                </div>
+
+                <div>
+                  <label>Tipo de Compra</label>
+                  <select required value={tipoCompra} onChange={(e) => setTipoCompra(e.target.value)}>
+                    {TIPOS_COMPRA.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label>Sucursal</label>
+                  <input readOnly value={sucursal?.nombre || '—'} />
+                </div>
+
+                <div>
+                  <label>Moneda</label>
+                  <select required value={moneda} onChange={(e) => { setMoneda(e.target.value); if (e.target.value === 'PEN') setTipoCambio(1); }}>
+                    {MONEDAS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+                  </select>
+                </div>
                 <div>
                   <label>Forma de pago</label>
                   <select value={formaPago} onChange={(e) => setFormaPago(e.target.value)}>
@@ -260,60 +418,89 @@ export default function Compras() {
               </div>
 
               <label>Items</label>
-              <table className="items-table">
-                <thead>
-                  <tr>
-                    <th>Producto</th>
-                    <th>Cant.</th>
-                    <th>Costo Unit.</th>
-                    <th>Subtotal</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map((it, idx) => (
-                    <tr key={idx}>
-                      <td>
-                        <select required value={it.product_id} onChange={(e) => handleProductSelect(idx, e.target.value)}>
-                          <option value="">Selecciona...</option>
-                          {products.map((p) => (
-                            <option key={p.id} value={p.id}>{p.nombre}</option>
-                          ))}
-                        </select>
-                      </td>
-                      <td>
-                        <input type="number" min="0.01" step="0.01" style={{ width: 70 }} value={it.cantidad}
-                          onChange={(e) => updateItem(idx, { cantidad: e.target.value })} />
-                      </td>
-                      <td>
-                        <input type="number" min="0" step="0.01" style={{ width: 90 }} value={it.costo_unitario}
-                          onChange={(e) => updateItem(idx, { costo_unitario: e.target.value })} />
-                      </td>
-                      <td>S/ {(Number(it.cantidad || 0) * Number(it.costo_unitario || 0)).toFixed(2)}</td>
-                      <td>
-                        {items.length > 1 && (
-                          <button type="button" className="btn-link danger" onClick={() => removeItem(idx)}>x</button>
-                        )}
-                      </td>
+              <div className="table-scroll">
+                <table className="items-table">
+                  <thead>
+                    <tr>
+                      <th>Producto</th>
+                      <th>Observación</th>
+                      <th>Cant.</th>
+                      <th>Und.</th>
+                      <th>Costo Unit.</th>
+                      <th>IGV</th>
+                      <th>Importe</th>
+                      <th></th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {items.map((it, idx) => (
+                      <tr key={idx}>
+                        <td>
+                          <select required value={it.product_id} onChange={(e) => handleProductSelect(idx, e.target.value)}>
+                            <option value="">Selecciona...</option>
+                            {products.map((p) => (
+                              <option key={p.id} value={p.id}>{p.nombre}</option>
+                            ))}
+                          </select>
+                        </td>
+                        <td>
+                          <input value={it.observacion} style={{ width: 100 }}
+                            onChange={(e) => updateItem(idx, { observacion: e.target.value })} />
+                        </td>
+                        <td>
+                          <input type="number" min="0.01" step="0.01" style={{ width: 65 }} value={it.cantidad}
+                            onChange={(e) => updateItem(idx, { cantidad: e.target.value })} />
+                        </td>
+                        <td>
+                          <input value={it.unidad} style={{ width: 55 }}
+                            onChange={(e) => updateItem(idx, { unidad: e.target.value })} />
+                        </td>
+                        <td>
+                          <input type="number" min="0" step="0.01" style={{ width: 85 }} value={it.costo_unitario}
+                            onChange={(e) => updateItem(idx, { costo_unitario: e.target.value })} />
+                        </td>
+                        <td>
+                          <select value={it.afectacion_igv} onChange={(e) => updateItem(idx, { afectacion_igv: e.target.value })}>
+                            {AFECTACIONES_IGV.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
+                          </select>
+                        </td>
+                        <td>S/ {(Number(it.cantidad || 0) * Number(it.costo_unitario || 0)).toFixed(2)}</td>
+                        <td>
+                          {items.length > 1 && (
+                            <button type="button" className="btn-link danger" onClick={() => removeItem(idx)}>x</button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
               <button type="button" className="btn-secondary" style={{ marginTop: 8 }} onClick={addItem}>+ Agregar item</button>
 
+              <div className="form-row" style={{ marginTop: 14 }}>
+                <div>
+                  <label>Descuento %</label>
+                  <input type="number" min="0" max="100" step="1" value={descuentoPct}
+                    onChange={(e) => setDescuentoPct(e.target.value)} />
+                </div>
+                <div>
+                  <label>Percepción S/</label>
+                  <input type="number" min="0" step="0.01" value={percepcion}
+                    onChange={(e) => setPercepcion(e.target.value)} />
+                </div>
+              </div>
+
               <div className="totals-box">
-                <div><span>Subtotal (sin IGV):</span><span>S/ {subtotal.toFixed(2)}</span></div>
+                <div><span>Subtotal:</span><span>S/ {subtotal.toFixed(2)}</span></div>
+                <div><span>No Gravado:</span><span>S/ {noGravado.toFixed(2)}</span></div>
                 <div><span>IGV ({Math.round(igvRate * 100)}%):</span><span>S/ {igv.toFixed(2)}</span></div>
                 <div className="totals-final"><span>Total:</span><span>S/ {total.toFixed(2)}</span></div>
               </div>
 
-              <label>Observaciones</label>
-              <textarea rows={2} value={observaciones} onChange={(e) => setObservaciones(e.target.value)} />
-
               {error && <div className="form-error">{error}</div>}
               <div className="modal-actions">
                 <button type="button" className="btn-secondary" onClick={() => setShowForm(false)}>Cancelar</button>
-                <button type="submit" className="btn-primary">Registrar compra</button>
+                <button type="submit" className="btn-primary">Registrar Compra</button>
               </div>
             </form>
           </div>

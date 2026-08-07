@@ -4,6 +4,7 @@ import api from '../api';
 import { useToast } from '../context/ToastContext';
 import ProductSearchBar from '../components/ProductSearchBar';
 import ClientPicker from '../components/ClientPicker';
+import ConfirmDialog from '../components/ConfirmDialog';
 
 const MOTIVOS = [
   { value: 'venta', label: 'Venta' },
@@ -36,6 +37,8 @@ export default function GuiaRemitente() {
   const [observaciones, setObservaciones] = useState('');
   const [cantidadBultos, setCantidadBultos] = useState(0);
   const [error, setError] = useState('');
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [emitiendo, setEmitiendo] = useState(false);
 
   useEffect(() => {
     api.get('/guias/siguiente-numero').then((res) => {
@@ -75,10 +78,15 @@ export default function GuiaRemitente() {
     return { rows, pesoTotal: round2(pesoTotal) };
   }, [items]);
 
-  async function handleSubmit(e) {
+  function handleSubmit(e) {
     e.preventDefault();
     setError('');
     if (items.length === 0) { setError('Agrega al menos un producto.'); return; }
+    setShowConfirm(true);
+  }
+
+  async function confirmarEmision() {
+    setEmitiendo(true);
     try {
       await api.post('/guias', {
         client_id: cliente ? cliente.id : null,
@@ -99,6 +107,9 @@ export default function GuiaRemitente() {
       navigate('/ventas');
     } catch (err) {
       setError(err.response?.data?.error || 'Error al registrar la guía.');
+      setShowConfirm(false);
+    } finally {
+      setEmitiendo(false);
     }
   }
 
@@ -218,6 +229,14 @@ export default function GuiaRemitente() {
           </div>
         </div>
       </form>
+
+      <ConfirmDialog
+        open={showConfirm}
+        message="Se emitirá la guía de remisión y ya no podrás editarla."
+        loading={emitiendo}
+        onConfirm={confirmarEmision}
+        onCancel={() => setShowConfirm(false)}
+      />
     </div>
   );
 }
