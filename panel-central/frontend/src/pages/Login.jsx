@@ -3,34 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
-
-const FLOATING_SHAPES = [
-  { type: 'dot', top: '12%', left: '10%', size: 14, color: '#fbbf24', delay: '0s' },
-  { type: 'square', top: '20%', left: '82%', size: 18, color: '#6366f1', delay: '0.3s' },
-  { type: 'plus', top: '48%', left: '88%', size: 16, color: '#fbbf24', delay: '0.9s' },
-  { type: 'dot', top: '72%', left: '15%', size: 10, color: '#6366f1', delay: '0.6s' },
-  { type: 'plus', top: '82%', left: '68%', size: 14, color: '#22c55e', delay: '0.2s' },
-  { type: 'dot', top: '38%', left: '92%', size: 8, color: '#22c55e', delay: '1.1s' },
-  { type: 'square', top: '86%', left: '38%', size: 14, color: '#fbbf24', delay: '0.5s' },
-  { type: 'dot', top: '58%', left: '6%', size: 9, color: '#f472b6', delay: '0.8s' },
-];
-
-function FloatingShapes() {
-  return (
-    <>
-      {FLOATING_SHAPES.map((s, i) => (
-        <span
-          key={i}
-          className={`auth-shape ${s.type}`}
-          style={{
-            top: s.top, left: s.left, width: s.size, height: s.size,
-            color: s.color, animationDelay: s.delay,
-          }}
-        />
-      ))}
-    </>
-  );
-}
+import FloatingShapes from '../components/FloatingShapes';
 
 function LoginIllustration() {
   return (
@@ -55,6 +28,23 @@ function LoginIllustration() {
       <circle cx="291" cy="213" r="22" fill="#6366f1" />
       <path d="M281 213 l7 7 15 -15" stroke="#ffffff" strokeWidth="4" fill="none" strokeLinecap="round" strokeLinejoin="round" />
       <circle cx="291" cy="280" r="5" fill="#c7c9f4" />
+      {/* personita trabajando, de pie frente al monitor */}
+      <g transform="translate(160 178) scale(0.78)">
+        <ellipse cx="45" cy="150" rx="32" ry="7" fill="#c7c9f4" opacity="0.5" />
+        <rect x="30" y="95" width="10" height="50" rx="5" fill="#475569" />
+        <rect x="48" y="95" width="10" height="50" rx="5" fill="#334155" />
+        <rect x="26" y="142" width="18" height="8" rx="4" fill="#1e293b" />
+        <rect x="46" y="142" width="18" height="8" rx="4" fill="#1e293b" />
+        <path d="M22 55 Q45 42 68 55 L64 100 Q45 108 26 100 Z" fill="#f59e0b" />
+        <path d="M26 62 Q14 75 18 92" stroke="#f59e0b" strokeWidth="9" fill="none" strokeLinecap="round" />
+        <path d="M64 62 Q80 68 82 84" stroke="#f59e0b" strokeWidth="9" fill="none" strokeLinecap="round" />
+        <rect x="76" y="80" width="20" height="26" rx="4" fill="#ffffff" stroke="#c7c9f4" strokeWidth="1.5" />
+        <rect x="80" y="86" width="12" height="3" rx="1.5" fill="#c7c9f4" />
+        <rect x="80" y="92" width="12" height="3" rx="1.5" fill="#c7c9f4" />
+        <rect x="40" y="36" width="10" height="12" fill="#f4b183" />
+        <circle cx="45" cy="26" r="15" fill="#f4b183" />
+        <path d="M29 22 Q31 6 45 6 Q61 6 61 22 Q52 13 45 15 Q36 13 29 22 Z" fill="#3f3f46" />
+      </g>
     </svg>
   );
 }

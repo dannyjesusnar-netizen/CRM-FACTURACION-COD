@@ -166,12 +166,12 @@ body {
 .auth-blob-a, .auth-blob-b { position: absolute; border-radius: 50%; background: rgba(99, 102, 241, 0.14); }
 .auth-blob-a { top: -70px; right: -70px; width: 240px; height: 240px; }
 .auth-blob-b { bottom: -90px; left: -60px; width: 280px; height: 280px; background: rgba(99, 102, 241, 0.11); }
-.auth-shape { position: absolute; animation: authFloat 4.5s ease-in-out infinite; }
-.auth-shape.dot { border-radius: 50%; background: currentColor; }
-.auth-shape.square { border: 2.5px solid currentColor; border-radius: 6px; transform: rotate(12deg); }
-.auth-shape.plus::before, .auth-shape.plus::after { content: ''; position: absolute; background: currentColor; border-radius: 2px; }
-.auth-shape.plus::before { top: 50%; left: 0; right: 0; height: 2.5px; transform: translateY(-50%); }
-.auth-shape.plus::after { left: 50%; top: 0; bottom: 0; width: 2.5px; transform: translateX(-50%); }
+.floating-shape { position: absolute; animation: authFloat 4.5s ease-in-out infinite; }
+.floating-shape.dot { border-radius: 50%; background: currentColor; }
+.floating-shape.square { border: 2.5px solid currentColor; border-radius: 6px; transform: rotate(12deg); }
+.floating-shape.plus::before, .floating-shape.plus::after { content: ''; position: absolute; background: currentColor; border-radius: 2px; }
+.floating-shape.plus::before { top: 50%; left: 0; right: 0; height: 2.5px; transform: translateY(-50%); }
+.floating-shape.plus::after { left: 50%; top: 0; bottom: 0; width: 2.5px; transform: translateX(-50%); }
 @keyframes authFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-12px); } }
 
 .auth-form-panel { flex: 1; display: flex; align-items: center; justify-content: center; padding: 40px; background: #ffffff; }
