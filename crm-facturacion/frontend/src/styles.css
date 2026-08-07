@@ -195,6 +195,21 @@ body {
     radial-gradient(circle at 85% 80%, rgba(255, 255, 255, 0.06), transparent 45%),
     linear-gradient(135deg, var(--brand-blue-darker), var(--brand-blue-dark) 60%, var(--brand-blue));
 }
+
+.sede-page {
+  height: 100%; display: flex; align-items: center; justify-content: center;
+  position: relative; overflow: hidden;
+  background:
+    radial-gradient(420px 320px at 15% 20%, rgba(147, 197, 253, 0.4), transparent 70%),
+    radial-gradient(380px 300px at 85% 12%, rgba(129, 140, 248, 0.22), transparent 70%),
+    radial-gradient(460px 360px at 82% 88%, rgba(147, 197, 253, 0.35), transparent 70%),
+    radial-gradient(360px 280px at 8% 85%, rgba(129, 140, 248, 0.18), transparent 70%),
+    #f6f7fd;
+}
+.sede-float-icon {
+  position: absolute; animation: authFloat 4.5s ease-in-out infinite;
+  filter: drop-shadow(0 4px 10px rgba(51, 65, 85, 0.12));
+}
 .login-card {
   background: var(--surface); padding: 42px 38px; border-radius: 16px; width: 380px;
   box-shadow: var(--shadow-xl);
