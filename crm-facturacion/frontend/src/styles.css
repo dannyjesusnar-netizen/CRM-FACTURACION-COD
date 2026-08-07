@@ -205,6 +205,69 @@ body {
 .login-subtitle { color: var(--ink-muted); font-size: 13px; margin-bottom: 24px; }
 .login-hint { margin-top: 20px; font-size: 12px; color: var(--ink-muted); text-align: center; }
 
+/* ---------- Login (pantalla dividida con ilustración) ----------
+   Clases propias (auth-*), separadas de .login-page/.login-card de arriba
+   a propósito: esas otras clases las siguen usando Registro, Privacidad,
+   Términos y Seleccionar sede, que no deben verse afectadas por este
+   rediseño. Siempre en paleta clara, sin importar el modo oscuro. */
+
+.auth-split { height: 100%; display: flex; background: #ffffff; }
+.auth-illustration {
+  flex: 1.05; position: relative; overflow: hidden; min-width: 0;
+  background: linear-gradient(165deg, #eef0fd 0%, #e7e9fb 55%, #e2e5fa 100%);
+  display: flex; align-items: center; justify-content: center;
+}
+.auth-illustration-brand {
+  position: absolute; top: 28px; left: 32px; display: flex; align-items: center; gap: 8px;
+  font-weight: 800; font-size: 15px; color: #3730a3; z-index: 2;
+}
+.auth-illustration-brand .brand-suffix { font-weight: 600; opacity: 0.65; font-size: 12px; margin-left: 3px; }
+.auth-blob-a, .auth-blob-b { position: absolute; border-radius: 50%; background: rgba(99, 102, 241, 0.14); }
+.auth-blob-a { top: -70px; right: -70px; width: 240px; height: 240px; }
+.auth-blob-b { bottom: -90px; left: -60px; width: 280px; height: 280px; background: rgba(99, 102, 241, 0.11); }
+.auth-shape { position: absolute; animation: authFloat 4.5s ease-in-out infinite; }
+.auth-shape.dot { border-radius: 50%; background: currentColor; }
+.auth-shape.square { border: 2.5px solid currentColor; border-radius: 6px; transform: rotate(12deg); }
+.auth-shape.plus { color: inherit; }
+.auth-shape.plus::before, .auth-shape.plus::after { content: ''; position: absolute; background: currentColor; border-radius: 2px; }
+.auth-shape.plus::before { top: 50%; left: 0; right: 0; height: 2.5px; transform: translateY(-50%); }
+.auth-shape.plus::after { left: 50%; top: 0; bottom: 0; width: 2.5px; transform: translateX(-50%); }
+@keyframes authFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-12px); } }
+
+.auth-form-panel { flex: 1; display: flex; align-items: center; justify-content: center; padding: 40px; background: #ffffff; }
+.auth-form-card { width: 100%; max-width: 360px; animation: fadeUp 0.35s var(--ease-out); }
+.auth-form-title { font-size: 27px; font-weight: 800; color: #1e1b3a; margin: 0 0 6px; letter-spacing: -0.01em; }
+.auth-form-subtitle { font-size: 13px; color: #8b8ea3; margin: 0 0 30px; line-height: 1.5; }
+.auth-field { margin-bottom: 18px; position: relative; }
+.auth-field label { display: block; font-size: 12.5px; font-weight: 600; color: #4b4d63; margin-bottom: 6px; }
+.auth-field input {
+  width: 100%; border: none; border-bottom: 1.5px solid #e4e5f1; padding: 8px 26px 8px 2px; font-size: 14px;
+  background: transparent; color: #1e1b3a; border-radius: 0; transition: border-color 0.18s ease;
+}
+.auth-field input:focus { outline: none; border-bottom-color: #6366f1; box-shadow: none; }
+.auth-field-password button {
+  position: absolute; right: 0; bottom: 8px; background: none; border: none; color: #9698ab;
+  cursor: pointer; padding: 2px; display: flex;
+}
+.auth-forgot { text-align: right; margin: -6px 0 22px; }
+.auth-forgot button { background: none; border: none; padding: 0; font-size: 12.5px; color: #6366f1; font-weight: 600; cursor: pointer; }
+.auth-forgot button:hover { text-decoration: underline; }
+.auth-submit {
+  width: 100%; background: #6366f1; color: #fff; border: none; border-radius: 999px; padding: 13px;
+  font-weight: 700; font-size: 14px; cursor: pointer; box-shadow: 0 10px 24px rgba(99, 102, 241, 0.32);
+  transition: background 0.18s ease, transform 0.15s ease, box-shadow 0.18s ease;
+}
+.auth-submit:hover { background: #4f46e5; box-shadow: 0 14px 30px rgba(99, 102, 241, 0.4); }
+.auth-submit:active { transform: scale(0.98); }
+.auth-submit:disabled { opacity: 0.6; cursor: default; box-shadow: none; }
+.auth-form-footer { margin-top: 22px; font-size: 12.5px; color: #8b8ea3; text-align: center; }
+.auth-form-footer a { color: #6366f1; font-weight: 600; text-decoration: none; }
+.auth-form-footer a:hover { text-decoration: underline; }
+
+@media (max-width: 860px) {
+  .auth-illustration { display: none; }
+}
+
 /* ---------- Forms ---------- */
 
 label { display: block; font-size: 12.5px; font-weight: 600; color: var(--ink-secondary); margin: 10px 0 5px; letter-spacing: 0.01em; }

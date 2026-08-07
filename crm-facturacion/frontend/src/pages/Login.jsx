@@ -1,13 +1,75 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { Eye, EyeOff, Receipt } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
+
+const FLOATING_SHAPES = [
+  { type: 'dot', top: '12%', left: '10%', size: 14, color: '#fbbf24', delay: '0s' },
+  { type: 'square', top: '20%', left: '82%', size: 18, color: '#6366f1', delay: '0.3s' },
+  { type: 'plus', top: '48%', left: '88%', size: 16, color: '#fbbf24', delay: '0.9s' },
+  { type: 'dot', top: '72%', left: '15%', size: 10, color: '#6366f1', delay: '0.6s' },
+  { type: 'plus', top: '82%', left: '68%', size: 14, color: '#22c55e', delay: '0.2s' },
+  { type: 'dot', top: '38%', left: '92%', size: 8, color: '#22c55e', delay: '1.1s' },
+  { type: 'square', top: '86%', left: '38%', size: 14, color: '#fbbf24', delay: '0.5s' },
+  { type: 'dot', top: '58%', left: '6%', size: 9, color: '#f472b6', delay: '0.8s' },
+];
+
+function FloatingShapes() {
+  return (
+    <>
+      {FLOATING_SHAPES.map((s, i) => (
+        <span
+          key={i}
+          className={`auth-shape ${s.type}`}
+          style={{
+            top: s.top, left: s.left, width: s.size, height: s.size,
+            color: s.color, animationDelay: s.delay,
+          }}
+        />
+      ))}
+    </>
+  );
+}
+
+function LoginIllustration() {
+  return (
+    <svg viewBox="0 0 400 340" width="88%" style={{ maxWidth: 380 }}>
+      <ellipse cx="200" cy="300" rx="150" ry="16" fill="#d9dcf7" />
+      {/* planta decorativa */}
+      <g transform="translate(46 60)">
+        <path d="M0 90 C -6 55 10 28 30 10" stroke="#86efac" strokeWidth="6" fill="none" strokeLinecap="round" />
+        <ellipse cx="6" cy="46" rx="16" ry="9" fill="#86efac" transform="rotate(-30 6 46)" />
+        <ellipse cx="24" cy="20" rx="14" ry="8" fill="#4ade80" transform="rotate(-10 24 20)" />
+      </g>
+      {/* monitor */}
+      <rect x="70" y="46" width="210" height="146" rx="14" fill="#ffffff" stroke="#c7c9f4" strokeWidth="2" />
+      <rect x="86" y="62" width="120" height="10" rx="5" fill="#c7c9f4" />
+      <rect x="86" y="82" width="178" height="14" rx="7" fill="#e0e2fb" />
+      <rect x="86" y="104" width="70" height="60" rx="6" fill="#eef0fd" />
+      <rect x="164" y="104" width="24" height="60" rx="4" fill="#a5b4fc" />
+      <rect x="194" y="126" width="24" height="38" rx="4" fill="#6366f1" />
+      <rect x="224" y="114" width="24" height="50" rx="4" fill="#fbbf24" />
+      <rect x="180" y="184" width="20" height="18" fill="#c7c9f4" />
+      <rect x="150" y="200" width="80" height="10" rx="5" fill="#c7c9f4" />
+      {/* telefono con check de seguridad */}
+      <rect x="248" y="150" width="86" height="146" rx="18" fill="#ffffff" stroke="#c7c9f4" strokeWidth="2" />
+      <rect x="262" y="166" width="58" height="94" rx="6" fill="#eef0fd" />
+      <circle cx="291" cy="213" r="22" fill="#6366f1" />
+      <path d="M281 213 l7 7 15 -15" stroke="#ffffff" strokeWidth="4" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="291" cy="280" r="5" fill="#c7c9f4" />
+    </svg>
+  );
+}
 
 export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
+  const toast = useToast();
   const [ruc, setRuc] = useState('');
   const [dni, setDni] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -26,33 +88,55 @@ export default function Login() {
   }
 
   return (
-    <div className="login-page">
-      <div className="login-card">
-        <div className="login-brand">
-          <span className="brand-mark">CRM</span>
-          <span className="brand-suffix">Facturación</span>
+    <div className="auth-split">
+      <div className="auth-illustration">
+        <div className="auth-blob-a" />
+        <div className="auth-blob-b" />
+        <FloatingShapes />
+        <div className="auth-illustration-brand">
+          <Receipt size={18} />
+          <span>CRM <span className="brand-suffix">Facturación</span></span>
         </div>
-        <p className="login-subtitle">Ingresa a tu cuenta</p>
-        <form onSubmit={handleSubmit}>
-          <label>RUC</label>
-          <input value={ruc} onChange={(e) => setRuc(e.target.value)} maxLength={11} autoFocus />
-          <label>DNI</label>
-          <input value={dni} onChange={(e) => setDni(e.target.value)} maxLength={8} />
-          <label>Contraseña</label>
-          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
-          {error && <div className="form-error">{error}</div>}
-          <button type="submit" className="btn-primary" disabled={loading}>
-            {loading ? 'Ingresando...' : 'Ingresar'}
-          </button>
-        </form>
-        <p className="login-hint">
-          ¿Tu empresa todavía no tiene cuenta? <Link to="/registro" className="btn-link">Regístrala aquí</Link>
-        </p>
-        <p className="login-hint" style={{ marginTop: 6 }}>
-          <Link to="/privacidad" className="btn-link">Privacidad</Link>
-          {' · '}
-          <Link to="/terminos" className="btn-link">Términos</Link>
-        </p>
+        <LoginIllustration />
+      </div>
+
+      <div className="auth-form-panel">
+        <div className="auth-form-card">
+          <h1 className="auth-form-title">Ingresar</h1>
+          <p className="auth-form-subtitle">Bienvenido de nuevo — ingresa tus datos para continuar.</p>
+          <form onSubmit={handleSubmit}>
+            <div className="auth-field">
+              <label>RUC</label>
+              <input value={ruc} onChange={(e) => setRuc(e.target.value)} maxLength={11} autoFocus />
+            </div>
+            <div className="auth-field">
+              <label>DNI</label>
+              <input value={dni} onChange={(e) => setDni(e.target.value)} maxLength={8} />
+            </div>
+            <div className="auth-field auth-field-password">
+              <label>Contraseña</label>
+              <input type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} />
+              <button type="button" onClick={() => setShowPassword((v) => !v)} tabIndex={-1} aria-label="Mostrar contraseña">
+                {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
+              </button>
+            </div>
+            <div className="auth-forgot">
+              <button type="button" onClick={() => toast.info('Escríbenos a soporte para restablecer tu contraseña.')}>
+                ¿Olvidaste tu contraseña?
+              </button>
+            </div>
+            {error && <div className="form-error">{error}</div>}
+            <button type="submit" className="auth-submit" disabled={loading}>
+              {loading ? 'Ingresando...' : 'Ingresar'}
+            </button>
+          </form>
+          <p className="auth-form-footer">
+            ¿Tu empresa todavía no tiene cuenta? <Link to="/registro">Regístrala aquí</Link>
+          </p>
+          <p className="auth-form-footer" style={{ marginTop: 6 }}>
+            <Link to="/privacidad">Privacidad</Link> · <Link to="/terminos">Términos</Link>
+          </p>
+        </div>
       </div>
     </div>
   );
