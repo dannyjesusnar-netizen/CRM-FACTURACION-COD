@@ -250,10 +250,11 @@ export default function Configuracion() {
   }
 
   function exportarEmpleadosCsv() {
-    const header = ['Nombres', 'Apellidos', 'Rol', 'DNI', 'Correo', 'Teléfono', 'Estado'];
+    const header = ['Nombres', 'Apellidos', 'Rol', 'Sede', 'DNI', 'Correo', 'Teléfono', 'Estado'];
     const rows = usuarios.map((u) => [
       u.nombres || '', u.apellidos || '',
       u.role === 'gerencia' ? 'Gerencia' : (u.rol_personalizado_nombre || 'Sin rol asignado'),
+      u.sucursal_nombre || 'Todas las sedes',
       u.dni || '', u.email || '', u.telefono || '', u.activo ? 'Habilitado' : 'Deshabilitado',
     ]);
     const csv = [header, ...rows].map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
@@ -679,7 +680,7 @@ export default function Configuracion() {
               <table className="data-table">
                 <thead>
                   <tr>
-                    <th>Nombres</th><th>Apellidos</th><th>Rol</th><th>N° documento</th><th>Correo</th><th>Teléfono</th><th>Estado</th><th></th>
+                    <th>Nombres</th><th>Apellidos</th><th>Rol</th><th>Sede</th><th>N° documento</th><th>Correo</th><th>Teléfono</th><th>Estado</th><th></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -688,6 +689,7 @@ export default function Configuracion() {
                       <td>{u.nombres || u.full_name}</td>
                       <td>{u.apellidos || ''}</td>
                       <td>{u.role === 'gerencia' ? 'Gerencia (administrador)' : (u.rol_personalizado_nombre || 'Sin rol asignado')}</td>
+                      <td>{u.sucursal_nombre || 'Todas las sedes'}</td>
                       <td>{u.dni ? `DNI : ${u.dni}` : '—'}</td>
                       <td>{u.email || '—'}</td>
                       <td>{u.telefono || '—'}</td>
@@ -710,7 +712,7 @@ export default function Configuracion() {
                     </tr>
                   ))}
                   {usuarios.length === 0 && (
-                    <tr><td colSpan={8} className="empty-row">No hay empleados registrados.</td></tr>
+                    <tr><td colSpan={9} className="empty-row">No hay empleados registrados.</td></tr>
                   )}
                 </tbody>
               </table>
