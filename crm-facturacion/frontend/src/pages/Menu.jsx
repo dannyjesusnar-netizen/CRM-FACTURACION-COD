@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { useToast } from '../context/ToastContext';
 import { useAuth } from '../context/AuthContext';
 import FloatingShapes from '../components/FloatingShapes';
+import FloatingIcons from '../components/FloatingIcons';
 import {
   Receipt, Users, Package, LayoutDashboard, LineChart,
   ShoppingCart, Wallet, Repeat, BookOpen, Briefcase, Clock, Settings,
@@ -14,6 +15,15 @@ const MENU_SHAPES = [
   { type: 'dot', top: '48%', left: '97%', size: 10, color: '#f43f5e', delay: '1.1s' },
   { type: 'plus', top: '78%', left: '1%', size: 14, color: '#10b981', delay: '0.2s' },
   { type: 'square', top: '88%', left: '95%', size: 12, color: '#a855f7', delay: '0.6s' },
+];
+
+const MENU_ICONS = [
+  { type: 'computer', top: '15%', left: '8%', size: 34, delay: '0.15s' },
+  { type: 'calculator', top: '15%', left: '89%', size: 30, delay: '0.55s' },
+  { type: 'truck', top: '58%', left: '1%', size: 38, delay: '0.75s' },
+  { type: 'dollar', top: '68%', left: '96%', size: 30, delay: '0.35s' },
+  { type: 'soles', top: '92%', left: '10%', size: 30, delay: '1s' },
+  { type: 'phone', top: '92%', left: '88%', size: 26, delay: '0.05s' },
 ];
 
 const ACTIVE_MODULES = [
@@ -44,6 +54,7 @@ export default function Menu() {
   return (
     <div className="menu-page">
       <FloatingShapes shapes={MENU_SHAPES} />
+      <FloatingIcons icons={MENU_ICONS} />
       <h1 className="menu-title">MENÚ PRINCIPAL</h1>
 
       <div className="menu-grid">
