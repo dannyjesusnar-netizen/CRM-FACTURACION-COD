@@ -83,4 +83,30 @@ router.put('/registros/:ruc/rechazar', (req, res) => {
   res.json(tenantRegistry.rechazarTenant(req.params.ruc));
 });
 
+// PUT /api/platform/registros/:ruc/costo { costo_mensual, fecha_inicio_suscripcion? }
+// Lo que le corresponde pagar a esta empresa por mes de suscripción a la
+// plataforma (nada que ver con lo que ella les cobra a sus propios
+// clientes). fecha_inicio_suscripcion es opcional: si no se manda, se
+// conserva la que ya tenía (o se asigna sola cuando guarden su tarjeta).
+router.put('/registros/:ruc/costo', (req, res) => {
+  const tenant = tenantRegistry.findTenant(req.params.ruc);
+  if (!tenant) return res.status(404).json({ error: 'Registro no encontrado.' });
+  const costo = Number(req.body?.costo_mensual);
+  if (!Number.isFinite(costo) || costo < 0) {
+    return res.status(400).json({ error: 'costo_mensual debe ser un número mayor o igual a 0.' });
+  }
+  res.json(tenantRegistry.setCosto(req.params.ruc, {
+    costo_mensual: costo,
+    fecha_inicio_suscripcion: req.body?.fecha_inicio_suscripcion || null,
+  }));
+});
+
+// GET /api/platform/registros/:ruc/pagos — historial de cobros de la
+// suscripción de esa empresa.
+router.get('/registros/:ruc/pagos', (req, res) => {
+  const tenant = tenantRegistry.findTenant(req.params.ruc);
+  if (!tenant) return res.status(404).json({ error: 'Registro no encontrado.' });
+  res.json(tenantRegistry.listarPagos(req.params.ruc));
+});
+
 module.exports = router;

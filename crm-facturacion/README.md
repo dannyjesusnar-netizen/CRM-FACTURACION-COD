@@ -334,6 +334,46 @@ plan gratuito limitado):
   **nunca se bloquea** por eso — es una verificación de mejor esfuerzo, no
   un requisito indispensable.
 
+## Suscripción a la plataforma: cobro recurrente con Culqi (`CULQI_SECRET_KEY`)
+
+Cada empresa registrada (ver sección anterior) puede tener asignado un
+**costo mensual** que le corresponde pagar por usar la plataforma — esto es
+independiente de lo que esa empresa les cobra a sus propios clientes.
+
+- **Vos (dueño de la plataforma)** asignás el costo mensual de cada empresa
+  desde el panel central (`/panel`), en la sección "Empresas registradas
+  desde 'Registrar mi empresa'" del detalle de tu instancia — hay un campo
+  editable "Costo mensual (S/)" por fila.
+- **La empresa** ve ese costo, su fecha de inicio, el estado de su
+  suscripción y su historial de cobros desde **Gerencia → Mis pagos**
+  (dentro del CRM), donde también agrega la tarjeta con la que se le va a
+  cobrar automáticamente cada mes.
+- El cobro es **automático**: un proceso interno revisa cada 6 horas si
+  hay suscripciones vencidas y las cobra contra la tarjeta guardada,
+  registrando el resultado (éxito o fallo) en el historial.
+
+La tarjeta se tokeniza en el navegador con **Culqi.js** (pasarela peruana)
+y el número real nunca pasa por este servidor — solo se guarda el ID que
+Culqi le asigna a esa tarjeta. Para activarlo, creá una cuenta de comercio
+en [culqi.com](https://culqi.com) y agregá estas variables de entorno:
+
+| Variable | Valor |
+| --- | --- |
+| `CULQI_SECRET_KEY` | tu llave secreta (`sk_test_...` para pruebas, `sk_live_...` en producción) |
+| `CULQI_PUBLIC_KEY` | tu llave pública (`pk_test_...` / `pk_live_...`) — esta sí se le manda al navegador, es segura de exponer |
+
+Sin estas variables configuradas, "Mis pagos" sigue mostrando el costo y la
+fecha de inicio con total normalidad, pero no se puede agregar una tarjeta
+ni se procesa ningún cobro — modo simulado, igual que el resto de
+integraciones externas de este sistema (SUNAT, verificación de RUC).
+
+⚠️ Esta integración sigue la documentación pública de Culqi pero no pudo
+probarse contra una cuenta real al escribirla (sin credenciales
+disponibles). Antes de usarla en producción, probala primero con tus
+llaves de prueba (`sk_test_`/`pk_test_`) y una tarjeta de prueba de Culqi,
+y confirmá que las respuestas coinciden con lo que espera
+`backend/utils/culqi.js` — ajustalo si algún campo cambió en su API.
+
 ## Estructura del proyecto
 
 ```

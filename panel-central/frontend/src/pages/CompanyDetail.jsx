@@ -16,6 +16,8 @@ export default function CompanyDetail() {
   const [pwdModalUser, setPwdModalUser] = useState(null);
   const [nuevaClave, setNuevaClave] = useState('');
   const [pwdError, setPwdError] = useState('');
+  const [costoEdit, setCostoEdit] = useState({});
+  const [guardandoCosto, setGuardandoCosto] = useState(null);
 
   useEffect(() => { load(); }, [id]);
 
@@ -67,6 +69,27 @@ export default function CompanyDetail() {
 
   const ESTADO_BADGE = { pendiente: '', aprobado: 'badge-good', rechazado: 'badge-critical' };
   const ESTADO_LABEL = { pendiente: 'Pendiente', aprobado: 'Aprobado', rechazado: 'Rechazado' };
+  const SUSCRIPCION_BADGE = { activa: 'badge-good', pago_fallido: 'badge-critical', sin_tarjeta: '' };
+  const SUSCRIPCION_LABEL = { activa: 'Al día', pago_fallido: 'Pago fallido', sin_tarjeta: 'Sin tarjeta' };
+
+  async function handleGuardarCosto(r) {
+    const valor = costoEdit[r.ruc];
+    const costo = Number(valor);
+    if (valor === undefined || !Number.isFinite(costo) || costo < 0) {
+      toast.error('Ingresa un costo mensual válido.');
+      return;
+    }
+    setGuardandoCosto(r.ruc);
+    try {
+      await api.put(`/companies/${id}/live/registros/${r.ruc}/costo`, { costo_mensual: costo });
+      toast.success('Costo mensual actualizado.');
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'No se pudo actualizar el costo.');
+    } finally {
+      setGuardandoCosto(null);
+    }
+  }
 
   async function handleToggleEstado(u) {
     const accion = u.activo ? 'desactivar' : 'activar';
@@ -186,7 +209,10 @@ export default function CompanyDetail() {
           </p>
           <table className="data-table">
             <thead>
-              <tr><th>Razón social</th><th>RUC</th><th>Registrada desde</th><th>Aprobada desde</th><th>Estado</th><th></th></tr>
+              <tr>
+                <th>Razón social</th><th>RUC</th><th>Registrada desde</th><th>Estado</th>
+                <th>Costo mensual (S/)</th><th>Suscripción</th><th>Próximo cobro</th><th></th>
+              </tr>
             </thead>
             <tbody>
               {(registros || []).map((r) => (
@@ -194,10 +220,30 @@ export default function CompanyDetail() {
                   <td>{r.razon_social}</td>
                   <td>{r.ruc}</td>
                   <td>{formatFecha(r.created_at)}</td>
-                  <td>{formatFecha(r.approved_at)}</td>
                   <td>
                     <span className={'badge ' + (ESTADO_BADGE[r.estado] || '')}>{ESTADO_LABEL[r.estado] || r.estado}</span>
                   </td>
+                  <td>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <input
+                        type="number" min="0" step="0.01" style={{ width: 90 }}
+                        value={costoEdit[r.ruc] ?? (r.costo_mensual ?? '')}
+                        onChange={(e) => setCostoEdit({ ...costoEdit, [r.ruc]: e.target.value })}
+                      />
+                      <button
+                        className="btn-link" disabled={guardandoCosto === r.ruc}
+                        onClick={() => handleGuardarCosto(r)}
+                      >
+                        Guardar
+                      </button>
+                    </div>
+                  </td>
+                  <td>
+                    <span className={'badge ' + (SUSCRIPCION_BADGE[r.suscripcion_estado] || '')}>
+                      {SUSCRIPCION_LABEL[r.suscripcion_estado] || r.suscripcion_estado}
+                    </span>
+                  </td>
+                  <td>{formatFecha(r.proximo_cobro_at)}</td>
                   <td className="row-actions">
                     {r.estado === 'pendiente' && (
                       <>
@@ -212,7 +258,7 @@ export default function CompanyDetail() {
                 </tr>
               ))}
               {(registros || []).length === 0 && (
-                <tr><td colSpan={6} className="empty-row">Todavía nadie se registró solo en esta instancia.</td></tr>
+                <tr><td colSpan={8} className="empty-row">Todavía nadie se registró solo en esta instancia.</td></tr>
               )}
             </tbody>
           </table>

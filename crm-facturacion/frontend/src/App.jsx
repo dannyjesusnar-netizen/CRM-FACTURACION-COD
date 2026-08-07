@@ -27,6 +27,7 @@ import Compras from './pages/Compras';
 import Reports from './pages/Reports';
 import Configuracion from './pages/Configuracion';
 import CambiarContrasena from './pages/CambiarContrasena';
+import MisPagos from './pages/MisPagos';
 import SeleccionarSede from './pages/SeleccionarSede';
 import RolForm from './pages/RolForm';
 
@@ -76,6 +77,7 @@ export default function App() {
             <Route path="/configuracion/roles/nuevo" element={<RolForm />} />
             <Route path="/configuracion/roles/:id" element={<RolForm />} />
             <Route path="/cambiar-contrasena" element={<CambiarContrasena />} />
+            <Route path="/mis-pagos" element={<MisPagos />} />
           </Route>
           <Route path="*" element={<Navigate to="/menu" replace />} />
         </Routes>
