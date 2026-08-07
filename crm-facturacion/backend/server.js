@@ -27,6 +27,16 @@ const platformRoutes = require('./routes/platform');
 const metodoPagoRoutes = require('./routes/metodosPago');
 const serieRoutes = require('./routes/series');
 
+// panel-central es una app hermana en este mismo repo (login propio, por
+// correo+contraseña, con su propia base de datos — ver panel-central/README.md).
+// Se sirve bajo el mismo dominio que este CRM, en /panel, en vez de tener su
+// propia URL — cuando existe (build hecho, ver render.yaml), se monta acá.
+const PANEL_CENTRAL_DIR = path.join(__dirname, '..', '..', 'panel-central');
+const panelBackendDir = path.join(PANEL_CENTRAL_DIR, 'backend');
+const panelCentralDisponible = fs.existsSync(panelBackendDir);
+const panelAuthRoutes = panelCentralDisponible ? require(path.join(panelBackendDir, 'routes', 'auth')) : null;
+const panelCompanyRoutes = panelCentralDisponible ? require(path.join(panelBackendDir, 'routes', 'companies')) : null;
+
 const app = express();
 const PORT = process.env.PORT || 4000;
 
@@ -60,13 +70,28 @@ app.use('/api/platform', platformRoutes);
 app.use('/api/metodos-pago', metodoPagoRoutes);
 app.use('/api/series', serieRoutes);
 
+// panel-central: su API vive en /panel-api (no /api, para no chocar con la
+// de este CRM) y su login/base de datos son completamente independientes
+// (correo+contraseña propios, ver PANEL_JWT_SECRET) — solo comparte el
+// dominio con este despliegue.
+if (panelCentralDisponible) {
+  app.use('/panel-api/auth', panelAuthRoutes);
+  app.use('/panel-api/companies', panelCompanyRoutes);
+
+  const panelFrontendDist = path.join(PANEL_CENTRAL_DIR, 'frontend', 'dist');
+  if (fs.existsSync(panelFrontendDist)) {
+    app.use('/panel', express.static(panelFrontendDist));
+    app.get('/panel/*', (req, res) => res.sendFile(path.join(panelFrontendDist, 'index.html')));
+  }
+}
+
 // Si existe el build del frontend (frontend/dist), lo servimos desde el mismo
 // servidor. Asi el despliegue queda como un unico servicio (una sola URL).
 const frontendDist = path.join(__dirname, '..', 'frontend', 'dist');
 if (fs.existsSync(frontendDist)) {
   app.use(express.static(frontendDist));
   app.get('*', (req, res, next) => {
-    if (req.path.startsWith('/api/')) return next();
+    if (req.path.startsWith('/api/') || req.path.startsWith('/panel')) return next();
     res.sendFile(path.join(frontendDist, 'index.html'));
   });
 }
