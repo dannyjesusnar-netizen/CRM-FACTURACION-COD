@@ -45,7 +45,7 @@ const DOC_LABELS = {
 };
 
 export default function Configuracion() {
-  const { user } = useAuth();
+  const { user, refreshEmpresa, sucursal: sucursalActiva, setSucursal: setSucursalActiva } = useAuth();
   const navigate = useNavigate();
   const toast = useToast();
   const [seccion, setSeccion] = useState('empresa');
@@ -167,6 +167,7 @@ export default function Configuracion() {
     try {
       const res = await api.put('/empresa/direccion', { direccion_fiscal: direccionPrincipal });
       setEmpresa(res.data);
+      refreshEmpresa();
       toast.success('Dirección principal actualizada.');
     } catch (err) {
       setErrorSeries(err.response?.data?.error || 'No se pudo actualizar la dirección.');
@@ -182,6 +183,11 @@ export default function Configuracion() {
     try {
       await api.put(`/sucursales/${sucursalSeleccionadaId}`, { nombre: sucursalEditNombre, direccion: sucursalEditDireccion });
       await loadSucursales();
+      // Si la sede que se acaba de renombrar es la sede activa de esta sesión,
+      // el encabezado (que guarda el nombre por separado) también se actualiza.
+      if (sucursalActiva && String(sucursalActiva.id) === String(sucursalSeleccionadaId)) {
+        setSucursalActiva(sucursalSeleccionadaId, sucursalEditNombre);
+      }
       toast.success('Nombre y dirección de la sede actualizados.');
     } catch (err) {
       setErrorSeries(err.response?.data?.error || 'No se pudo actualizar la sede.');
@@ -196,6 +202,7 @@ export default function Configuracion() {
     try {
       const res = await api.put('/empresa/igv-rate', { igv_rate_pct: Number(igvPct) });
       setEmpresa(res.data);
+      refreshEmpresa();
       toast.success('Tasa de IGV actualizada.');
     } catch (err) {
       setErrorSeries(err.response?.data?.error || 'No se pudo actualizar la tasa de IGV.');
@@ -240,6 +247,7 @@ export default function Configuracion() {
     try {
       const res = await api.put('/empresa', empresa);
       setEmpresa(res.data);
+      refreshEmpresa();
       toast.success('Datos de la empresa actualizados. Ya aparecen en el encabezado y en los comprobantes.');
     } catch (err) {
       setErrorEmpresa(err.response?.data?.error || 'No se pudo guardar.');
@@ -255,6 +263,7 @@ export default function Configuracion() {
     try {
       const res = await api.put('/empresa', empresa);
       setEmpresa(res.data);
+      refreshEmpresa();
       toast.success('Diseño del comprobante actualizado.');
       loadPreview();
     } catch (err) {
@@ -601,6 +610,7 @@ export default function Configuracion() {
                       <button type="button" className="btn-secondary" onClick={async () => {
                         const res = await api.put('/empresa', { ...empresa, logo_data_url: null });
                         setEmpresa(res.data);
+                        refreshEmpresa();
                         toast.success('Logo eliminado.');
                       }}>Quitar logo</button>
                     )}
