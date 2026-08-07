@@ -1,5 +1,6 @@
 const path = require('path');
 const fs = require('fs');
+const { AsyncLocalStorage } = require('async_hooks');
 const bcrypt = require('bcryptjs');
 const Database = require('better-sqlite3');
 
@@ -10,11 +11,31 @@ const Database = require('better-sqlite3');
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
-const db = new Database(path.join(DATA_DIR, 'crm.db'));
-db.pragma('journal_mode = WAL');
-db.pragma('foreign_keys = ON');
+// initSchema crea/migra el esquema completo y siembra datos iniciales sobre
+// CUALQUIER conexión sqlite que se le pase — es lo que permite que cada
+// empresa registrada (ver tenantRegistry.js) tenga su propia base de datos
+// aislada con exactamente la misma estructura, sin duplicar este archivo.
+//
+// opts:
+//  - demo (default true): siembra los datos de ejemplo históricos (clientes,
+//    productos, proveedores, sedes de muestra). Las empresas que se
+//    registran desde el botón "Registrar mi empresa" arrancan con demo:false
+//    (solo catálogos universales: métodos de pago, series, sede principal,
+//    cliente genérico "CLIENTES VARIOS" — nada de datos ficticios de otro
+//    negocio).
+//  - empresa: { razon_social, ruc, nombre_comercial, direccion_fiscal,
+//    telefono, email } — datos reales de la empresa nueva, en vez del
+//    placeholder "MI EMPRESA S.A.C."
+//  - primerUsuario: { username, password_hash, full_name, dni, nombres,
+//    apellidos, email } — cuenta Gerencia real con la que se registró la
+//    empresa, en vez de los usuarios de demostración admin/vendedor1/vendedor2.
+function initSchema(db, opts = {}) {
+  const demo = opts.demo !== false;
 
-db.exec(`
+  db.pragma('journal_mode = WAL');
+  db.pragma('foreign_keys = ON');
+
+  db.exec(`
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   username TEXT UNIQUE NOT NULL,
@@ -353,107 +374,107 @@ CREATE TABLE IF NOT EXISTS empresa_config (
 );
 `);
 
-// --- Migracion: agregar columnas nuevas a bases de datos ya existentes ---
-const invoiceColumns = db.prepare("PRAGMA table_info(invoices)").all().map((c) => c.name);
-if (!invoiceColumns.includes('created_by')) {
-  db.exec('ALTER TABLE invoices ADD COLUMN created_by INTEGER REFERENCES users(id)');
-}
-const clientColumns = db.prepare("PRAGMA table_info(clients)").all().map((c) => c.name);
-if (!clientColumns.includes('sucursal_id')) {
-  db.exec('ALTER TABLE clients ADD COLUMN sucursal_id INTEGER REFERENCES sucursales(id)');
-}
-if (!clientColumns.includes('turno')) {
-  db.exec('ALTER TABLE clients ADD COLUMN turno TEXT');
-}
-if (!clientColumns.includes('referencia')) {
-  db.exec('ALTER TABLE clients ADD COLUMN referencia TEXT');
-}
-if (!clientColumns.includes('contacto')) {
-  db.exec('ALTER TABLE clients ADD COLUMN contacto TEXT');
-}
-const productColumns = db.prepare("PRAGMA table_info(products)").all().map((c) => c.name);
-if (!productColumns.includes('categoria')) {
-  db.exec("ALTER TABLE products ADD COLUMN categoria TEXT DEFAULT 'General'");
-}
-if (!productColumns.includes('stock_minimo')) {
-  db.exec('ALTER TABLE products ADD COLUMN stock_minimo REAL DEFAULT 0');
-}
-const movementColumns = db.prepare("PRAGMA table_info(stock_movements)").all().map((c) => c.name);
-if (!movementColumns.includes('lote_id')) {
-  db.exec('ALTER TABLE stock_movements ADD COLUMN lote_id INTEGER REFERENCES lotes(id)');
-}
-if (!invoiceColumns.includes('forma_pago')) {
-  db.exec("ALTER TABLE invoices ADD COLUMN forma_pago TEXT DEFAULT 'efectivo'");
-}
-if (!invoiceColumns.includes('descuento_global_pct')) {
-  db.exec('ALTER TABLE invoices ADD COLUMN descuento_global_pct REAL DEFAULT 0');
-}
-const invoiceItemColumns = db.prepare("PRAGMA table_info(invoice_items)").all().map((c) => c.name);
-if (!invoiceItemColumns.includes('descuento_pct')) {
-  db.exec('ALTER TABLE invoice_items ADD COLUMN descuento_pct REAL DEFAULT 0');
-}
-if (!invoiceItemColumns.includes('igv_item')) {
-  db.exec('ALTER TABLE invoice_items ADD COLUMN igv_item REAL DEFAULT 0');
-}
-const INVOICE_NC_COLUMNS = [
-  ['modifica_tipo', "TEXT"],
-  ['modifica_serie', "TEXT"],
-  ['modifica_numero', "INTEGER"],
-  ['tipo_nota', "TEXT"],
-];
-for (const [col, def] of INVOICE_NC_COLUMNS) {
-  if (!invoiceColumns.includes(col)) {
-    db.exec(`ALTER TABLE invoices ADD COLUMN ${col} ${def}`);
+  // --- Migracion: agregar columnas nuevas a bases de datos ya existentes ---
+  const invoiceColumns = db.prepare("PRAGMA table_info(invoices)").all().map((c) => c.name);
+  if (!invoiceColumns.includes('created_by')) {
+    db.exec('ALTER TABLE invoices ADD COLUMN created_by INTEGER REFERENCES users(id)');
   }
-}
-// Facturación electrónica real (OSE/SUNAT). modo_emision = 'simulado' hasta
-// que el servidor tenga credenciales de un OSE configuradas (ver
-// backend/utils/facturacionElectronica.js); sunat_estado refleja la
-// respuesta real del OSE (aceptado | rechazado | error | null).
-const INVOICE_SUNAT_COLUMNS = [
-  ['modo_emision', "TEXT DEFAULT 'simulado'"],
-  ['sunat_estado', "TEXT"],
-  ['sunat_hash', "TEXT"],
-  ['sunat_pdf_url', "TEXT"],
-  ['sunat_xml_url', "TEXT"],
-  ['sunat_cdr_url', "TEXT"],
-  ['sunat_mensaje', "TEXT"],
-];
-for (const [col, def] of INVOICE_SUNAT_COLUMNS) {
-  if (!invoiceColumns.includes(col)) {
-    db.exec(`ALTER TABLE invoices ADD COLUMN ${col} ${def}`);
+  const clientColumns = db.prepare("PRAGMA table_info(clients)").all().map((c) => c.name);
+  if (!clientColumns.includes('sucursal_id')) {
+    db.exec('ALTER TABLE clients ADD COLUMN sucursal_id INTEGER REFERENCES sucursales(id)');
   }
-}
-// Ventas "abonado" (crédito): monto_pagado es lo realmente cobrado hasta
-// ahora (puede ser menor al total); para efectivo/tarjeta/banco siempre es
-// igual al total (se asume pagado por completo, como hasta ahora). Las
-// facturas/boletas que ya existían antes de esta columna quedan como
-// pagadas por completo (comportamiento anterior sin cambios).
-if (!invoiceColumns.includes('monto_pagado')) {
-  db.exec('ALTER TABLE invoices ADD COLUMN monto_pagado REAL');
-  db.exec('UPDATE invoices SET monto_pagado = total WHERE monto_pagado IS NULL');
-}
-const PRODUCT_NEW_COLUMNS = [
-  ['codigo_barras', "TEXT"],
-  ['afectacion_igv', "TEXT DEFAULT 'gravado'"],
-  ['control', "TEXT DEFAULT 'ninguno'"],
-  ['tipo_inventario', "TEXT DEFAULT 'MERCADERIAS'"],
-  ['tipo_clasificacion', "TEXT DEFAULT 'Otros'"],
-  ['subtipo_clasificacion', "TEXT DEFAULT 'Otros'"],
-  ['peso', "REAL"],
-  ['favorito', "INTEGER DEFAULT 0"],
-  ['precio_compra', "REAL"],
-  ['palabras_clave', "TEXT"],
-];
-for (const [col, def] of PRODUCT_NEW_COLUMNS) {
-  if (!productColumns.includes(col)) {
-    db.exec(`ALTER TABLE products ADD COLUMN ${col} ${def}`);
+  if (!clientColumns.includes('turno')) {
+    db.exec('ALTER TABLE clients ADD COLUMN turno TEXT');
   }
-}
-// Roles personalizados con permisos por módulo (Configuración → Roles de
-// usuario). Solo Gerencia los administra y asigna, para no permitir que un
-// rol se otorgue a sí mismo más acceso del que tiene quien lo crea.
-db.exec(`
+  if (!clientColumns.includes('referencia')) {
+    db.exec('ALTER TABLE clients ADD COLUMN referencia TEXT');
+  }
+  if (!clientColumns.includes('contacto')) {
+    db.exec('ALTER TABLE clients ADD COLUMN contacto TEXT');
+  }
+  const productColumns = db.prepare("PRAGMA table_info(products)").all().map((c) => c.name);
+  if (!productColumns.includes('categoria')) {
+    db.exec("ALTER TABLE products ADD COLUMN categoria TEXT DEFAULT 'General'");
+  }
+  if (!productColumns.includes('stock_minimo')) {
+    db.exec('ALTER TABLE products ADD COLUMN stock_minimo REAL DEFAULT 0');
+  }
+  const movementColumns = db.prepare("PRAGMA table_info(stock_movements)").all().map((c) => c.name);
+  if (!movementColumns.includes('lote_id')) {
+    db.exec('ALTER TABLE stock_movements ADD COLUMN lote_id INTEGER REFERENCES lotes(id)');
+  }
+  if (!invoiceColumns.includes('forma_pago')) {
+    db.exec("ALTER TABLE invoices ADD COLUMN forma_pago TEXT DEFAULT 'efectivo'");
+  }
+  if (!invoiceColumns.includes('descuento_global_pct')) {
+    db.exec('ALTER TABLE invoices ADD COLUMN descuento_global_pct REAL DEFAULT 0');
+  }
+  const invoiceItemColumns = db.prepare("PRAGMA table_info(invoice_items)").all().map((c) => c.name);
+  if (!invoiceItemColumns.includes('descuento_pct')) {
+    db.exec('ALTER TABLE invoice_items ADD COLUMN descuento_pct REAL DEFAULT 0');
+  }
+  if (!invoiceItemColumns.includes('igv_item')) {
+    db.exec('ALTER TABLE invoice_items ADD COLUMN igv_item REAL DEFAULT 0');
+  }
+  const INVOICE_NC_COLUMNS = [
+    ['modifica_tipo', "TEXT"],
+    ['modifica_serie', "TEXT"],
+    ['modifica_numero', "INTEGER"],
+    ['tipo_nota', "TEXT"],
+  ];
+  for (const [col, def] of INVOICE_NC_COLUMNS) {
+    if (!invoiceColumns.includes(col)) {
+      db.exec(`ALTER TABLE invoices ADD COLUMN ${col} ${def}`);
+    }
+  }
+  // Facturación electrónica real (OSE/SUNAT). modo_emision = 'simulado' hasta
+  // que el servidor tenga credenciales de un OSE configuradas (ver
+  // backend/utils/facturacionElectronica.js); sunat_estado refleja la
+  // respuesta real del OSE (aceptado | rechazado | error | null).
+  const INVOICE_SUNAT_COLUMNS = [
+    ['modo_emision', "TEXT DEFAULT 'simulado'"],
+    ['sunat_estado', "TEXT"],
+    ['sunat_hash', "TEXT"],
+    ['sunat_pdf_url', "TEXT"],
+    ['sunat_xml_url', "TEXT"],
+    ['sunat_cdr_url', "TEXT"],
+    ['sunat_mensaje', "TEXT"],
+  ];
+  for (const [col, def] of INVOICE_SUNAT_COLUMNS) {
+    if (!invoiceColumns.includes(col)) {
+      db.exec(`ALTER TABLE invoices ADD COLUMN ${col} ${def}`);
+    }
+  }
+  // Ventas "abonado" (crédito): monto_pagado es lo realmente cobrado hasta
+  // ahora (puede ser menor al total); para efectivo/tarjeta/banco siempre es
+  // igual al total (se asume pagado por completo, como hasta ahora). Las
+  // facturas/boletas que ya existían antes de esta columna quedan como
+  // pagadas por completo (comportamiento anterior sin cambios).
+  if (!invoiceColumns.includes('monto_pagado')) {
+    db.exec('ALTER TABLE invoices ADD COLUMN monto_pagado REAL');
+    db.exec('UPDATE invoices SET monto_pagado = total WHERE monto_pagado IS NULL');
+  }
+  const PRODUCT_NEW_COLUMNS = [
+    ['codigo_barras', "TEXT"],
+    ['afectacion_igv', "TEXT DEFAULT 'gravado'"],
+    ['control', "TEXT DEFAULT 'ninguno'"],
+    ['tipo_inventario', "TEXT DEFAULT 'MERCADERIAS'"],
+    ['tipo_clasificacion', "TEXT DEFAULT 'Otros'"],
+    ['subtipo_clasificacion', "TEXT DEFAULT 'Otros'"],
+    ['peso', "REAL"],
+    ['favorito', "INTEGER DEFAULT 0"],
+    ['precio_compra', "REAL"],
+    ['palabras_clave', "TEXT"],
+  ];
+  for (const [col, def] of PRODUCT_NEW_COLUMNS) {
+    if (!productColumns.includes(col)) {
+      db.exec(`ALTER TABLE products ADD COLUMN ${col} ${def}`);
+    }
+  }
+  // Roles personalizados con permisos por módulo (Configuración → Roles de
+  // usuario). Solo Gerencia los administra y asigna, para no permitir que un
+  // rol se otorgue a sí mismo más acceso del que tiene quien lo crea.
+  db.exec(`
 CREATE TABLE IF NOT EXISTS roles (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   nombre TEXT NOT NULL,
@@ -479,81 +500,81 @@ CREATE TABLE IF NOT EXISTS role_acciones (
 );
 `);
 
-const userColumns = db.prepare("PRAGMA table_info(users)").all().map((c) => c.name);
-const USER_NEW_COLUMNS = [
-  ['activo', 'INTEGER NOT NULL DEFAULT 1'],
-  ['dni', 'TEXT'],
-  // sucursal_id fija = el usuario (vendedor) solo opera en esa sede; NULL =
-  // acceso a todas las sedes de la empresa (gerencia), elige una por sesión.
-  ['sucursal_id', 'INTEGER REFERENCES sucursales(id)'],
-  // nombres/apellidos son la fuente para el formulario de Empleados;
-  // full_name se sigue calculando a partir de ellos para no romper PDFs,
-  // reportes y badges que ya lo usan tal cual.
-  ['nombres', 'TEXT'],
-  ['apellidos', 'TEXT'],
-  ['email', 'TEXT'],
-  ['telefono', 'TEXT'],
-  // custom_role_id: rol personalizado (ver tabla roles) con permisos por
-  // módulo. NULL = sin restricciones extra (compatibilidad con cuentas
-  // creadas antes de que existiera este sistema). Gerencia nunca lo usa:
-  // siempre tiene acceso completo, sea cual sea este valor.
-  ['custom_role_id', 'INTEGER REFERENCES roles(id)'],
-];
-for (const [col, def] of USER_NEW_COLUMNS) {
-  if (!userColumns.includes(col)) {
-    db.exec(`ALTER TABLE users ADD COLUMN ${col} ${def}`);
+  const userColumns = db.prepare("PRAGMA table_info(users)").all().map((c) => c.name);
+  const USER_NEW_COLUMNS = [
+    ['activo', 'INTEGER NOT NULL DEFAULT 1'],
+    ['dni', 'TEXT'],
+    // sucursal_id fija = el usuario (vendedor) solo opera en esa sede; NULL =
+    // acceso a todas las sedes de la empresa (gerencia), elige una por sesión.
+    ['sucursal_id', 'INTEGER REFERENCES sucursales(id)'],
+    // nombres/apellidos son la fuente para el formulario de Empleados;
+    // full_name se sigue calculando a partir de ellos para no romper PDFs,
+    // reportes y badges que ya lo usan tal cual.
+    ['nombres', 'TEXT'],
+    ['apellidos', 'TEXT'],
+    ['email', 'TEXT'],
+    ['telefono', 'TEXT'],
+    // custom_role_id: rol personalizado (ver tabla roles) con permisos por
+    // módulo. NULL = sin restricciones extra (compatibilidad con cuentas
+    // creadas antes de que existiera este sistema). Gerencia nunca lo usa:
+    // siempre tiene acceso completo, sea cual sea este valor.
+    ['custom_role_id', 'INTEGER REFERENCES roles(id)'],
+  ];
+  for (const [col, def] of USER_NEW_COLUMNS) {
+    if (!userColumns.includes(col)) {
+      db.exec(`ALTER TABLE users ADD COLUMN ${col} ${def}`);
+    }
   }
-}
 
-const empresaColumns = db.prepare("PRAGMA table_info(empresa_config)").all().map((c) => c.name);
-const EMPRESA_NEW_COLUMNS = [
-  // Texto libre: no fabricamos el catálogo oficial CIIU/MCC de SUNAT.
-  ['actividad_ciiu', 'TEXT'],
-  ['actividad_mcc', 'TEXT'],
-  ['departamento', 'TEXT'],
-  // Provincia/distrito en texto libre: el catálogo UBIGEO completo del Perú
-  // (~1874 distritos) no está embebido aquí para no arriesgar datos
-  // incorrectos en una dirección fiscal real.
-  ['provincia', 'TEXT'],
-  ['distrito', 'TEXT'],
-  ['logo_data_url', 'TEXT'],
-  ['color_acento', "TEXT DEFAULT '#0f4c81'"],
-  ['mostrar_logo_pdf', 'INTEGER NOT NULL DEFAULT 1'],
-  ['mostrar_datos_contacto_pdf', 'INTEGER NOT NULL DEFAULT 1'],
-  ['tamano_pdf', "TEXT NOT NULL DEFAULT 'A4'"],
-  ['terminos_condiciones_pdf', 'TEXT'],
-  ['igv_rate', 'REAL NOT NULL DEFAULT 0.18'],
-];
-for (const [col, def] of EMPRESA_NEW_COLUMNS) {
-  if (!empresaColumns.includes(col)) {
-    db.exec(`ALTER TABLE empresa_config ADD COLUMN ${col} ${def}`);
+  const empresaColumns = db.prepare("PRAGMA table_info(empresa_config)").all().map((c) => c.name);
+  const EMPRESA_NEW_COLUMNS = [
+    // Texto libre: no fabricamos el catálogo oficial CIIU/MCC de SUNAT.
+    ['actividad_ciiu', 'TEXT'],
+    ['actividad_mcc', 'TEXT'],
+    ['departamento', 'TEXT'],
+    // Provincia/distrito en texto libre: el catálogo UBIGEO completo del Perú
+    // (~1874 distritos) no está embebido aquí para no arriesgar datos
+    // incorrectos en una dirección fiscal real.
+    ['provincia', 'TEXT'],
+    ['distrito', 'TEXT'],
+    ['logo_data_url', 'TEXT'],
+    ['color_acento', "TEXT DEFAULT '#0f4c81'"],
+    ['mostrar_logo_pdf', 'INTEGER NOT NULL DEFAULT 1'],
+    ['mostrar_datos_contacto_pdf', 'INTEGER NOT NULL DEFAULT 1'],
+    ['tamano_pdf', "TEXT NOT NULL DEFAULT 'A4'"],
+    ['terminos_condiciones_pdf', 'TEXT'],
+    ['igv_rate', 'REAL NOT NULL DEFAULT 0.18'],
+  ];
+  for (const [col, def] of EMPRESA_NEW_COLUMNS) {
+    if (!empresaColumns.includes(col)) {
+      db.exec(`ALTER TABLE empresa_config ADD COLUMN ${col} ${def}`);
+    }
   }
-}
 
-// Separación real por sede: cada venta, compra, movimiento de stock y
-// movimiento de caja queda ligado a una sucursal concreta.
-if (!invoiceColumns.includes('sucursal_id')) {
-  db.exec('ALTER TABLE invoices ADD COLUMN sucursal_id INTEGER REFERENCES sucursales(id)');
-}
-const purchaseColumns = db.prepare("PRAGMA table_info(purchases)").all().map((c) => c.name);
-if (!purchaseColumns.includes('sucursal_id')) {
-  db.exec('ALTER TABLE purchases ADD COLUMN sucursal_id INTEGER REFERENCES sucursales(id)');
-}
-const stockMovementColumns = db.prepare("PRAGMA table_info(stock_movements)").all().map((c) => c.name);
-if (!stockMovementColumns.includes('sucursal_id')) {
-  db.exec('ALTER TABLE stock_movements ADD COLUMN sucursal_id INTEGER REFERENCES sucursales(id)');
-}
-const cajaMovimientoColumns = db.prepare("PRAGMA table_info(caja_movimientos)").all().map((c) => c.name);
-if (!cajaMovimientoColumns.includes('sucursal_id')) {
-  db.exec('ALTER TABLE caja_movimientos ADD COLUMN sucursal_id INTEGER REFERENCES sucursales(id)');
-}
+  // Separación real por sede: cada venta, compra, movimiento de stock y
+  // movimiento de caja queda ligado a una sucursal concreta.
+  if (!invoiceColumns.includes('sucursal_id')) {
+    db.exec('ALTER TABLE invoices ADD COLUMN sucursal_id INTEGER REFERENCES sucursales(id)');
+  }
+  const purchaseColumns = db.prepare("PRAGMA table_info(purchases)").all().map((c) => c.name);
+  if (!purchaseColumns.includes('sucursal_id')) {
+    db.exec('ALTER TABLE purchases ADD COLUMN sucursal_id INTEGER REFERENCES sucursales(id)');
+  }
+  const stockMovementColumns = db.prepare("PRAGMA table_info(stock_movements)").all().map((c) => c.name);
+  if (!stockMovementColumns.includes('sucursal_id')) {
+    db.exec('ALTER TABLE stock_movements ADD COLUMN sucursal_id INTEGER REFERENCES sucursales(id)');
+  }
+  const cajaMovimientoColumns = db.prepare("PRAGMA table_info(caja_movimientos)").all().map((c) => c.name);
+  if (!cajaMovimientoColumns.includes('sucursal_id')) {
+    db.exec('ALTER TABLE caja_movimientos ADD COLUMN sucursal_id INTEGER REFERENCES sucursales(id)');
+  }
 
-// caja_saldos_iniciales tenia UNIQUE(fecha) — con varias sedes cada una necesita
-// su propio saldo inicial por fecha, asi que hace falta recrear la tabla con
-// UNIQUE(fecha, sucursal_id). Los datos existentes se asignan a la sede principal.
-const cajaSaldosColumns = db.prepare("PRAGMA table_info(caja_saldos_iniciales)").all().map((c) => c.name);
-if (!cajaSaldosColumns.includes('sucursal_id')) {
-  db.exec(`
+  // caja_saldos_iniciales tenia UNIQUE(fecha) — con varias sedes cada una necesita
+  // su propio saldo inicial por fecha, asi que hace falta recrear la tabla con
+  // UNIQUE(fecha, sucursal_id). Los datos existentes se asignan a la sede principal.
+  const cajaSaldosColumns = db.prepare("PRAGMA table_info(caja_saldos_iniciales)").all().map((c) => c.name);
+  if (!cajaSaldosColumns.includes('sucursal_id')) {
+    db.exec(`
     CREATE TABLE caja_saldos_iniciales_new (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       fecha TEXT NOT NULL,
@@ -564,191 +585,267 @@ if (!cajaSaldosColumns.includes('sucursal_id')) {
       UNIQUE(fecha, sucursal_id)
     );
   `);
-  const principal = db.prepare('SELECT id FROM sucursales WHERE es_principal = 1').get()
-    || db.prepare('SELECT id FROM sucursales ORDER BY id ASC LIMIT 1').get();
-  if (principal) {
-    db.prepare(
-      `INSERT INTO caja_saldos_iniciales_new (id, fecha, sucursal_id, saldo_inicial_efectivo, created_by, updated_at)
+    const principal = db.prepare('SELECT id FROM sucursales WHERE es_principal = 1').get()
+      || db.prepare('SELECT id FROM sucursales ORDER BY id ASC LIMIT 1').get();
+    if (principal) {
+      db.prepare(
+        `INSERT INTO caja_saldos_iniciales_new (id, fecha, sucursal_id, saldo_inicial_efectivo, created_by, updated_at)
        SELECT id, fecha, ?, saldo_inicial_efectivo, created_by, updated_at FROM caja_saldos_iniciales`
-    ).run(principal.id);
+      ).run(principal.id);
+    }
+    db.exec('DROP TABLE caja_saldos_iniciales');
+    db.exec('ALTER TABLE caja_saldos_iniciales_new RENAME TO caja_saldos_iniciales');
   }
-  db.exec('DROP TABLE caja_saldos_iniciales');
-  db.exec('ALTER TABLE caja_saldos_iniciales_new RENAME TO caja_saldos_iniciales');
-}
 
-// --- Seed inicial ---
-const userCount = db.prepare('SELECT COUNT(*) AS n FROM users').get().n;
-if (userCount === 0) {
-  const insertUser = db.prepare(
-    `INSERT INTO users (username, password_hash, full_name, role, dni, nombres, apellidos)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`
-  );
-  insertUser.run('admin', bcrypt.hashSync('admin123', 10), 'Administrador', 'gerencia', '00000000', 'Administrador', '');
-  insertUser.run('vendedor1', bcrypt.hashSync('vendedor123', 10), 'Carlos Ramírez', 'vendedor', '45678912', 'Carlos', 'Ramírez');
-  insertUser.run('vendedor2', bcrypt.hashSync('vendedor123', 10), 'Lucía Fernández', 'vendedor', '87654321', 'Lucía', 'Fernández');
-}
-
-// Backfill: cuentas creadas antes de que existieran nombres/apellidos
-// separados los derivan de full_name (primera palabra = nombres, resto =
-// apellidos) para que Empleados no las muestre en blanco.
-const usuariosSinNombres = db.prepare("SELECT id, full_name FROM users WHERE (nombres IS NULL OR nombres = '') AND full_name IS NOT NULL").all();
-if (usuariosSinNombres.length > 0) {
-  const updateNombres = db.prepare('UPDATE users SET nombres = ?, apellidos = ? WHERE id = ?');
-  for (const u of usuariosSinNombres) {
-    const partes = u.full_name.trim().split(/\s+/);
-    updateNombres.run(partes[0] || u.full_name, partes.slice(1).join(' '), u.id);
+  // --- Seed inicial ---
+  const userCount = db.prepare('SELECT COUNT(*) AS n FROM users').get().n;
+  if (userCount === 0) {
+    const insertUser = db.prepare(
+      `INSERT INTO users (username, password_hash, full_name, role, dni, nombres, apellidos, email)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    );
+    if (opts.primerUsuario) {
+      const u = opts.primerUsuario;
+      insertUser.run(u.username, u.password_hash, u.full_name, 'gerencia', u.dni, u.nombres, u.apellidos || '', u.email || null);
+    } else {
+      insertUser.run('admin', bcrypt.hashSync('admin123', 10), 'Administrador', 'gerencia', '00000000', 'Administrador', '', null);
+      insertUser.run('vendedor1', bcrypt.hashSync('vendedor123', 10), 'Carlos Ramírez', 'vendedor', '45678912', 'Carlos', 'Ramírez', null);
+      insertUser.run('vendedor2', bcrypt.hashSync('vendedor123', 10), 'Lucía Fernández', 'vendedor', '87654321', 'Lucía', 'Fernández', null);
+    }
   }
-}
 
-const empresaConfigCount = db.prepare('SELECT COUNT(*) AS n FROM empresa_config').get().n;
-if (empresaConfigCount === 0) {
-  db.prepare(
-    `INSERT INTO empresa_config (id, razon_social, ruc, nombre_comercial, direccion_fiscal, telefono, email)
-     VALUES (1, ?, ?, ?, ?, ?, ?)`
-  ).run('MI EMPRESA S.A.C.', null, 'MI EMPRESA', 'Sede Principal', null, null);
-}
-
-const clientCount = db.prepare('SELECT COUNT(*) AS n FROM clients').get().n;
-if (clientCount === 0) {
-  const insertClient = db.prepare(
-    'INSERT INTO clients (tipo_documento, numero_documento, nombre, direccion, telefono, email) VALUES (?, ?, ?, ?, ?, ?)'
-  );
-  insertClient.run('DNI', '10000000', 'CLIENTES VARIOS', null, null, null);
-  insertClient.run('RUC', '20123456789', 'Comercial Los Andes S.A.C.', 'Av. Javier Prado 123, Lima', '014567890', 'contacto@losandes.com');
-  insertClient.run('DNI', '45678912', 'Maria Fernanda Torres', 'Jr. Union 456, Lima', '987654321', 'mftorres@gmail.com');
-  insertClient.run('RUC', '20456789123', 'Distribuidora Peru Norte E.I.R.L.', 'Calle Los Pinos 789, Trujillo', '044556677', 'ventas@perunorte.com');
-}
-
-const productCount = db.prepare('SELECT COUNT(*) AS n FROM products').get().n;
-if (productCount === 0) {
-  const insertProduct = db.prepare(
-    `INSERT INTO products (codigo, nombre, descripcion, tipo, categoria, unidad, precio_unitario, stock, stock_minimo)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  );
-  insertProduct.run('P001', 'Servicio de Consultoria', 'Consultoria empresarial por hora', 'servicio', 'Servicios', 'ZZ', 150, null, null);
-  insertProduct.run('P002', 'Laptop HP 15"', 'Laptop HP 15 pulgadas, 8GB RAM, 512GB SSD', 'producto', 'Tecnología', 'NIU', 2200, 15, 5);
-  insertProduct.run('P003', 'Licencia Software Anual', 'Licencia anual de software administrativo', 'servicio', 'Servicios', 'ZZ', 480, null, null);
-  insertProduct.run('P004', 'Resma de Papel A4', 'Resma de papel bond A4, 500 hojas', 'producto', 'Útiles de oficina', 'NIU', 14.5, 200, 20);
-  insertProduct.run('P005', 'Creatina Monohidratada 500gr', 'Creatina monohidratada en polvo, envase 500gr', 'producto', 'Suplementos', 'NIU', 89.9, 0, 5);
-  insertProduct.run('P006', 'Proteína Whey 1kg', 'Proteína whey sabor chocolate, envase 1kg', 'producto', 'Suplementos', 'NIU', 149.9, 0, 5);
-  insertProduct.run('P007', 'Mix Pre-Entreno a Granel (Kg)', 'Insumo a granel para envasado de pre-entreno', 'producto', 'Insumos', 'KGM', 45, 10, 2);
-  insertProduct.run('P008', 'Pre-Entreno 30gr (envase individual)', 'Envase individual de pre-entreno, producido a partir del mix a granel', 'producto', 'Suplementos', 'NIU', 6.9, 0, 20);
-}
-
-// Lotes de ejemplo (con vencimiento) para los productos de suplementos
-const loteCount = db.prepare('SELECT COUNT(*) AS n FROM lotes').get().n;
-if (loteCount === 0) {
-  const creatina = db.prepare("SELECT id FROM products WHERE codigo = 'P005'").get();
-  const proteina = db.prepare("SELECT id FROM products WHERE codigo = 'P006'").get();
-  const insertLote = db.prepare(
-    `INSERT INTO lotes (product_id, codigo_lote, tipo, fecha_vencimiento, cantidad_inicial, cantidad_actual)
-     VALUES (?, ?, 'lote', ?, ?, ?)`
-  );
-  const addStock = db.prepare('UPDATE products SET stock = stock + ? WHERE id = ?');
-  if (creatina) {
-    insertLote.run(creatina.id, 'CRE-2026-01', '2026-09-15', 12, 12);
-    insertLote.run(creatina.id, 'CRE-2026-02', '2027-03-01', 30, 30);
-    addStock.run(42, creatina.id);
+  // Backfill: cuentas creadas antes de que existieran nombres/apellidos
+  // separados los derivan de full_name (primera palabra = nombres, resto =
+  // apellidos) para que Empleados no las muestre en blanco.
+  const usuariosSinNombres = db.prepare("SELECT id, full_name FROM users WHERE (nombres IS NULL OR nombres = '') AND full_name IS NOT NULL").all();
+  if (usuariosSinNombres.length > 0) {
+    const updateNombres = db.prepare('UPDATE users SET nombres = ?, apellidos = ? WHERE id = ?');
+    for (const u of usuariosSinNombres) {
+      const partes = u.full_name.trim().split(/\s+/);
+      updateNombres.run(partes[0] || u.full_name, partes.slice(1).join(' '), u.id);
+    }
   }
-  if (proteina) {
-    insertLote.run(proteina.id, 'PRO-2026-01', '2027-06-30', 20, 20);
-    addStock.run(20, proteina.id);
+
+  const empresaConfigCount = db.prepare('SELECT COUNT(*) AS n FROM empresa_config').get().n;
+  if (empresaConfigCount === 0) {
+    if (opts.empresa) {
+      const e = opts.empresa;
+      db.prepare(
+        `INSERT INTO empresa_config (id, razon_social, ruc, nombre_comercial, direccion_fiscal, telefono, email)
+         VALUES (1, ?, ?, ?, ?, ?, ?)`
+      ).run(e.razon_social, e.ruc, e.nombre_comercial || e.razon_social, e.direccion_fiscal || null, e.telefono || null, e.email || null);
+    } else {
+      db.prepare(
+        `INSERT INTO empresa_config (id, razon_social, ruc, nombre_comercial, direccion_fiscal, telefono, email)
+         VALUES (1, ?, ?, ?, ?, ?, ?)`
+      ).run('MI EMPRESA S.A.C.', null, 'MI EMPRESA', 'Sede Principal', null, null);
+    }
   }
-}
 
-// Sucursales de ejemplo (Miraflores es la principal: concentra el stock existente)
-const sucursalCount = db.prepare('SELECT COUNT(*) AS n FROM sucursales').get().n;
-if (sucursalCount === 0) {
-  const insertSucursal = db.prepare('INSERT INTO sucursales (nombre, direccion, es_principal) VALUES (?, ?, ?)');
-  insertSucursal.run('Miraflores', 'Av. Larco 123, Miraflores', 1);
-  insertSucursal.run('San Borja', 'Av. San Borja Norte 456, San Borja', 0);
-  insertSucursal.run('Jesús María', 'Av. Salaverry 789, Jesús María', 0);
-}
-
-// Métodos de pago: catálogo inicial con los medios más usados en Perú. Se
-// puede ampliar/editar/desactivar libremente desde Configuración -> Métodos
-// de pago. "tarjeta"/"banco" se mantienen inactivos solo para no romper
-// comprobantes viejos que ya los usaban antes de este catálogo dinámico.
-const metodoPagoCount = db.prepare('SELECT COUNT(*) AS n FROM metodos_pago').get().n;
-if (metodoPagoCount === 0) {
-  const insertMetodo = db.prepare(
-    'INSERT INTO metodos_pago (codigo, nombre, tipo, color, icono, orden, activo) VALUES (?, ?, ?, ?, ?, ?, ?)'
-  );
-  const metodos = [
-    ['efectivo', 'Efectivo', 'efectivo', '#16a34a', '💵', 1, 1],
-    ['yape', 'Yape', 'billetera', '#7c3aed', '📲', 2, 1],
-    ['plin', 'Plin', 'billetera', '#00bcd4', '📱', 3, 1],
-    ['pos', 'POS', 'pos', '#f59e0b', '💳', 4, 1],
-    ['qr_bbva', 'QR BBVA', 'billetera', '#004b93', '🏦', 5, 1],
-    ['transferencia_bcp', 'Transferencia BCP', 'transferencia', '#002a5c', '🏦', 6, 1],
-    ['transferencia_interbank', 'Transferencia Interbank', 'transferencia', '#00a19a', '🏦', 7, 1],
-    ['pago_link', 'Pago Link', 'link', '#e11d48', '🔗', 8, 1],
-    ['otros', 'Otros', 'otro', '#64748b', '🔖', 9, 1],
-    ['tarjeta', 'Tarjeta (antiguo)', 'pos', '#94a3b8', '💳', 90, 0],
-    ['banco', 'Banco (antiguo)', 'transferencia', '#94a3b8', '🏦', 91, 0],
-  ];
-  metodos.forEach((m) => insertMetodo.run(...m));
-}
-
-// Series de documentos: se siembran con las mismas series que el sistema
-// venía usando hardcodeadas, para que activar esta pantalla no le cambie el
-// número a nadie de un día para otro — recién desde Configuración se editan.
-const serieConfigCount = db.prepare('SELECT COUNT(*) AS n FROM series_config').get().n;
-if (serieConfigCount === 0) {
-  const insertSerie = db.prepare(
-    'INSERT INTO series_config (tipo_documento, serie, siguiente_numero) VALUES (?, ?, 1)'
-  );
-  const series = [
-    ['factura', 'F001'],
-    ['boleta', 'B001'],
-    ['nota_credito', 'FC01'],
-    ['cotizacion', 'CL02'],
-    ['guia_remitente', 'TL02'],
-  ];
-  series.forEach((s) => insertSerie.run(...s));
-}
-
-// Receta de ejemplo (Producción): envasado de pre-entreno a partir del mix a granel
-const recetaCount = db.prepare('SELECT COUNT(*) AS n FROM recetas').get().n;
-if (recetaCount === 0) {
-  const mix = db.prepare("SELECT id FROM products WHERE codigo = 'P007'").get();
-  const preEntreno = db.prepare("SELECT id FROM products WHERE codigo = 'P008'").get();
-  if (mix && preEntreno) {
-    const info = db.prepare(
-      `INSERT INTO recetas (nombre, descripcion, product_id_salida, cantidad_salida, tipo_produccion)
-       VALUES (?, ?, ?, ?, 'automatico')`
-    ).run('Envasado Pre-Entreno 30gr', 'Envasa 1kg del mix a granel en 33 unidades de 30gr', preEntreno.id, 33);
-    db.prepare('INSERT INTO receta_items (receta_id, product_id, cantidad) VALUES (?, ?, ?)').run(info.lastInsertRowid, mix.id, 1);
+  const clientCount = db.prepare('SELECT COUNT(*) AS n FROM clients').get().n;
+  if (clientCount === 0) {
+    const insertClient = db.prepare(
+      'INSERT INTO clients (tipo_documento, numero_documento, nombre, direccion, telefono, email) VALUES (?, ?, ?, ?, ?, ?)'
+    );
+    // "CLIENTES VARIOS" es un cliente genérico universal (para ventas sin
+    // datos de cliente), útil para cualquier empresa — se siembra siempre.
+    insertClient.run('DNI', '10000000', 'CLIENTES VARIOS', null, null, null);
+    if (demo) {
+      insertClient.run('RUC', '20123456789', 'Comercial Los Andes S.A.C.', 'Av. Javier Prado 123, Lima', '014567890', 'contacto@losandes.com');
+      insertClient.run('DNI', '45678912', 'Maria Fernanda Torres', 'Jr. Union 456, Lima', '987654321', 'mftorres@gmail.com');
+      insertClient.run('RUC', '20456789123', 'Distribuidora Peru Norte E.I.R.L.', 'Calle Los Pinos 789, Trujillo', '044556677', 'ventas@perunorte.com');
+    }
   }
-}
 
-// Proveedores de ejemplo (Compras)
-const supplierCount = db.prepare('SELECT COUNT(*) AS n FROM suppliers').get().n;
-if (supplierCount === 0) {
-  const insertSupplier = db.prepare(
-    'INSERT INTO suppliers (ruc, nombre, direccion, telefono, email) VALUES (?, ?, ?, ?, ?)'
-  );
-  insertSupplier.run('20100123456', 'Distribuidora Andina S.A.C.', 'Av. Argentina 456, Callao', '014123456', 'ventas@distandina.com');
-  insertSupplier.run('20500987654', 'Importaciones del Pacífico E.I.R.L.', 'Jr. Lampa 789, Lima', '015987654', 'contacto@pacifico.com');
-}
+  if (demo) {
+    const productCount = db.prepare('SELECT COUNT(*) AS n FROM products').get().n;
+    if (productCount === 0) {
+      const insertProduct = db.prepare(
+        `INSERT INTO products (codigo, nombre, descripcion, tipo, categoria, unidad, precio_unitario, stock, stock_minimo)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      );
+      insertProduct.run('P001', 'Servicio de Consultoria', 'Consultoria empresarial por hora', 'servicio', 'Servicios', 'ZZ', 150, null, null);
+      insertProduct.run('P002', 'Laptop HP 15"', 'Laptop HP 15 pulgadas, 8GB RAM, 512GB SSD', 'producto', 'Tecnología', 'NIU', 2200, 15, 5);
+      insertProduct.run('P003', 'Licencia Software Anual', 'Licencia anual de software administrativo', 'servicio', 'Servicios', 'ZZ', 480, null, null);
+      insertProduct.run('P004', 'Resma de Papel A4', 'Resma de papel bond A4, 500 hojas', 'producto', 'Útiles de oficina', 'NIU', 14.5, 200, 20);
+      insertProduct.run('P005', 'Creatina Monohidratada 500gr', 'Creatina monohidratada en polvo, envase 500gr', 'producto', 'Suplementos', 'NIU', 89.9, 0, 5);
+      insertProduct.run('P006', 'Proteína Whey 1kg', 'Proteína whey sabor chocolate, envase 1kg', 'producto', 'Suplementos', 'NIU', 149.9, 0, 5);
+      insertProduct.run('P007', 'Mix Pre-Entreno a Granel (Kg)', 'Insumo a granel para envasado de pre-entreno', 'producto', 'Insumos', 'KGM', 45, 10, 2);
+      insertProduct.run('P008', 'Pre-Entreno 30gr (envase individual)', 'Envase individual de pre-entreno, producido a partir del mix a granel', 'producto', 'Suplementos', 'NIU', 6.9, 0, 20);
+    }
 
-// Backfill: todo producto con stock que aun no tenga su propia fila en
-// sucursal_stock para la sede principal la recibe con su stock agregado
-// actual. Sin esto, esos productos aparecerian con stock cero en la sede
-// principal (separacion real por sede: sucursal_stock es la unica fuente,
-// sin fallback implicito hacia products.stock en tiempo de lectura). Corre
-// en cada arranque pero es barato: solo llena filas que faltan.
-const sucursalPrincipal = db.prepare('SELECT id FROM sucursales WHERE es_principal = 1').get();
-if (sucursalPrincipal) {
-  const productosSinFila = db.prepare(
-    `SELECT p.id, p.stock FROM products p
-     WHERE p.tipo = 'producto' AND p.stock IS NOT NULL
-       AND NOT EXISTS (SELECT 1 FROM sucursal_stock ss WHERE ss.product_id = p.id AND ss.sucursal_id = ?)`
-  ).all(sucursalPrincipal.id);
-  const insertFilaSucursalStock = db.prepare('INSERT INTO sucursal_stock (product_id, sucursal_id, stock) VALUES (?, ?, ?)');
-  for (const p of productosSinFila) {
-    insertFilaSucursalStock.run(p.id, sucursalPrincipal.id, p.stock || 0);
+    // Lotes de ejemplo (con vencimiento) para los productos de suplementos
+    const loteCount = db.prepare('SELECT COUNT(*) AS n FROM lotes').get().n;
+    if (loteCount === 0) {
+      const creatina = db.prepare("SELECT id FROM products WHERE codigo = 'P005'").get();
+      const proteina = db.prepare("SELECT id FROM products WHERE codigo = 'P006'").get();
+      const insertLote = db.prepare(
+        `INSERT INTO lotes (product_id, codigo_lote, tipo, fecha_vencimiento, cantidad_inicial, cantidad_actual)
+         VALUES (?, ?, 'lote', ?, ?, ?)`
+      );
+      const addStock = db.prepare('UPDATE products SET stock = stock + ? WHERE id = ?');
+      if (creatina) {
+        insertLote.run(creatina.id, 'CRE-2026-01', '2026-09-15', 12, 12);
+        insertLote.run(creatina.id, 'CRE-2026-02', '2027-03-01', 30, 30);
+        addStock.run(42, creatina.id);
+      }
+      if (proteina) {
+        insertLote.run(proteina.id, 'PRO-2026-01', '2027-06-30', 20, 20);
+        addStock.run(20, proteina.id);
+      }
+    }
   }
+
+  // Sucursales: toda empresa arranca con al menos una sede principal. La
+  // instancia de demostración trae 3 sedes de ejemplo; una empresa recién
+  // registrada arranca solo con "Sede Principal" (ella agrega el resto).
+  const sucursalCount = db.prepare('SELECT COUNT(*) AS n FROM sucursales').get().n;
+  if (sucursalCount === 0) {
+    const insertSucursal = db.prepare('INSERT INTO sucursales (nombre, direccion, es_principal) VALUES (?, ?, ?)');
+    if (demo) {
+      insertSucursal.run('Miraflores', 'Av. Larco 123, Miraflores', 1);
+      insertSucursal.run('San Borja', 'Av. San Borja Norte 456, San Borja', 0);
+      insertSucursal.run('Jesús María', 'Av. Salaverry 789, Jesús María', 0);
+    } else {
+      insertSucursal.run('Sede Principal', opts.empresa?.direccion_fiscal || null, 1);
+    }
+  }
+
+  // Métodos de pago: catálogo inicial con los medios más usados en Perú. Se
+  // puede ampliar/editar/desactivar libremente desde Configuración -> Métodos
+  // de pago. "tarjeta"/"banco" se mantienen inactivos solo para no romper
+  // comprobantes viejos que ya los usaban antes de este catálogo dinámico.
+  const metodoPagoCount = db.prepare('SELECT COUNT(*) AS n FROM metodos_pago').get().n;
+  if (metodoPagoCount === 0) {
+    const insertMetodo = db.prepare(
+      'INSERT INTO metodos_pago (codigo, nombre, tipo, color, icono, orden, activo) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    );
+    const metodos = [
+      ['efectivo', 'Efectivo', 'efectivo', '#16a34a', '💵', 1, 1],
+      ['yape', 'Yape', 'billetera', '#7c3aed', '📲', 2, 1],
+      ['plin', 'Plin', 'billetera', '#00bcd4', '📱', 3, 1],
+      ['pos', 'POS', 'pos', '#f59e0b', '💳', 4, 1],
+      ['qr_bbva', 'QR BBVA', 'billetera', '#004b93', '🏦', 5, 1],
+      ['transferencia_bcp', 'Transferencia BCP', 'transferencia', '#002a5c', '🏦', 6, 1],
+      ['transferencia_interbank', 'Transferencia Interbank', 'transferencia', '#00a19a', '🏦', 7, 1],
+      ['pago_link', 'Pago Link', 'link', '#e11d48', '🔗', 8, 1],
+      ['otros', 'Otros', 'otro', '#64748b', '🔖', 9, 1],
+      ['tarjeta', 'Tarjeta (antiguo)', 'pos', '#94a3b8', '💳', 90, 0],
+      ['banco', 'Banco (antiguo)', 'transferencia', '#94a3b8', '🏦', 91, 0],
+    ];
+    metodos.forEach((m) => insertMetodo.run(...m));
+  }
+
+  // Series de documentos: se siembran con las mismas series que el sistema
+  // venía usando hardcodeadas, para que activar esta pantalla no le cambie el
+  // número a nadie de un día para otro — recién desde Configuración se editan.
+  const serieConfigCount = db.prepare('SELECT COUNT(*) AS n FROM series_config').get().n;
+  if (serieConfigCount === 0) {
+    const insertSerie = db.prepare(
+      'INSERT INTO series_config (tipo_documento, serie, siguiente_numero) VALUES (?, ?, 1)'
+    );
+    const series = [
+      ['factura', 'F001'],
+      ['boleta', 'B001'],
+      ['nota_credito', 'FC01'],
+      ['cotizacion', 'CL02'],
+      ['guia_remitente', 'TL02'],
+    ];
+    series.forEach((s) => insertSerie.run(...s));
+  }
+
+  if (demo) {
+    // Receta de ejemplo (Producción): envasado de pre-entreno a partir del mix a granel
+    const recetaCount = db.prepare('SELECT COUNT(*) AS n FROM recetas').get().n;
+    if (recetaCount === 0) {
+      const mix = db.prepare("SELECT id FROM products WHERE codigo = 'P007'").get();
+      const preEntreno = db.prepare("SELECT id FROM products WHERE codigo = 'P008'").get();
+      if (mix && preEntreno) {
+        const info = db.prepare(
+          `INSERT INTO recetas (nombre, descripcion, product_id_salida, cantidad_salida, tipo_produccion)
+           VALUES (?, ?, ?, ?, 'automatico')`
+        ).run('Envasado Pre-Entreno 30gr', 'Envasa 1kg del mix a granel en 33 unidades de 30gr', preEntreno.id, 33);
+        db.prepare('INSERT INTO receta_items (receta_id, product_id, cantidad) VALUES (?, ?, ?)').run(info.lastInsertRowid, mix.id, 1);
+      }
+    }
+
+    // Proveedores de ejemplo (Compras)
+    const supplierCount = db.prepare('SELECT COUNT(*) AS n FROM suppliers').get().n;
+    if (supplierCount === 0) {
+      const insertSupplier = db.prepare(
+        'INSERT INTO suppliers (ruc, nombre, direccion, telefono, email) VALUES (?, ?, ?, ?, ?)'
+      );
+      insertSupplier.run('20100123456', 'Distribuidora Andina S.A.C.', 'Av. Argentina 456, Callao', '014123456', 'ventas@distandina.com');
+      insertSupplier.run('20500987654', 'Importaciones del Pacífico E.I.R.L.', 'Jr. Lampa 789, Lima', '015987654', 'contacto@pacifico.com');
+    }
+  }
+
+  // Backfill: todo producto con stock que aun no tenga su propia fila en
+  // sucursal_stock para la sede principal la recibe con su stock agregado
+  // actual. Sin esto, esos productos aparecerian con stock cero en la sede
+  // principal (separacion real por sede: sucursal_stock es la unica fuente,
+  // sin fallback implicito hacia products.stock en tiempo de lectura). Corre
+  // en cada arranque pero es barato: solo llena filas que faltan.
+  const sucursalPrincipal = db.prepare('SELECT id FROM sucursales WHERE es_principal = 1').get();
+  if (sucursalPrincipal) {
+    const productosSinFila = db.prepare(
+      `SELECT p.id, p.stock FROM products p
+       WHERE p.tipo = 'producto' AND p.stock IS NOT NULL
+         AND NOT EXISTS (SELECT 1 FROM sucursal_stock ss WHERE ss.product_id = p.id AND ss.sucursal_id = ?)`
+    ).all(sucursalPrincipal.id);
+    const insertFilaSucursalStock = db.prepare('INSERT INTO sucursal_stock (product_id, sucursal_id, stock) VALUES (?, ?, ?)');
+    for (const p of productosSinFila) {
+      insertFilaSucursalStock.run(p.id, sucursalPrincipal.id, p.stock || 0);
+    }
+  }
+
+  return db;
 }
 
-module.exports = db;
+// --- Selección de la base de datos por empresa (multi-tenant) ---
+//
+// Cada empresa (la original de esta instancia + cada una que se registre
+// desde "Registrar mi empresa") tiene su propio archivo .db, completamente
+// aislado. Como casi todas las rutas hacen `const db = require('../db')` y
+// llaman a `db.prepare(...)` directamente, en vez de pasar la conexión como
+// parámetro por las ~30 tablas y 22 archivos de rutas, este módulo exporta un
+// Proxy: cada llamada a un método de "db" se resuelve, en el momento, contra
+// la base de datos de la empresa dueña de la petición en curso — guardada en
+// un AsyncLocalStorage por el middleware de autenticación (ver
+// middleware/auth.js). Fuera de una petición (arranque del servidor, scripts)
+// cae en la base por defecto de siempre, así que nada de esto cambia el
+// comportamiento de la instancia original.
+const tenantStorage = new AsyncLocalStorage();
+const openDatabases = new Map(); // filePath -> instancia better-sqlite3
+
+function openTenantDb(filePath, seedOpts) {
+  if (openDatabases.has(filePath)) return openDatabases.get(filePath);
+  const database = new Database(filePath);
+  initSchema(database, seedOpts);
+  openDatabases.set(filePath, database);
+  return database;
+}
+
+const DEFAULT_DB_PATH = path.join(DATA_DIR, 'crm.db');
+const defaultDb = openTenantDb(DEFAULT_DB_PATH);
+
+function runWithDb(database, fn) {
+  return tenantStorage.run(database, fn);
+}
+
+function currentDb() {
+  return tenantStorage.getStore() || defaultDb;
+}
+
+const helpers = { openTenantDb, runWithDb, currentDb, DEFAULT_DB_PATH, DATA_DIR };
+
+const dbProxy = new Proxy(helpers, {
+  get(target, prop, receiver) {
+    if (prop in target) return Reflect.get(target, prop, receiver);
+    const database = currentDb();
+    const value = database[prop];
+    return typeof value === 'function' ? value.bind(database) : value;
+  },
+});
+
+module.exports = dbProxy;

@@ -1,8 +1,13 @@
 const jwt = require('jsonwebtoken');
 const db = require('../db');
+const { resolveTenantDb } = require('../utils/tenant');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'crm-facturacion-dev-secret-change-me';
 
+// requireAuth valida el token y, a partir del RUC que quedó guardado en él al
+// hacer login, resuelve con qué base de datos (empresa) debe trabajar el
+// resto de la petición — así el mismo backend puede atender a varias
+// empresas registradas sin que ninguna vea datos de otra (ver db.js).
 function requireAuth(req, res, next) {
   const header = req.headers.authorization || '';
   const token = header.startsWith('Bearer ') ? header.slice(7) : null;
@@ -12,7 +17,11 @@ function requireAuth(req, res, next) {
   try {
     const payload = jwt.verify(token, JWT_SECRET);
     req.user = payload;
-    next();
+    const tenantDb = resolveTenantDb(payload.ruc);
+    if (!tenantDb) {
+      return res.status(403).json({ error: 'Esta empresa ya no está disponible.' });
+    }
+    db.runWithDb(tenantDb, next);
   } catch (err) {
     return res.status(401).json({ error: 'Token invalido o expirado.' });
   }
