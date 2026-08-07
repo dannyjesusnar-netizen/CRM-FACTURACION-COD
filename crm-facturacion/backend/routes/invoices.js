@@ -123,7 +123,7 @@ router.post('/', async (req, res) => {
     tipo_comprobante, client_id, items, moneda, observaciones, fecha_emision, forma_pago,
     numero: numeroManual, descuento_global_pct,
     modifica_tipo, modifica_serie, modifica_numero, tipo_nota,
-    monto_pagado: montoPagadoBody, medio_abono,
+    monto_pagado: montoPagadoBody, medio_abono, pagos,
   } = req.body || {};
 
   if (!['factura', 'boleta', 'nota_credito'].includes(tipo_comprobante)) {
@@ -136,11 +136,30 @@ router.post('/', async (req, res) => {
   if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: 'Debe incluir al menos un item.' });
   }
-  if (forma_pago && forma_pago !== 'abonado' && !esMetodoPagoValido(forma_pago)) {
-    return res.status(400).json({ error: 'forma_pago invalida. Debe ser un método de pago activo o "abonado".' });
+  const esMixto = forma_pago === 'mixto';
+  if (forma_pago && forma_pago !== 'abonado' && forma_pago !== 'mixto' && !esMetodoPagoValido(forma_pago)) {
+    return res.status(400).json({ error: 'forma_pago invalida. Debe ser un método de pago activo, "abonado" o "mixto".' });
   }
   if (forma_pago === 'abonado' && !tieneAccion(req.user, 'ventas', 'abonado')) {
     return res.status(403).json({ error: 'No tienes permiso para registrar ventas abonadas.' });
+  }
+  // Pago mixto: la venta queda pagada por completo (no es crédito), solo que
+  // repartida entre 2+ métodos reales (ej. S/ 50 en efectivo + el resto por
+  // Yape) — cada uno se registra como su propio cobro/movimiento de caja.
+  let pagosMixto = [];
+  if (esMixto) {
+    if (!Array.isArray(pagos) || pagos.length < 2) {
+      return res.status(400).json({ error: 'Un pago mixto necesita al menos dos métodos de pago.' });
+    }
+    for (const p of pagos) {
+      if (!esMetodoPagoValido(p?.medio)) {
+        return res.status(400).json({ error: 'Uno de los métodos de pago del pago mixto no es válido.' });
+      }
+      if (!(Number(p.monto) > 0)) {
+        return res.status(400).json({ error: 'Cada monto del pago mixto debe ser mayor a 0.' });
+      }
+    }
+    pagosMixto = pagos.map((p) => ({ medio: p.medio, monto: round2(Number(p.monto)) }));
   }
 
   const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(client_id);
@@ -198,6 +217,13 @@ router.post('/', async (req, res) => {
   const ratio = totalBruto > 0 ? total / totalBruto : 1;
   const igv = round2(igvBruto * ratio);
   const subtotal = round2(total - igv);
+
+  if (esMixto) {
+    const sumaPagos = round2(pagosMixto.reduce((s, p) => s + p.monto, 0));
+    if (Math.abs(sumaPagos - total) > 0.01) {
+      return res.status(400).json({ error: `La suma de los pagos (S/ ${sumaPagos.toFixed(2)}) debe ser igual al total (S/ ${total.toFixed(2)}).` });
+    }
+  }
   // Para efectivo/tarjeta/banco se asume pagado por completo (igual que
   // siempre). Para "abonado" es lo que el cliente entregó ahora (puede ser
   // 0 hasta el total) — el resto queda como saldo pendiente.
@@ -286,6 +312,23 @@ router.post('/', async (req, res) => {
          VALUES (?, 'ingreso', ?, 'cuentas_cobrar', ?, ?, ?, ?)`
       ).run(fechaEmisionFinal, medioAbono, montoPagado, `Abono - ${referenciaComprobante} - ${client.nombre}`, req.user?.id || null, req.sucursalId);
     }
+
+    // Pago mixto: la venta ya está pagada por completo, pero repartida entre
+    // varios métodos — cada tramo queda como su propio cobro y como ingreso
+    // de Caja (categoria 'ventas') para que el arqueo por método cuadre.
+    if (esMixto) {
+      const insertCobro = db.prepare(
+        `INSERT INTO cobros (invoice_id, monto, medio, observacion, created_by) VALUES (?, ?, ?, ?, ?)`
+      );
+      const insertCajaMov = db.prepare(
+        `INSERT INTO caja_movimientos (fecha, tipo, medio, categoria, monto, descripcion, created_by, sucursal_id)
+         VALUES (?, 'ingreso', ?, 'ventas', ?, ?, ?, ?)`
+      );
+      for (const p of pagosMixto) {
+        insertCobro.run(invoiceId, p.monto, p.medio, 'Pago mixto', req.user?.id || null);
+        insertCajaMov.run(fechaEmisionFinal, p.medio, p.monto, `Venta (pago mixto) - ${referenciaComprobante} - ${client.nombre}`, req.user?.id || null, req.sucursalId);
+      }
+    }
     return invoiceId;
   });
 
@@ -327,6 +370,98 @@ router.post('/', async (req, res) => {
   }
 
   res.status(201).json({ ...invoice, items: invoiceItems });
+});
+
+// POST /api/invoices/preview-pdf -> genera un PDF de vista previa con el
+// diseño real del comprobante, a partir de los datos que el usuario ya tiene
+// cargados en el formulario. No guarda nada: no consume numeración, no
+// descuenta stock, no registra cobros. Se usa antes de confirmar la emisión.
+router.post('/preview-pdf', async (req, res) => {
+  const {
+    tipo_comprobante, client_id, items, moneda, observaciones, fecha_emision,
+    forma_pago, numero, serie, descuento_global_pct, monto_pagado, medio_abono, pagos,
+  } = req.body || {};
+
+  if (!Array.isArray(items) || items.length === 0) {
+    return res.status(400).json({ error: 'Agrega al menos un producto para previsualizar.' });
+  }
+
+  const client = client_id ? db.prepare('SELECT * FROM clients WHERE id = ?').get(client_id) : null;
+  const descuentoGlobalPct = Math.min(100, Math.max(0, Number(descuento_global_pct || 0)));
+
+  let totalBruto = 0;
+  let igvBruto = 0;
+  const preparedItems = items.map((it) => {
+    const cantidad = Number(it.cantidad || 1);
+    const precio_unitario = Number(it.precio_unitario || 0);
+    const descuentoPct = Math.min(100, Math.max(0, Number(it.descuento_pct || 0)));
+    const lineBruta = cantidad * precio_unitario;
+    const lineNeta = round2(lineBruta - lineBruta * (descuentoPct / 100));
+    const prod = it.product_id ? db.prepare('SELECT afectacion_igv, codigo, unidad FROM products WHERE id = ?').get(it.product_id) : null;
+    const gravado = !prod || prod.afectacion_igv === 'gravado' || prod.afectacion_igv === 'gratuito';
+    const subtotalLinea = gravado ? round2(lineNeta / (1 + IGV_RATE)) : lineNeta;
+    const igvLinea = gravado ? round2(lineNeta - subtotalLinea) : 0;
+    totalBruto += lineNeta;
+    igvBruto += igvLinea;
+    return {
+      descripcion: it.descripcion || '', cantidad, precio_unitario, descuento_pct: descuentoPct,
+      subtotal: lineNeta, igv_item: igvLinea, codigo: prod?.codigo || null, unidad: prod?.unidad || 'NIU',
+    };
+  });
+  totalBruto = round2(totalBruto);
+  igvBruto = round2(igvBruto);
+  const total = round2(totalBruto * (1 - descuentoGlobalPct / 100));
+  const ratio = totalBruto > 0 ? total / totalBruto : 1;
+  const igv = round2(igvBruto * ratio);
+  const subtotal = round2(total - igv);
+
+  const esAbonado = forma_pago === 'abonado';
+  const esMixto = forma_pago === 'mixto';
+  const montoPagado = esAbonado ? Math.min(total, Math.max(0, round2(Number(monto_pagado || 0)))) : total;
+
+  const sucursal = db.prepare('SELECT nombre, direccion FROM sucursales WHERE id = ?').get(req.sucursalId);
+  const fechaFinal = fecha_emision || new Date().toISOString().slice(0, 10);
+
+  const invoicePreview = {
+    tipo_comprobante: ['factura', 'boleta', 'nota_credito', 'cotizacion'].includes(tipo_comprobante) ? tipo_comprobante : 'boleta',
+    serie: serie || SERIES_BY_TIPO[tipo_comprobante] || 'B001',
+    numero: numero || 0,
+    fecha_emision: fechaFinal,
+    moneda: moneda || 'PEN',
+    estado: 'emitido',
+    forma_pago: forma_pago || 'efectivo',
+    monto_pagado: montoPagado,
+    modo_emision: 'simulado',
+    sunat_estado: null,
+    sunat_hash: null,
+    cliente_nombre: client?.nombre || 'CLIENTE DE EJEMPLO',
+    cliente_tipo_documento: client?.tipo_documento || '-',
+    cliente_documento: client?.numero_documento || '-',
+    cliente_direccion: client?.direccion || '',
+    cliente_telefono: client?.telefono || '',
+    cliente_referencia: client?.referencia || '',
+    cliente_contacto: client?.contacto || '',
+    vendedor_nombre: req.user?.full_name || '',
+    sucursal_nombre: sucursal?.nombre || null,
+    sucursal_direccion: sucursal?.direccion || null,
+    subtotal, igv, total,
+    observaciones: observaciones || '',
+  };
+
+  let cobrosPreview = [];
+  if (esAbonado && montoPagado > 0) {
+    cobrosPreview = [{ monto: montoPagado, medio: medio_abono || 'efectivo', created_at: fechaFinal }];
+  } else if (esMixto && Array.isArray(pagos)) {
+    cobrosPreview = pagos
+      .filter((p) => p && p.medio && Number(p.monto) > 0)
+      .map((p) => ({ monto: Number(p.monto), medio: p.medio, created_at: fechaFinal }));
+  }
+
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', 'inline; filename="vista-previa.pdf"');
+  const doc = await buildInvoicePdf(invoicePreview, preparedItems, cobrosPreview);
+  doc.pipe(res);
+  doc.end();
 });
 
 router.post('/:id/anular', requireAccion('ventas', 'anular_comprobante'), (req, res) => {

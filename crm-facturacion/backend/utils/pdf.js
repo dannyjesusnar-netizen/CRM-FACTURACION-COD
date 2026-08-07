@@ -7,6 +7,7 @@ const TIPO_LABEL = {
   factura: 'FACTURA ELECTRONICA',
   boleta: 'BOLETA DE VENTA ELECTRONICA',
   nota_credito: 'NOTA DE CREDITO ELECTRONICA',
+  cotizacion: 'COTIZACION',
 };
 
 const COLOR_ACENTO_DEFAULT = '#0f4c81';
@@ -23,6 +24,7 @@ function monedaLabel(moneda) {
 function formaPagoLabel(codigo) {
   if (!codigo) return 'EFECTIVO';
   if (codigo === 'abonado') return 'CREDITO';
+  if (codigo === 'mixto') return 'PAGO MIXTO';
   const metodo = db.prepare('SELECT nombre FROM metodos_pago WHERE codigo = ?').get(codigo);
   return (metodo?.nombre || codigo).toUpperCase();
 }
@@ -59,6 +61,47 @@ async function qrBuffer(invoice, empresa) {
   }
 }
 
+// Calcula cómo dibujar el logo según su propia forma, en vez de forzarlo
+// siempre a un círculo: un logo cuadrado/circular (isotipo tipo insignia,
+// como el del ejemplo) se recorta en círculo y rellena la caja completa;
+// uno rectangular (isotipo + texto, banner horizontal, etc.) se muestra
+// completo — sin recortar ni deformar — centrado dentro de su caja.
+function logoLayout(doc, logo, x, y, maxW, maxH, opts = {}) {
+  let img;
+  try {
+    img = doc.openImage(logo);
+  } catch {
+    return null;
+  }
+  if (!img.width || !img.height) return null;
+  const aspecto = img.width / img.height;
+  const esCasiCuadrado = aspecto > 0.8 && aspecto < 1.25;
+
+  if (esCasiCuadrado) {
+    const size = Math.min(maxW, maxH);
+    const drawX = opts.align === 'center' ? x + (maxW - size) / 2 : x;
+    return {
+      anchoOcupado: size,
+      dibujar: () => {
+        doc.save();
+        doc.circle(drawX + size / 2, y + size / 2, size / 2).clip();
+        doc.image(logo, drawX, y, { cover: [size, size], align: 'center', valign: 'center' });
+        doc.restore();
+      },
+    };
+  }
+
+  let w = maxW;
+  let h = w / aspecto;
+  if (h > maxH) { h = maxH; w = h * aspecto; }
+  const drawY = y + (maxH - h) / 2;
+  const drawX = opts.align === 'center' ? x + (maxW - w) / 2 : x;
+  return {
+    anchoOcupado: w,
+    dibujar: () => doc.image(logo, drawX, drawY, { width: w, height: h }),
+  };
+}
+
 // Fila "● Etiqueta: valor" — sin fuente de iconos disponible en pdfkit, se
 // usa un punto de color como marcador visual en vez de un pictograma real.
 function bulletRow(doc, x, y, width, label, valor, acento) {
@@ -84,36 +127,44 @@ function buildA4Pdf(invoice, items, empresa, acento, logo, qr, cobros) {
   const doc = new PDFDocument({ margin: 40, size: 'A4' });
   const esReal = invoice.modo_emision === 'real' && invoice.sunat_estado === 'aceptado';
   const esAbonado = invoice.forma_pago === 'abonado';
+  const esMixto = invoice.forma_pago === 'mixto';
 
   // ---------- Encabezado: logo + empresa + recuadro de comprobante ----------
+  let textX = 40;
   if (logo) {
-    try {
-      doc.save();
-      doc.circle(40 + 32, 40 + 32, 32).clip();
-      doc.image(logo, 40, 40, { width: 64, height: 64, fit: [64, 64] });
-      doc.restore();
-    } catch { /* logo corrupto, se ignora */ }
+    const layout = logoLayout(doc, logo, 40, 40, 130, 64);
+    if (layout) {
+      try {
+        layout.dibujar();
+        textX = 40 + layout.anchoOcupado + 14;
+      } catch { /* logo corrupto, se ignora */ }
+    }
   }
-  const textX = logo ? 115 : 40;
-  doc.font('Helvetica-Bold').fontSize(17).fillColor(acento).text(empresa.razon_social || 'CRM Facturacion', textX, 44, { width: 260 });
+  const nombreWidth = Math.max(150, 375 - textX);
+  const infoWidth = Math.max(140, 380 - (textX + 10));
+  const nombreEmpresa = empresa.razon_social || 'CRM Facturacion';
+  doc.font('Helvetica-Bold').fontSize(17).fillColor(acento).text(nombreEmpresa, textX, 44, { width: nombreWidth });
 
-  let infoY = 66;
+  // El nombre puede envolver a 2 líneas si el logo es ancho y deja poco
+  // espacio de texto — el resto del bloque (dirección, contacto...) debe
+  // empezar debajo de esa altura real, no de una posición fija.
+  let infoY = 44 + doc.heightOfString(nombreEmpresa, { width: nombreWidth }) + 6;
   doc.font('Helvetica').fontSize(7.5).fillColor('#444');
   if (empresa.direccion_fiscal) {
     doc.circle(textX + 3, infoY + 3, 2.5).fill(acento).fillColor('#444');
-    doc.text(empresa.direccion_fiscal, textX + 10, infoY, { width: 250 });
-    infoY += doc.heightOfString(empresa.direccion_fiscal, { width: 250 }) + 3;
+    doc.text(empresa.direccion_fiscal, textX + 10, infoY, { width: infoWidth });
+    infoY += doc.heightOfString(empresa.direccion_fiscal, { width: infoWidth }) + 3;
   }
   const contactoLinea = [empresa.email ? `Email: ${empresa.email}` : null, empresa.telefono ? `Cel: ${empresa.telefono}` : null].filter(Boolean).join('   ');
   if (contactoLinea) {
     doc.circle(textX + 3, infoY + 3, 2.5).fill(acento).fillColor('#444');
-    doc.text(contactoLinea, textX + 10, infoY, { width: 250 });
+    doc.text(contactoLinea, textX + 10, infoY, { width: infoWidth });
     infoY += 12;
   }
   if (invoice.sucursal_direccion && invoice.sucursal_direccion !== empresa.direccion_fiscal) {
     doc.circle(textX + 3, infoY + 3, 2.5).fill(acento).fillColor('#444');
-    doc.text(`Sede ${invoice.sucursal_nombre || ''}: ${invoice.sucursal_direccion}`, textX + 10, infoY, { width: 250 });
-    infoY += doc.heightOfString(`Sede ${invoice.sucursal_nombre || ''}: ${invoice.sucursal_direccion}`, { width: 250 }) + 3;
+    doc.text(`Sede ${invoice.sucursal_nombre || ''}: ${invoice.sucursal_direccion}`, textX + 10, infoY, { width: infoWidth });
+    infoY += doc.heightOfString(`Sede ${invoice.sucursal_nombre || ''}: ${invoice.sucursal_direccion}`, { width: infoWidth }) + 3;
   }
 
   doc.roundedRect(390, 38, 165, 78, 5).stroke(acento);
@@ -121,14 +172,18 @@ function buildA4Pdf(invoice, items, empresa, acento, logo, qr, cobros) {
   doc.font('Helvetica-Bold').fontSize(11).fillColor(acento).text(TIPO_LABEL[invoice.tipo_comprobante] || invoice.tipo_comprobante, 398, 61, { width: 150, align: 'center' });
   doc.font('Helvetica-Bold').fontSize(13).fillColor('#000').text(`${invoice.serie}-${String(invoice.numero).padStart(3, '0')}`, 398, 90, { width: 150, align: 'center' });
 
+  // El aviso SUNAT/simulado va debajo de lo más alto entre el bloque de
+  // datos de la empresa (infoY, variable según el logo) y el recuadro de
+  // RUC/tipo/serie (que termina en y=116) — nunca a una y fija.
+  const avisoY = Math.max(infoY, 116);
   if (esReal) {
-    doc.fontSize(7).fillColor('#0ca30c').text(`Aceptado por SUNAT — Hash: ${invoice.sunat_hash || '-'}`, 40, 118, { width: 515 });
+    doc.fontSize(7).fillColor('#0ca30c').text(`Aceptado por SUNAT — Hash: ${invoice.sunat_hash || '-'}`, 40, avisoY, { width: 515 });
   } else {
-    doc.fontSize(7).fillColor('#999').text('Documento generado en modo SIMULADO (sin validez tributaria real)', 40, 118, { width: 515 });
+    doc.fontSize(7).fillColor('#999').text('Documento generado en modo SIMULADO (sin validez tributaria real)', 40, avisoY, { width: 515 });
   }
 
   // ---------- Panel de cliente / comprobante ----------
-  const panelTop = 132;
+  const panelTop = Math.max(132, avisoY + 14);
   const panelHeight = 145;
   doc.roundedRect(40, panelTop, 515, panelHeight, 6).stroke('#ddd');
 
@@ -203,24 +258,33 @@ function buildA4Pdf(invoice, items, empresa, acento, logo, qr, cobros) {
 
   y = totalsBoxY + 56;
 
-  // ---------- Crédito (solo ventas "abonado") ----------
-  if (esAbonado) {
-    const saldo = Math.max(0, Number(invoice.total) - Number(invoice.monto_pagado || 0));
+  // ---------- Crédito (ventas "abonado") o desglose (pago "mixto") ----------
+  if (esAbonado || esMixto) {
     const boxH = 90;
     doc.roundedRect(40, y, 250, boxH, 5).stroke('#ddd');
-    doc.font('Helvetica-Bold').fontSize(9).fillColor(acento).text('Informacion del credito', 50, y + 10);
-    doc.font('Helvetica').fontSize(8.5).fillColor('#000');
-    doc.text(`Monto abonado: ${money(invoice.monto_pagado || 0, invoice.moneda)}`, 50, y + 28);
-    doc.font('Helvetica-Bold').text(`Saldo pendiente: ${money(saldo, invoice.moneda)}`, 50, y + 44);
-    doc.font('Helvetica').text(saldo > 0.005 ? 'Pendiente de pago.' : 'Totalmente cancelado.', 50, y + 62);
+    if (esAbonado) {
+      const saldo = Math.max(0, Number(invoice.total) - Number(invoice.monto_pagado || 0));
+      doc.font('Helvetica-Bold').fontSize(9).fillColor(acento).text('Informacion del credito', 50, y + 10);
+      doc.font('Helvetica').fontSize(8.5).fillColor('#000');
+      doc.text(`Monto abonado: ${money(invoice.monto_pagado || 0, invoice.moneda)}`, 50, y + 28);
+      doc.font('Helvetica-Bold').text(`Saldo pendiente: ${money(saldo, invoice.moneda)}`, 50, y + 44);
+      doc.font('Helvetica').text(saldo > 0.005 ? 'Pendiente de pago.' : 'Totalmente cancelado.', 50, y + 62);
+    } else {
+      doc.font('Helvetica-Bold').fontSize(9).fillColor(acento).text('Informacion del pago', 50, y + 10);
+      doc.font('Helvetica').fontSize(8.5).fillColor('#000');
+      doc.text(`Pago mixto — ${(cobros || []).length} metodos`, 50, y + 28, { width: 220 });
+      doc.font('Helvetica-Bold').text(`Total: ${money(invoice.total, invoice.moneda)}`, 50, y + 44);
+      doc.font('Helvetica').text('Totalmente cancelado.', 50, y + 62);
+    }
 
     doc.roundedRect(300, y, 255, boxH, 5).stroke('#ddd');
-    doc.font('Helvetica-Bold').fontSize(9).fillColor(acento).text('Abonos registrados', 310, y + 10);
+    doc.font('Helvetica-Bold').fontSize(9).fillColor(acento).text(esAbonado ? 'Abonos registrados' : 'Desglose de pago', 310, y + 10);
     doc.font('Helvetica').fontSize(7.5).fillColor('#000');
     if (cobros && cobros.length) {
       let cy = y + 26;
       cobros.slice(0, 4).forEach((c) => {
-        doc.text(`${(c.created_at || '').slice(0, 10)} — ${formaPagoLabel(c.medio)} — ${money(c.monto, invoice.moneda)}`, 310, cy, { width: 235 });
+        const fechaTxt = esAbonado ? `${(c.created_at || '').slice(0, 10)} — ` : '';
+        doc.text(`${fechaTxt}${formaPagoLabel(c.medio)} — ${money(c.monto, invoice.moneda)}`, 310, cy, { width: 235 });
         cy += 12;
       });
     } else {
@@ -272,6 +336,7 @@ function buildTicketPdf(invoice, items, empresa, acento, logo, qr, cobros) {
   const margin = 10;
   const contentWidth = width - margin * 2;
   const esAbonado = invoice.forma_pago === 'abonado';
+  const esMixto = invoice.forma_pago === 'mixto';
   const estimatedHeight = 420 + items.length * 34
     + (empresa.terminos_condiciones_pdf ? 60 : 0)
     + (invoice.observaciones ? 40 : 0)
@@ -279,7 +344,7 @@ function buildTicketPdf(invoice, items, empresa, acento, logo, qr, cobros) {
     + (qr ? 130 : 0)
     + (invoice.cliente_direccion ? 20 : 0)
     + (invoice.cliente_referencia ? 20 : 0)
-    + (esAbonado ? 90 + (cobros?.length || 0) * 12 : 0);
+    + ((esAbonado || esMixto) ? 90 + (cobros?.length || 0) * 12 : 0);
   const doc = new PDFDocument({ margin, size: [width, estimatedHeight] });
   const esReal = invoice.modo_emision === 'real' && invoice.sunat_estado === 'aceptado';
 
@@ -296,7 +361,12 @@ function buildTicketPdf(invoice, items, empresa, acento, logo, qr, cobros) {
 
   let y = margin;
   if (logo) {
-    try { doc.image(logo, (width - 50) / 2, y, { fit: [50, 50] }); y += 56; } catch { /* logo corrupto, se ignora */ }
+    const maxLogoW = contentWidth;
+    const maxLogoH = 55;
+    const layout = logoLayout(doc, logo, margin, y, maxLogoW, maxLogoH, { align: 'center' });
+    if (layout) {
+      try { layout.dibujar(); y += maxLogoH + 6; } catch { /* logo corrupto, se ignora */ }
+    }
   }
   doc.font('Helvetica-Bold').fontSize(11).fillColor(acento);
   linea(empresa.razon_social || 'CRM Facturacion', { align: 'center', gap: 4 });
@@ -357,19 +427,26 @@ function buildTicketPdf(invoice, items, empresa, acento, logo, qr, cobros) {
   doc.fontSize(6.5).fillColor('#333').text(montoEnLetras(invoice.total, invoice.moneda), margin, y, { width: contentWidth, align: 'center' });
   y += doc.heightOfString(montoEnLetras(invoice.total, invoice.moneda), { width: contentWidth, align: 'center' }) + 8;
 
-  if (esAbonado) {
-    const saldo = Math.max(0, Number(invoice.total) - Number(invoice.monto_pagado || 0));
+  if (esAbonado || esMixto) {
     doc.moveTo(margin, y).lineTo(width - margin, y).stroke('#000');
     y += 8;
-    doc.fontSize(7).fillColor(acento).text('INFORMACION DEL CREDITO', margin, y, { width: contentWidth, align: 'center' });
-    y += 10;
-    doc.fillColor('#000');
-    doc.text(`Abonado: ${money(invoice.monto_pagado || 0, invoice.moneda)}`, margin, y, { width: contentWidth }); y += 10;
-    doc.font('Helvetica-Bold').text(`Saldo: ${money(saldo, invoice.moneda)}`, margin, y, { width: contentWidth }); y += 12;
-    doc.font('Helvetica');
+    if (esAbonado) {
+      const saldo = Math.max(0, Number(invoice.total) - Number(invoice.monto_pagado || 0));
+      doc.fontSize(7).fillColor(acento).text('INFORMACION DEL CREDITO', margin, y, { width: contentWidth, align: 'center' });
+      y += 10;
+      doc.fillColor('#000');
+      doc.text(`Abonado: ${money(invoice.monto_pagado || 0, invoice.moneda)}`, margin, y, { width: contentWidth }); y += 10;
+      doc.font('Helvetica-Bold').text(`Saldo: ${money(saldo, invoice.moneda)}`, margin, y, { width: contentWidth }); y += 12;
+      doc.font('Helvetica');
+    } else {
+      doc.fontSize(7).fillColor(acento).text('DESGLOSE DE PAGO MIXTO', margin, y, { width: contentWidth, align: 'center' });
+      y += 10;
+      doc.fillColor('#000');
+    }
     if (cobros && cobros.length) {
       cobros.forEach((c) => {
-        doc.fontSize(6.5).text(`${(c.created_at || '').slice(0, 10)} ${formaPagoLabel(c.medio)} ${money(c.monto, invoice.moneda)}`, margin, y, { width: contentWidth });
+        const fechaTxt = esAbonado ? `${(c.created_at || '').slice(0, 10)} ` : '';
+        doc.fontSize(6.5).text(`${fechaTxt}${formaPagoLabel(c.medio)} ${money(c.monto, invoice.moneda)}`, margin, y, { width: contentWidth });
         y += 9;
       });
     }

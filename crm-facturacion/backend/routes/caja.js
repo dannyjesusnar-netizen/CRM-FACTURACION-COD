@@ -57,7 +57,13 @@ function buildResumen(fecha, sucursalId, { moneda, empleadoId } = {}) {
   const metodos = db.prepare('SELECT * FROM metodos_pago WHERE activo = 1 ORDER BY orden ASC, id ASC').all();
   return metodos.map((m) => {
     const ingresos = {
-      ventas: ventasAuto(fecha, m.codigo, sucursalId, moneda, empleadoId),
+      // Ventas con un solo método (forma_pago directo) + el tramo que le
+      // corresponde a este método en ventas con "pago mixto" (que se
+      // registran como caja_movimientos categoria 'ventas', uno por medio).
+      ventas: round2(
+        ventasAuto(fecha, m.codigo, sucursalId, moneda, empleadoId)
+        + movimientosSum(fecha, 'ingreso', m.codigo, 'ventas', sucursalId, moneda, empleadoId)
+      ),
       cuentas_cobrar: movimientosSum(fecha, 'ingreso', m.codigo, 'cuentas_cobrar', sucursalId, moneda, empleadoId),
       transferencia: movimientosSum(fecha, 'ingreso', m.codigo, 'transferencia', sucursalId, moneda, empleadoId),
       otros: movimientosSum(fecha, 'ingreso', m.codigo, 'otros', sucursalId, moneda, empleadoId),
