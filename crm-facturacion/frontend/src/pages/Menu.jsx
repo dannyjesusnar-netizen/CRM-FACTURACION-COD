@@ -1,10 +1,20 @@
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '../context/ToastContext';
 import { useAuth } from '../context/AuthContext';
+import FloatingShapes from '../components/FloatingShapes';
 import {
   Receipt, Users, Package, LayoutDashboard, LineChart,
   ShoppingCart, Wallet, Repeat, BookOpen, Briefcase, Clock, Settings,
 } from 'lucide-react';
+
+const MENU_SHAPES = [
+  { type: 'dot', top: '6%', left: '4%', size: 12, color: '#a855f7', delay: '0s' },
+  { type: 'plus', top: '10%', left: '94%', size: 16, color: '#38bdf8', delay: '0.4s' },
+  { type: 'square', top: '30%', left: '2%', size: 14, color: '#facc15', delay: '0.8s' },
+  { type: 'dot', top: '48%', left: '97%', size: 10, color: '#f43f5e', delay: '1.1s' },
+  { type: 'plus', top: '78%', left: '1%', size: 14, color: '#10b981', delay: '0.2s' },
+  { type: 'square', top: '88%', left: '95%', size: 12, color: '#a855f7', delay: '0.6s' },
+];
 
 const ACTIVE_MODULES = [
   { to: '/ventas', label: 'Ventas', Icon: Receipt, desc: 'Emitir facturas, boletas y notas', modulo: 'ventas' },
@@ -33,6 +43,7 @@ export default function Menu() {
 
   return (
     <div className="menu-page">
+      <FloatingShapes shapes={MENU_SHAPES} />
       <h1 className="menu-title">MENÚ PRINCIPAL</h1>
 
       <div className="menu-grid">
