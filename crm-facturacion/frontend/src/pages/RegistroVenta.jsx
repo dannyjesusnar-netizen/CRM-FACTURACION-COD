@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import api from '../api';
 import { useToast } from '../context/ToastContext';
@@ -34,9 +34,19 @@ export default function RegistroVenta() {
   const [cuenta, setCuenta] = useState(modoAbonado ? 'abonado' : 'efectivo');
   const [pago, setPago] = useState('');
   const [medioAbono, setMedioAbono] = useState('efectivo');
+  const [pagosMixto, setPagosMixto] = useState([{ medio: 'efectivo', monto: '' }, { medio: '', monto: '' }]);
   const [error, setError] = useState('');
-  const [showPreview, setShowPreview] = useState(false);
   const [metodosPago, setMetodosPago] = useState([]);
+
+  // Vista previa: se genera el PDF real (el mismo diseño del comprobante
+  // emitido) antes de confirmar — así "Enter"/"Emitir" ya no dispara la
+  // emisión directamente, primero hay que revisar y confirmar.
+  const [showPreview, setShowPreview] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState('');
+  const [loadingPreview, setLoadingPreview] = useState(false);
+  const [previewError, setPreviewError] = useState('');
+  const [emitiendo, setEmitiendo] = useState(false);
+  const previewUrlRef = useRef('');
 
   const endpoint = tipo === 'cotizacion' ? '/cotizaciones' : '/invoices';
 
@@ -44,7 +54,7 @@ export default function RegistroVenta() {
     api.get('/metodos-pago').then((res) => {
       setMetodosPago(res.data);
       if (res.data.length && !res.data.some((m) => m.codigo === 'efectivo')) {
-        setCuenta((prev) => (prev === 'abonado' ? prev : res.data[0].codigo));
+        setCuenta((prev) => (prev === 'abonado' || prev === 'mixto' ? prev : res.data[0].codigo));
         setMedioAbono(res.data[0].codigo);
       }
     });
@@ -57,6 +67,9 @@ export default function RegistroVenta() {
       setNumero(res.data.numero);
     });
     setItems([]);
+    setShowPreview(false);
+    if (previewUrlRef.current) { URL.revokeObjectURL(previewUrlRef.current); previewUrlRef.current = ''; }
+    setPreviewUrl('');
     // En modo Abonado el cliente tiene que ser real (no "Clientes Varios" —
     // sin saber quién es, no hay a quién cobrarle), así que no lo
     // preseleccionamos como en una boleta normal.
@@ -71,6 +84,10 @@ export default function RegistroVenta() {
     if (modoAbonado) setCuenta('abonado');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tipo]);
+
+  useEffect(() => {
+    return () => { if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current); };
+  }, []);
 
   function addProducto(p) {
     setItems((prev) => [...prev, {
@@ -92,6 +109,29 @@ export default function RegistroVenta() {
 
   function removeItem(idx) {
     setItems((prev) => prev.filter((_, i) => i !== idx));
+  }
+
+  function addPagoMixto() {
+    setPagosMixto((prev) => [...prev, { medio: '', monto: '' }]);
+  }
+
+  function updatePagoMixto(idx, patch) {
+    setPagosMixto((prev) => prev.map((p, i) => (i === idx ? { ...p, ...patch } : p)));
+  }
+
+  function removePagoMixto(idx) {
+    setPagosMixto((prev) => (prev.length > 2 ? prev.filter((_, i) => i !== idx) : prev));
+  }
+
+  // Autocompleta el monto de una fila con lo que falta para llegar al total
+  // — así, tras poner "50 en efectivo", basta un clic para asignar el resto
+  // a otro medio en vez de calcularlo a mano.
+  function completarRestoPagoMixto(idx) {
+    setPagosMixto((prev) => {
+      const otros = prev.reduce((s, p, i) => (i === idx ? s : s + Number(p.monto || 0)), 0);
+      const resto = Math.max(0, round2(computed.total - otros));
+      return prev.map((p, i) => (i === idx ? { ...p, monto: resto } : p));
+    });
   }
 
   const computed = useMemo(() => {
@@ -117,29 +157,39 @@ export default function RegistroVenta() {
     return { rows, totalBruto, total, ganancia, vuelto, saldoPendiente };
   }, [items, descuentoGlobal, pago]);
 
-  async function handleSubmit(e) {
-    e.preventDefault();
-    setError('');
+  const sumaPagosMixto = useMemo(
+    () => round2(pagosMixto.reduce((s, p) => s + Number(p.monto || 0), 0)),
+    [pagosMixto]
+  );
+
+  function validar() {
     if (tipo === 'factura' && (!cliente || cliente.tipo_documento !== 'RUC')) {
-      setError('Para emitir factura selecciona un cliente con RUC.');
-      return;
+      return 'Para emitir factura selecciona un cliente con RUC.';
     }
     if (tipo !== 'cotizacion' && !cliente) {
-      setError('Selecciona un cliente.');
-      return;
+      return 'Selecciona un cliente.';
     }
     if (tipo !== 'cotizacion' && cuenta === 'abonado' && cliente?.numero_documento === '10000000') {
-      setError('Para una venta abonada selecciona un cliente real — no puede quedar a nombre de "Clientes Varios".');
-      return;
+      return 'Para una venta abonada selecciona un cliente real — no puede quedar a nombre de "Clientes Varios".';
     }
     if (tipo !== 'cotizacion' && cuenta === 'abonado' && Number(pago || 0) > computed.total) {
-      setError('El abono no puede ser mayor al total de la venta.');
-      return;
+      return 'El abono no puede ser mayor al total de la venta.';
+    }
+    if (tipo !== 'cotizacion' && cuenta === 'mixto') {
+      if (pagosMixto.some((p) => !p.medio || !(Number(p.monto) > 0))) {
+        return 'Completa el método y el monto de cada pago del pago mixto.';
+      }
+      if (Math.abs(sumaPagosMixto - computed.total) > 0.01) {
+        return `La suma de los pagos (S/ ${sumaPagosMixto.toFixed(2)}) debe ser igual al total (S/ ${computed.total.toFixed(2)}).`;
+      }
     }
     if (items.length === 0) {
-      setError('Agrega al menos un producto.');
-      return;
+      return 'Agrega al menos un producto.';
     }
+    return '';
+  }
+
+  function buildPayload() {
     const payload = {
       client_id: cliente ? cliente.id : null,
       items: computed.rows.map((it) => ({
@@ -154,20 +204,65 @@ export default function RegistroVenta() {
       fecha_emision: fecha,
       descuento_global_pct: Number(descuentoGlobal || 0),
       numero: numero || undefined,
+      serie,
     };
+    if (tipo !== 'cotizacion') {
+      payload.tipo_comprobante = tipo;
+      payload.forma_pago = cuenta;
+      if (cuenta === 'abonado') {
+        payload.monto_pagado = Number(pago || 0);
+        if (Number(pago || 0) > 0) payload.medio_abono = medioAbono;
+      }
+      if (cuenta === 'mixto') {
+        payload.pagos = pagosMixto.map((p) => ({ medio: p.medio, monto: Number(p.monto) }));
+      }
+    }
+    return payload;
+  }
+
+  async function abrirVistaPrevia(e) {
+    e.preventDefault();
+    setError('');
+    const msg = validar();
+    if (msg) {
+      setError(msg);
+      return;
+    }
+    setLoadingPreview(true);
+    setPreviewError('');
     try {
+      const payload = buildPayload();
+      const res = await api.post('/invoices/preview-pdf', { ...payload, tipo_comprobante: tipo }, { responseType: 'blob' });
+      if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+      const url = URL.createObjectURL(res.data);
+      previewUrlRef.current = url;
+      setPreviewUrl(url);
+      setShowPreview(true);
+    } catch {
+      setPreviewError('No se pudo generar la vista previa. Puedes confirmar y emitir de todas formas.');
+      setShowPreview(true);
+    } finally {
+      setLoadingPreview(false);
+    }
+  }
+
+  async function confirmarEmision() {
+    setEmitiendo(true);
+    setError('');
+    try {
+      const payload = buildPayload();
       if (tipo === 'cotizacion') {
         await api.post('/cotizaciones', payload);
       } else {
-        const extra = cuenta === 'abonado'
-          ? { monto_pagado: Number(pago || 0), medio_abono: Number(pago || 0) > 0 ? medioAbono : undefined }
-          : {};
-        await api.post('/invoices', { ...payload, tipo_comprobante: tipo, forma_pago: cuenta, ...extra });
+        await api.post('/invoices', payload);
       }
       toast.success(`${TITULOS[tipo]} registrada correctamente.`);
       navigate('/ventas');
     } catch (err) {
       setError(err.response?.data?.error || 'Error al registrar el comprobante.');
+      setShowPreview(false);
+    } finally {
+      setEmitiendo(false);
     }
   }
 
@@ -175,7 +270,7 @@ export default function RegistroVenta() {
     <div className="venta-page">
       <h1 className="page-title">Registro de {modoAbonado ? 'Abonado' : (TITULOS[tipo] || tipo)}</h1>
 
-      <form onSubmit={handleSubmit}>
+      <form onSubmit={abrirVistaPrevia}>
         <div className="venta-panel">
           <div className="venta-fields-row">
             <div className="filter-field">
@@ -304,14 +399,15 @@ export default function RegistroVenta() {
                     <option key={m.codigo} value={m.codigo}>{m.icono} {m.nombre}</option>
                   ))}
                   <option value="abonado">Abonado (crédito)</option>
+                  <option value="mixto">🔀 Pago mixto (2 o más medios)</option>
                 </select>
               </div>
-              <div className="filter-field">
-                <label>{cuenta === 'abonado' ? 'Abono inicial (opcional)' : 'Pago'}</label>
-                <input type="number" min="0" step="0.01" value={pago} onChange={(e) => setPago(e.target.value)} />
-              </div>
-              {cuenta === 'abonado' ? (
+              {cuenta === 'abonado' && (
                 <>
+                  <div className="filter-field">
+                    <label>Abono inicial (opcional)</label>
+                    <input type="number" min="0" step="0.01" value={pago} onChange={(e) => setPago(e.target.value)} />
+                  </div>
                   {Number(pago || 0) > 0 && (
                     <div className="filter-field">
                       <label>Medio del abono</label>
@@ -327,11 +423,18 @@ export default function RegistroVenta() {
                     <input readOnly value={computed.saldoPendiente.toFixed(2)} />
                   </div>
                 </>
-              ) : (
-                <div className="filter-field">
-                  <label>Vuelto</label>
-                  <input readOnly value={computed.vuelto.toFixed(2)} />
-                </div>
+              )}
+              {cuenta !== 'abonado' && cuenta !== 'mixto' && (
+                <>
+                  <div className="filter-field">
+                    <label>Pago</label>
+                    <input type="number" min="0" step="0.01" value={pago} onChange={(e) => setPago(e.target.value)} />
+                  </div>
+                  <div className="filter-field">
+                    <label>Vuelto</label>
+                    <input readOnly value={computed.vuelto.toFixed(2)} />
+                  </div>
+                </>
               )}
             </div>
           )}
@@ -342,43 +445,65 @@ export default function RegistroVenta() {
             </p>
           )}
 
+          {cuenta === 'mixto' && tipo !== 'cotizacion' && (
+            <div className="venta-pago-mixto">
+              <label style={{ fontSize: 13, fontWeight: 600, display: 'block', marginBottom: 6 }}>
+                Desglose del pago mixto — ej. S/ 50 en efectivo y el resto por Yape
+              </label>
+              {pagosMixto.map((p, idx) => (
+                <div key={idx} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6, flexWrap: 'wrap' }}>
+                  <select value={p.medio} onChange={(e) => updatePagoMixto(idx, { medio: e.target.value })} style={{ minWidth: 150 }}>
+                    <option value="">Selecciona un medio</option>
+                    {metodosPago.map((m) => (
+                      <option key={m.codigo} value={m.codigo}>{m.icono} {m.nombre}</option>
+                    ))}
+                  </select>
+                  <input type="number" min="0" step="0.01" placeholder="Monto" value={p.monto}
+                    onChange={(e) => updatePagoMixto(idx, { monto: e.target.value })} style={{ width: 120 }} />
+                  <button type="button" className="btn-link" onClick={() => completarRestoPagoMixto(idx)}>Completar resto</button>
+                  {pagosMixto.length > 2 && (
+                    <button type="button" className="btn-link danger" onClick={() => removePagoMixto(idx)}>Quitar</button>
+                  )}
+                </div>
+              ))}
+              <button type="button" className="btn-secondary" onClick={addPagoMixto}>+ Agregar método</button>
+              <p style={{ fontSize: 12, marginTop: 8, color: Math.abs(sumaPagosMixto - computed.total) < 0.005 ? 'var(--good)' : 'var(--critical)' }}>
+                Asignado: S/ {sumaPagosMixto.toFixed(2)} de S/ {computed.total.toFixed(2)}
+                {Math.abs(sumaPagosMixto - computed.total) >= 0.005 && ` — falta S/ ${(computed.total - sumaPagosMixto).toFixed(2)}`}
+              </p>
+            </div>
+          )}
+
           {error && <div className="form-error">{error}</div>}
 
           <div className="venta-actions-row">
-            <button type="submit" className="btn-primary" style={{ background: 'var(--good)', borderColor: 'var(--good)' }}>Emitir</button>
-            <button type="button" className="btn-secondary" onClick={() => setShowPreview(true)}>Vista Previa</button>
+            <button type="submit" className="btn-primary" style={{ background: 'var(--good)', borderColor: 'var(--good)' }} disabled={loadingPreview}>
+              {loadingPreview ? 'Generando vista previa...' : 'Vista previa y emitir'}
+            </button>
             <button type="button" className="btn-secondary" style={{ color: 'var(--critical)', borderColor: 'var(--critical)' }} onClick={() => navigate('/ventas')}>Cancelar</button>
           </div>
         </div>
       </form>
 
       {showPreview && (
-        <div className="modal-overlay" onClick={() => setShowPreview(false)}>
+        <div className="modal-overlay" onClick={() => !emitiendo && setShowPreview(false)}>
           <div className="modal modal-lg" onClick={(e) => e.stopPropagation()}>
-            <h2>Vista previa — {TITULOS[tipo]} {serie}-{String(numero || 0).padStart(6, '0')}</h2>
+            <h2>Confirmar {TITULOS[tipo]} — {serie}-{String(numero || 0).padStart(6, '0')}</h2>
             <p style={{ fontSize: 13, color: 'var(--ink-muted)' }}>
-              Cliente: {cliente ? `${cliente.numero_documento} - ${cliente.nombre}` : 'Sin cliente'}
+              Revisa el comprobante antes de emitirlo. Una vez confirmado no se puede editar (solo anular).
             </p>
-            <table className="items-table">
-              <thead>
-                <tr><th>Descripción</th><th>Cant.</th><th>P.U.</th><th>Importe</th></tr>
-              </thead>
-              <tbody>
-                {computed.rows.map((it, idx) => (
-                  <tr key={idx}>
-                    <td>{it.descripcion}</td>
-                    <td>{it.cantidad}</td>
-                    <td>S/ {Number(it.precio_unitario).toFixed(2)}</td>
-                    <td>S/ {it.importe.toFixed(2)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <div className="totals-box" style={{ marginTop: 12 }}>
-              <div className="totals-final"><span>Total:</span><span>S/ {computed.total.toFixed(2)}</span></div>
-            </div>
+            {previewError && <div className="form-error">{previewError}</div>}
+            {previewUrl && (
+              <iframe title="Vista previa del comprobante" src={previewUrl}
+                style={{ width: '100%', height: 560, border: '1px solid var(--border)', borderRadius: 6, background: '#fff' }} />
+            )}
+            {error && <div className="form-error">{error}</div>}
             <div className="modal-actions">
-              <button type="button" className="btn-secondary" onClick={() => setShowPreview(false)}>Cerrar</button>
+              <button type="button" className="btn-secondary" onClick={() => setShowPreview(false)} disabled={emitiendo}>Seguir editando</button>
+              <button type="button" className="btn-primary" style={{ background: 'var(--good)', borderColor: 'var(--good)' }}
+                onClick={confirmarEmision} disabled={emitiendo}>
+                {emitiendo ? 'Emitiendo...' : `Confirmar y ${tipo === 'cotizacion' ? 'Registrar' : 'Emitir'}`}
+              </button>
             </div>
           </div>
         </div>

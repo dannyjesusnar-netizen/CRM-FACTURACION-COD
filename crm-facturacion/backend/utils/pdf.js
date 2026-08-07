@@ -7,6 +7,7 @@ const TIPO_LABEL = {
   factura: 'FACTURA ELECTRONICA',
   boleta: 'BOLETA DE VENTA ELECTRONICA',
   nota_credito: 'NOTA DE CREDITO ELECTRONICA',
+  cotizacion: 'COTIZACION',
 };
 
 const COLOR_ACENTO_DEFAULT = '#0f4c81';
@@ -23,6 +24,7 @@ function monedaLabel(moneda) {
 function formaPagoLabel(codigo) {
   if (!codigo) return 'EFECTIVO';
   if (codigo === 'abonado') return 'CREDITO';
+  if (codigo === 'mixto') return 'PAGO MIXTO';
   const metodo = db.prepare('SELECT nombre FROM metodos_pago WHERE codigo = ?').get(codigo);
   return (metodo?.nombre || codigo).toUpperCase();
 }
@@ -125,6 +127,7 @@ function buildA4Pdf(invoice, items, empresa, acento, logo, qr, cobros) {
   const doc = new PDFDocument({ margin: 40, size: 'A4' });
   const esReal = invoice.modo_emision === 'real' && invoice.sunat_estado === 'aceptado';
   const esAbonado = invoice.forma_pago === 'abonado';
+  const esMixto = invoice.forma_pago === 'mixto';
 
   // ---------- Encabezado: logo + empresa + recuadro de comprobante ----------
   let textX = 40;
@@ -255,24 +258,33 @@ function buildA4Pdf(invoice, items, empresa, acento, logo, qr, cobros) {
 
   y = totalsBoxY + 56;
 
-  // ---------- Crédito (solo ventas "abonado") ----------
-  if (esAbonado) {
-    const saldo = Math.max(0, Number(invoice.total) - Number(invoice.monto_pagado || 0));
+  // ---------- Crédito (ventas "abonado") o desglose (pago "mixto") ----------
+  if (esAbonado || esMixto) {
     const boxH = 90;
     doc.roundedRect(40, y, 250, boxH, 5).stroke('#ddd');
-    doc.font('Helvetica-Bold').fontSize(9).fillColor(acento).text('Informacion del credito', 50, y + 10);
-    doc.font('Helvetica').fontSize(8.5).fillColor('#000');
-    doc.text(`Monto abonado: ${money(invoice.monto_pagado || 0, invoice.moneda)}`, 50, y + 28);
-    doc.font('Helvetica-Bold').text(`Saldo pendiente: ${money(saldo, invoice.moneda)}`, 50, y + 44);
-    doc.font('Helvetica').text(saldo > 0.005 ? 'Pendiente de pago.' : 'Totalmente cancelado.', 50, y + 62);
+    if (esAbonado) {
+      const saldo = Math.max(0, Number(invoice.total) - Number(invoice.monto_pagado || 0));
+      doc.font('Helvetica-Bold').fontSize(9).fillColor(acento).text('Informacion del credito', 50, y + 10);
+      doc.font('Helvetica').fontSize(8.5).fillColor('#000');
+      doc.text(`Monto abonado: ${money(invoice.monto_pagado || 0, invoice.moneda)}`, 50, y + 28);
+      doc.font('Helvetica-Bold').text(`Saldo pendiente: ${money(saldo, invoice.moneda)}`, 50, y + 44);
+      doc.font('Helvetica').text(saldo > 0.005 ? 'Pendiente de pago.' : 'Totalmente cancelado.', 50, y + 62);
+    } else {
+      doc.font('Helvetica-Bold').fontSize(9).fillColor(acento).text('Informacion del pago', 50, y + 10);
+      doc.font('Helvetica').fontSize(8.5).fillColor('#000');
+      doc.text(`Pago mixto — ${(cobros || []).length} metodos`, 50, y + 28, { width: 220 });
+      doc.font('Helvetica-Bold').text(`Total: ${money(invoice.total, invoice.moneda)}`, 50, y + 44);
+      doc.font('Helvetica').text('Totalmente cancelado.', 50, y + 62);
+    }
 
     doc.roundedRect(300, y, 255, boxH, 5).stroke('#ddd');
-    doc.font('Helvetica-Bold').fontSize(9).fillColor(acento).text('Abonos registrados', 310, y + 10);
+    doc.font('Helvetica-Bold').fontSize(9).fillColor(acento).text(esAbonado ? 'Abonos registrados' : 'Desglose de pago', 310, y + 10);
     doc.font('Helvetica').fontSize(7.5).fillColor('#000');
     if (cobros && cobros.length) {
       let cy = y + 26;
       cobros.slice(0, 4).forEach((c) => {
-        doc.text(`${(c.created_at || '').slice(0, 10)} — ${formaPagoLabel(c.medio)} — ${money(c.monto, invoice.moneda)}`, 310, cy, { width: 235 });
+        const fechaTxt = esAbonado ? `${(c.created_at || '').slice(0, 10)} — ` : '';
+        doc.text(`${fechaTxt}${formaPagoLabel(c.medio)} — ${money(c.monto, invoice.moneda)}`, 310, cy, { width: 235 });
         cy += 12;
       });
     } else {
@@ -324,6 +336,7 @@ function buildTicketPdf(invoice, items, empresa, acento, logo, qr, cobros) {
   const margin = 10;
   const contentWidth = width - margin * 2;
   const esAbonado = invoice.forma_pago === 'abonado';
+  const esMixto = invoice.forma_pago === 'mixto';
   const estimatedHeight = 420 + items.length * 34
     + (empresa.terminos_condiciones_pdf ? 60 : 0)
     + (invoice.observaciones ? 40 : 0)
@@ -331,7 +344,7 @@ function buildTicketPdf(invoice, items, empresa, acento, logo, qr, cobros) {
     + (qr ? 130 : 0)
     + (invoice.cliente_direccion ? 20 : 0)
     + (invoice.cliente_referencia ? 20 : 0)
-    + (esAbonado ? 90 + (cobros?.length || 0) * 12 : 0);
+    + ((esAbonado || esMixto) ? 90 + (cobros?.length || 0) * 12 : 0);
   const doc = new PDFDocument({ margin, size: [width, estimatedHeight] });
   const esReal = invoice.modo_emision === 'real' && invoice.sunat_estado === 'aceptado';
 
@@ -414,19 +427,26 @@ function buildTicketPdf(invoice, items, empresa, acento, logo, qr, cobros) {
   doc.fontSize(6.5).fillColor('#333').text(montoEnLetras(invoice.total, invoice.moneda), margin, y, { width: contentWidth, align: 'center' });
   y += doc.heightOfString(montoEnLetras(invoice.total, invoice.moneda), { width: contentWidth, align: 'center' }) + 8;
 
-  if (esAbonado) {
-    const saldo = Math.max(0, Number(invoice.total) - Number(invoice.monto_pagado || 0));
+  if (esAbonado || esMixto) {
     doc.moveTo(margin, y).lineTo(width - margin, y).stroke('#000');
     y += 8;
-    doc.fontSize(7).fillColor(acento).text('INFORMACION DEL CREDITO', margin, y, { width: contentWidth, align: 'center' });
-    y += 10;
-    doc.fillColor('#000');
-    doc.text(`Abonado: ${money(invoice.monto_pagado || 0, invoice.moneda)}`, margin, y, { width: contentWidth }); y += 10;
-    doc.font('Helvetica-Bold').text(`Saldo: ${money(saldo, invoice.moneda)}`, margin, y, { width: contentWidth }); y += 12;
-    doc.font('Helvetica');
+    if (esAbonado) {
+      const saldo = Math.max(0, Number(invoice.total) - Number(invoice.monto_pagado || 0));
+      doc.fontSize(7).fillColor(acento).text('INFORMACION DEL CREDITO', margin, y, { width: contentWidth, align: 'center' });
+      y += 10;
+      doc.fillColor('#000');
+      doc.text(`Abonado: ${money(invoice.monto_pagado || 0, invoice.moneda)}`, margin, y, { width: contentWidth }); y += 10;
+      doc.font('Helvetica-Bold').text(`Saldo: ${money(saldo, invoice.moneda)}`, margin, y, { width: contentWidth }); y += 12;
+      doc.font('Helvetica');
+    } else {
+      doc.fontSize(7).fillColor(acento).text('DESGLOSE DE PAGO MIXTO', margin, y, { width: contentWidth, align: 'center' });
+      y += 10;
+      doc.fillColor('#000');
+    }
     if (cobros && cobros.length) {
       cobros.forEach((c) => {
-        doc.fontSize(6.5).text(`${(c.created_at || '').slice(0, 10)} ${formaPagoLabel(c.medio)} ${money(c.monto, invoice.moneda)}`, margin, y, { width: contentWidth });
+        const fechaTxt = esAbonado ? `${(c.created_at || '').slice(0, 10)} ` : '';
+        doc.fontSize(6.5).text(`${fechaTxt}${formaPagoLabel(c.medio)} ${money(c.monto, invoice.moneda)}`, margin, y, { width: contentWidth });
         y += 9;
       });
     }
