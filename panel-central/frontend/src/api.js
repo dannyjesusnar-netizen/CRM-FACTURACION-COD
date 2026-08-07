@@ -1,6 +1,8 @@
 import axios from 'axios';
 
-const api = axios.create({ baseURL: '/api' });
+// Servido bajo el mismo dominio que el CRM, en /panel — su API vive en
+// /panel-api para no chocar con /api (la del CRM).
+const api = axios.create({ baseURL: '/panel-api' });
 
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('panel_token');
@@ -16,8 +18,8 @@ api.interceptors.response.use(
     if (err.response && err.response.status === 401) {
       localStorage.removeItem('panel_token');
       localStorage.removeItem('panel_admin');
-      if (window.location.pathname !== '/login') {
-        window.location.href = '/login';
+      if (window.location.pathname !== '/panel/login') {
+        window.location.href = '/panel/login';
       }
     }
     return Promise.reject(err);

@@ -250,7 +250,10 @@ Si no defines la variable, no hay límite. Con ella configurada:
 Si rentas este CRM a varias empresas, puedes administrar sus cuentas de
 Gerencia (activarlas, desactivarlas, restaurar contraseñas, corregir el rol
 si alguna quedó mal configurada) desde el **panel central** (`panel-central/`
-en este mismo repo, una app separada que despliegas una sola vez para ti).
+en este mismo repo). Se sirve bajo el mismo dominio que este CRM, en
+`/panel` — este `server.js` lo monta solo si encuentra esa carpeta al lado
+(mismo repo) — con su propio login (correo + contraseña, ver
+`panel-central/README.md`), sin necesitar un despliegue de Render aparte.
 
 | Variable | Valor |
 | --- | --- |

@@ -1,8 +1,17 @@
 # Panel Central
 
-App separada, de uso exclusivo del dueño del producto (no de las empresas
-que rentan el CRM), para administrar de forma remota las cuentas de
-Gerencia de cada instancia cliente de `crm-facturacion`.
+App de uso exclusivo del dueño del producto (no de las empresas que rentan
+el CRM), para administrar de forma remota las cuentas de Gerencia de cada
+instancia cliente de `crm-facturacion` — y, si ese despliegue usa el
+registro multi-empresa (ver `crm-facturacion/README.md`), también para
+aprobar/rechazar las empresas que se auto-registraron ahí.
+
+Código separado (login propio, por correo+contraseña, con su propia base
+de datos — nunca se mezcla con la de ninguna empresa cliente), pero se
+**sirve bajo el mismo dominio** que `crm-facturacion`, en la ruta `/panel`
+— no hace falta un link ni un despliegue de Render aparte. Lo monta
+`crm-facturacion/backend/server.js` automáticamente cuando encuentra esta
+carpeta al lado (mismo repo).
 
 No tiene nada de ventas, facturación ni inventario — solo permite, por cada
 empresa registrada:
@@ -26,28 +35,40 @@ secreto — solo pasa por el backend del panel.
 
 ## Desarrollo local
 
+**Standalone** (solo el panel, en su propio puerto — útil para trabajar
+en el panel sin levantar todo el CRM):
+
 ```bash
 cd panel-central/backend
-PANEL_JWT_SECRET=dev npm install && npm run dev   # puerto 4100
+PANEL_JWT_SECRET=dev npm install && npm run dev   # puerto 4100, sirve /panel
 
 cd panel-central/frontend
-npm install && npm run dev                         # puerto 5174, con proxy a 4100
+npm install && npm run dev                         # puerto 5174, con proxy /panel-api -> 4100
 ```
+
+Abrí `http://localhost:5174/panel/login` (no la raíz — el frontend está
+compilado para vivir bajo `/panel`, igual que en producción).
+
+**Integrado** (como corre en producción): levantá `crm-facturacion/backend`
+normalmente — si esta carpeta (`panel-central/`) existe al lado, el panel
+queda montado solo, en `http://localhost:<puerto-del-crm>/panel`.
 
 Login inicial sembrado: `dannyjesusnar@gmail.com` / `26344711` — cámbiala
 desde "Cambiar contraseña" en el panel apenas ingreses.
 
 ## Desplegar en Render
 
-Este repo ya incluye el servicio `panel-central` en `render.yaml`, hermano
-del servicio `crm-facturacion`. Si tu servicio actual de Render fue creado
-manualmente (no vía Blueprint), tendrás que crear este segundo Web Service
-a mano en el dashboard de Render apuntando a este mismo repositorio, con:
+No necesita un Web Service aparte: `render.yaml` compila los dos frontends
+(`crm-facturacion` y `panel-central`) y arranca un único servidor
+(`crm-facturacion/backend/server.js`), que sirve el CRM en `/` y el panel
+en `/panel`. Solo hace falta la variable de entorno `PANEL_JWT_SECRET`
+(ya incluida en `render.yaml`, se genera sola) además de las que ya usa
+`crm-facturacion`.
 
-- Build command: `cd panel-central/frontend && npm install --include=dev && npm run build && cd ../backend && npm install`
-- Start command: `node panel-central/backend/server.js`
-- Health check path: `/api/health`
-- Variable de entorno `PANEL_JWT_SECRET` (genera un valor aleatorio).
+Si preferís desplegarlo como servicio totalmente aparte (otra URL), podés
+seguir usando `panel-central/backend/server.js` como start command con su
+propio build command — queda funcionando igual, solo que en su propio
+dominio en vez de bajo `/panel` del CRM.
 
 ## Dar de alta una empresa cliente
 

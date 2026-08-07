@@ -3,12 +3,16 @@ services:
     name: crm-facturacion
     runtime: node
     plan: free
-    buildCommand: "cd crm-facturacion/frontend && npm install --include=dev && npm run build && cd ../backend && npm install"
+    # Compila los dos frontends (CRM + panel-central) e instala las
+    # dependencias de los dos backends — panel-central queda montado dentro
+    # de este mismo servicio, bajo /panel (ver crm-facturacion/backend/server.js).
+    buildCommand: "cd crm-facturacion/frontend && npm install --include=dev && npm run build && cd ../../panel-central/frontend && npm install --include=dev && npm run build && cd ../backend && npm install && cd ../../crm-facturacion/backend && npm install"
     startCommand: "node crm-facturacion/backend/server.js"
     healthCheckPath: /api/health
     # Disco persistente: requiere subir "plan" arriba de free (Render no
     # permite discos en el plan gratuito). Con el disco montado y DATA_DIR
-    # apuntando ahí, la base de datos sobrevive a los redeploys.
+    # apuntando ahí, la base de datos sobrevive a los redeploys — tanto la
+    # del CRM (crm.db, empresas registradas) como la del panel (panel.db).
     disk:
       name: crm-data
       mountPath: /var/data
@@ -20,15 +24,5 @@ services:
         generateValue: true
       - key: DATA_DIR
         value: /var/data
-  - type: web
-    name: panel-central
-    runtime: node
-    plan: free
-    buildCommand: "cd panel-central/frontend && npm install --include=dev && npm run build && cd ../backend && npm install"
-    startCommand: "node panel-central/backend/server.js"
-    healthCheckPath: /api/health
-    envVars:
-      - key: NODE_ENV
-        value: production
       - key: PANEL_JWT_SECRET
         generateValue: true

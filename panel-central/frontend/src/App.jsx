@@ -12,7 +12,7 @@ export default function App() {
   return (
     <AuthProvider>
       <ToastProvider>
-        <BrowserRouter>
+        <BrowserRouter basename="/panel">
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route

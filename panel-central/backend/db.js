@@ -3,7 +3,10 @@ const fs = require('fs');
 const bcrypt = require('bcryptjs');
 const Database = require('better-sqlite3');
 
-const DATA_DIR = path.join(__dirname, 'data');
+// Cuando corre integrado dentro del mismo despliegue que crm-facturacion
+// (ver server.js de crm-facturacion), comparte el mismo disco persistente
+// vía DATA_DIR — así panel.db sobrevive a los redeploys igual que crm.db.
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
 const db = new Database(path.join(DATA_DIR, 'panel.db'));

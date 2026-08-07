@@ -15,19 +15,20 @@ app.use(express.json());
 
 app.get('/api/health', (req, res) => res.json({ ok: true, service: 'panel-central-backend' }));
 
-app.use('/api/auth', authRoutes);
-app.use('/api/companies', companyRoutes);
+// Mismos paths que cuando se sirve integrado dentro de crm-facturacion (ver
+// crm-facturacion/backend/server.js) — así el frontend (compilado con
+// base: '/panel/' y llamando a /panel-api) funciona igual acá en desarrollo
+// standalone que integrado en producción.
+app.use('/panel-api/auth', authRoutes);
+app.use('/panel-api/companies', companyRoutes);
 
 // Si existe el build del frontend (frontend/dist), lo servimos desde el
-// mismo servidor, igual que crm-facturacion, para quedar como un unico
-// servicio (una sola URL) en Render.
+// mismo servidor, bajo /panel — igual que queda integrado en crm-facturacion.
 const frontendDist = path.join(__dirname, '..', 'frontend', 'dist');
 if (fs.existsSync(frontendDist)) {
-  app.use(express.static(frontendDist));
-  app.get('*', (req, res, next) => {
-    if (req.path.startsWith('/api/')) return next();
-    res.sendFile(path.join(frontendDist, 'index.html'));
-  });
+  app.use('/panel', express.static(frontendDist));
+  app.get('/panel/*', (req, res) => res.sendFile(path.join(frontendDist, 'index.html')));
+  app.get('/', (req, res) => res.redirect('/panel'));
 }
 
 app.use((req, res) => {
