@@ -10,6 +10,7 @@ export default function CompanyDetail() {
   const toast = useToast();
   const [empresa, setEmpresa] = useState(null);
   const [users, setUsers] = useState(null);
+  const [registros, setRegistros] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [pwdModalUser, setPwdModalUser] = useState(null);
@@ -22,18 +23,50 @@ export default function CompanyDetail() {
     setLoading(true);
     setError('');
     try {
-      const [empresaRes, usersRes] = await Promise.all([
+      const [empresaRes, usersRes, registrosRes] = await Promise.all([
         api.get(`/companies/${id}/live/empresa`),
         api.get(`/companies/${id}/live/users`),
+        api.get(`/companies/${id}/live/registros`).catch(() => ({ data: [] })),
       ]);
       setEmpresa(empresaRes.data);
       setUsers(usersRes.data);
+      setRegistros(registrosRes.data);
     } catch (err) {
       setError(err.response?.data?.error || 'No se pudo contactar la instancia.');
     } finally {
       setLoading(false);
     }
   }
+
+  async function handleAprobarRegistro(r) {
+    if (!window.confirm(`¿Aprobar el registro de "${r.razon_social}" (RUC ${r.ruc})? Podrá iniciar sesión de inmediato.`)) return;
+    try {
+      await api.put(`/companies/${id}/live/registros/${r.ruc}/aprobar`);
+      toast.success('Registro aprobado.');
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'No se pudo aprobar el registro.');
+    }
+  }
+
+  async function handleRechazarRegistro(r) {
+    if (!window.confirm(`¿Rechazar el registro de "${r.razon_social}" (RUC ${r.ruc})? No podrá iniciar sesión.`)) return;
+    try {
+      await api.put(`/companies/${id}/live/registros/${r.ruc}/rechazar`);
+      toast.success('Registro rechazado.');
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'No se pudo rechazar el registro.');
+    }
+  }
+
+  function formatFecha(f) {
+    if (!f) return '—';
+    return f.replace('T', ' ').slice(0, 16);
+  }
+
+  const ESTADO_BADGE = { pendiente: '', aprobado: 'badge-good', rechazado: 'badge-critical' };
+  const ESTADO_LABEL = { pendiente: 'Pendiente', aprobado: 'Aprobado', rechazado: 'Rechazado' };
 
   async function handleToggleEstado(u) {
     const accion = u.activo ? 'desactivar' : 'activar';
@@ -142,6 +175,44 @@ export default function CompanyDetail() {
               ))}
               {(users || []).length === 0 && (
                 <tr><td colSpan={6} className="empty-row">No hay cuentas registradas en esa instancia.</td></tr>
+              )}
+            </tbody>
+          </table>
+
+          <h3 style={{ marginTop: 28 }}>Empresas registradas desde "Registrar mi empresa"</h3>
+          <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -8 }}>
+            Historial completo de empresas que se dieron de alta solas en esta instancia (botón "Registro"
+            en su pantalla de login), con la fecha desde que están y su estado actual.
+          </p>
+          <table className="data-table">
+            <thead>
+              <tr><th>Razón social</th><th>RUC</th><th>Registrada desde</th><th>Aprobada desde</th><th>Estado</th><th></th></tr>
+            </thead>
+            <tbody>
+              {(registros || []).map((r) => (
+                <tr key={r.ruc}>
+                  <td>{r.razon_social}</td>
+                  <td>{r.ruc}</td>
+                  <td>{formatFecha(r.created_at)}</td>
+                  <td>{formatFecha(r.approved_at)}</td>
+                  <td>
+                    <span className={'badge ' + (ESTADO_BADGE[r.estado] || '')}>{ESTADO_LABEL[r.estado] || r.estado}</span>
+                  </td>
+                  <td className="row-actions">
+                    {r.estado === 'pendiente' && (
+                      <>
+                        <button className="btn-link" onClick={() => handleAprobarRegistro(r)}>Aprobar</button>
+                        <button className="btn-link danger" onClick={() => handleRechazarRegistro(r)}>Rechazar</button>
+                      </>
+                    )}
+                    {r.estado === 'aprobado' && (
+                      <button className="btn-link danger" onClick={() => handleRechazarRegistro(r)}>Rechazar</button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+              {(registros || []).length === 0 && (
+                <tr><td colSpan={6} className="empty-row">Todavía nadie se registró solo en esta instancia.</td></tr>
               )}
             </tbody>
           </table>

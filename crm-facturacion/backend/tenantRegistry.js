@@ -20,7 +20,10 @@ CREATE TABLE IF NOT EXISTS tenants (
   db_file TEXT NOT NULL,
   estado TEXT NOT NULL DEFAULT 'pendiente', -- pendiente | aprobado | rechazado
   created_at TEXT DEFAULT (datetime('now')),
-  approved_at TEXT
+  approved_at TEXT,
+  -- Evidencia de que aceptó Términos de Servicio / Política de Privacidad al
+  -- registrarse (requerido, ver routes/auth.js) — queda como constancia.
+  terminos_aceptados_at TEXT
 );
 `);
 
@@ -43,7 +46,7 @@ function listTodos() {
 function crearTenant({ ruc, razon_social }) {
   const db_file = tenantDbPath(ruc);
   registryDb.prepare(
-    `INSERT INTO tenants (ruc, razon_social, db_file, estado) VALUES (?, ?, ?, 'pendiente')`
+    `INSERT INTO tenants (ruc, razon_social, db_file, estado, terminos_aceptados_at) VALUES (?, ?, ?, 'pendiente', datetime('now'))`
   ).run(ruc, razon_social, db_file);
   return findTenant(ruc);
 }

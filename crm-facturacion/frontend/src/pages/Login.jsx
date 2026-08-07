@@ -48,6 +48,11 @@ export default function Login() {
         <p className="login-hint">
           ¿Tu empresa todavía no tiene cuenta? <Link to="/registro" className="btn-link">Regístrala aquí</Link>
         </p>
+        <p className="login-hint" style={{ marginTop: 6 }}>
+          <Link to="/privacidad" className="btn-link">Privacidad</Link>
+          {' · '}
+          <Link to="/terminos" className="btn-link">Términos</Link>
+        </p>
       </div>
     </div>
   );

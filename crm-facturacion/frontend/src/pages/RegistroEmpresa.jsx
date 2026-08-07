@@ -4,7 +4,7 @@ import api from '../api';
 
 const initialForm = {
   ruc: '', razon_social: '', nombre_comercial: '', direccion_fiscal: '', telefono: '', email: '',
-  nombres: '', apellidos: '', dni: '', password: '', password_confirm: '',
+  nombres: '', apellidos: '', dni: '', password: '', password_confirm: '', acepta_terminos: false,
 };
 
 export default function RegistroEmpresa() {
@@ -24,12 +24,17 @@ export default function RegistroEmpresa() {
       setError('Las contraseñas no coinciden.');
       return;
     }
+    if (!form.acepta_terminos) {
+      setError('Debes aceptar los Términos de Servicio y la Política de Privacidad para continuar.');
+      return;
+    }
     setLoading(true);
     try {
       await api.post('/auth/register', {
         ruc: form.ruc, razon_social: form.razon_social, nombre_comercial: form.nombre_comercial,
         direccion_fiscal: form.direccion_fiscal, telefono: form.telefono, email: form.email,
         nombres: form.nombres, apellidos: form.apellidos, dni: form.dni, password: form.password,
+        acepta_terminos: form.acepta_terminos,
       });
       setEnviado(true);
     } catch (err) {
@@ -118,6 +123,19 @@ export default function RegistroEmpresa() {
               <input type="password" value={form.password_confirm} onChange={set('password_confirm')} required />
             </div>
           </div>
+
+          <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 18, fontWeight: 400 }}>
+            <input
+              type="checkbox"
+              style={{ width: 'auto', marginTop: 3 }}
+              checked={form.acepta_terminos}
+              onChange={(e) => setForm({ ...form, acepta_terminos: e.target.checked })}
+            />
+            <span>
+              Acepto los <Link to="/terminos" target="_blank" className="btn-link">Términos de Servicio</Link> y la{' '}
+              <Link to="/privacidad" target="_blank" className="btn-link">Política de Privacidad</Link>.
+            </span>
+          </label>
 
           {error && <div className="form-error">{error}</div>}
           <button type="submit" className="btn-primary" disabled={loading}>
