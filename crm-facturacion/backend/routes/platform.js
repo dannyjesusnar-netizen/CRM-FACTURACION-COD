@@ -1,6 +1,7 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const db = require('../db');
+const tenantRegistry = require('../tenantRegistry');
 const { requirePlatformToken } = require('../middleware/platform');
 const { passwordError } = require('../utils/password');
 
@@ -57,6 +58,29 @@ router.put('/users/:id/rol', (req, res) => {
   if (!existing) return res.status(404).json({ error: 'Usuario no encontrado.' });
   db.prepare("UPDATE users SET role = 'gerencia' WHERE id = ?").run(req.params.id);
   res.json(sinPassword(db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id)));
+});
+
+// Empresas que se registraron desde "Registrar mi empresa" (login → botón
+// Registro) en este mismo despliegue, y esperan aprobación antes de poder
+// iniciar sesión — ver POST /api/auth/register y utils/tenant.js.
+router.get('/registros-pendientes', (req, res) => {
+  res.json(tenantRegistry.listPendientes());
+});
+
+router.get('/registros', (req, res) => {
+  res.json(tenantRegistry.listTodos());
+});
+
+router.put('/registros/:ruc/aprobar', (req, res) => {
+  const tenant = tenantRegistry.findTenant(req.params.ruc);
+  if (!tenant) return res.status(404).json({ error: 'Registro no encontrado.' });
+  res.json(tenantRegistry.aprobarTenant(req.params.ruc));
+});
+
+router.put('/registros/:ruc/rechazar', (req, res) => {
+  const tenant = tenantRegistry.findTenant(req.params.ruc);
+  if (!tenant) return res.status(404).json({ error: 'Registro no encontrado.' });
+  res.json(tenantRegistry.rechazarTenant(req.params.ruc));
 });
 
 module.exports = router;

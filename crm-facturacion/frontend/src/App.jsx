@@ -6,6 +6,7 @@ import RequireAuth from './components/RequireAuth';
 import RequirePermiso from './components/RequirePermiso';
 import Layout from './components/Layout';
 import Login from './pages/Login';
+import RegistroEmpresa from './pages/RegistroEmpresa';
 import Menu from './pages/Menu';
 import Dashboard from './pages/Dashboard';
 import Clients from './pages/Clients';
@@ -35,6 +36,7 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/registro" element={<RegistroEmpresa />} />
           <Route
             path="/seleccionar-sede"
             element={

@@ -269,6 +269,41 @@ habilitarlo en una instancia:
 Nunca reutilices el mismo `PLATFORM_TOKEN` en más de un cliente — si se
 filtra, solo debe comprometer a esa única empresa.
 
+## Registrar varias empresas en el mismo despliegue (multi-empresa)
+
+Además de rentar una instancia propia por cliente (sección anterior), esta
+misma instancia puede alojar **varias empresas a la vez**, cada una con sus
+datos completamente aislados, sin necesitar un despliegue de Render aparte
+por cada una.
+
+- En `/login` hay un enlace **"Regístrala aquí"** que lleva a `/registro`:
+  cualquiera puede dar de alta su empresa (RUC, razón social, y su primera
+  cuenta Gerencia).
+- Ese registro crea una base de datos propia para esa empresa
+  (`backend/data/tenants/<ruc>.db`) pero queda **pendiente de aprobación** —
+  no puede iniciar sesión todavía.
+- Tú apruebas (o rechazas) el registro llamando a `/api/platform/*` con el
+  mismo `PLATFORM_TOKEN` de esta instancia (ver sección anterior):
+
+  ```bash
+  # Ver registros pendientes
+  curl -H "X-Platform-Token: $PLATFORM_TOKEN" https://tu-instancia.onrender.com/api/platform/registros-pendientes
+
+  # Aprobar uno (a partir de ahí ya puede iniciar sesión)
+  curl -X PUT -H "X-Platform-Token: $PLATFORM_TOKEN" https://tu-instancia.onrender.com/api/platform/registros/<RUC>/aprobar
+
+  # Rechazarlo en vez de aprobarlo
+  curl -X PUT -H "X-Platform-Token: $PLATFORM_TOKEN" https://tu-instancia.onrender.com/api/platform/registros/<RUC>/rechazar
+  ```
+
+- La empresa original de esta instancia (la que ya tenías desplegada antes
+  de este cambio) sigue funcionando exactamente igual — nunca pasa por este
+  registro ni por la aprobación.
+- A diferencia de la instancia de demostración, una empresa recién
+  registrada arranca sin datos de ejemplo: solo el catálogo de métodos de
+  pago, las series de comprobantes por defecto, una sede ("Sede Principal")
+  y el cliente genérico "CLIENTES VARIOS".
+
 ## Estructura del proyecto
 
 ```
