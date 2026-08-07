@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import api from '../api';
 import { useToast } from '../context/ToastContext';
+import PeriodoContable from '../components/PeriodoContable';
 
 const FORMA_PAGO_LABEL = { efectivo: 'Efectivo', tarjeta: 'Tarjeta', banco: 'Transferencia/Banco' };
 
@@ -25,6 +26,9 @@ export default function Compras() {
   const [q, setQ] = useState('');
   const [desde, setDesde] = useState(todayStr().slice(0, 8) + '01');
   const [hasta, setHasta] = useState(todayStr());
+  const hoy = new Date();
+  const [periodoMes, setPeriodoMes] = useState(hoy.getMonth() + 1);
+  const [periodoAnio, setPeriodoAnio] = useState(hoy.getFullYear());
 
   const [showForm, setShowForm] = useState(false);
   const [showSupplierForm, setShowSupplierForm] = useState(false);
@@ -37,12 +41,22 @@ export default function Compras() {
   const [newSupplier, setNewSupplier] = useState(emptySupplier());
   const [igvRate, setIgvRate] = useState(0.18);
 
-  function load() {
+  function load(overrides = {}) {
     const params = {};
-    if (desde) params.from = desde;
-    if (hasta) params.to = hasta;
+    const d = overrides.desde ?? desde;
+    const h = overrides.hasta ?? hasta;
+    if (d) params.from = d;
+    if (h) params.to = h;
     if (q) params.q = q;
     api.get('/purchases', { params }).then((res) => setPurchases(res.data));
+  }
+
+  function aplicarPeriodo({ mes, anio, desde: d, hasta: h }) {
+    setPeriodoMes(mes);
+    setPeriodoAnio(anio);
+    setDesde(d);
+    setHasta(h);
+    load({ desde: d, hasta: h });
   }
 
   function loadSuppliers() {
@@ -151,10 +165,13 @@ export default function Compras() {
 
   return (
     <div>
-      <h1 className="page-title">Compras</h1>
+      <div className="page-header">
+        <h1 className="page-title">Compras</h1>
+        <PeriodoContable mes={periodoMes} anio={periodoAnio} onChange={aplicarPeriodo} />
+      </div>
 
       <div className="ventas-actions">
-        <button className="ventas-action-btn" onClick={openNew}>+ Nueva compra</button>
+        <button className="ventas-action-btn" onClick={openNew}>Registrar Compras</button>
       </div>
 
       <form className="filter-panel" onSubmit={handleBuscar}>
