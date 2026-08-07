@@ -569,6 +569,38 @@ CREATE TABLE IF NOT EXISTS role_acciones (
     db.exec('ALTER TABLE caja_movimientos ADD COLUMN sucursal_id INTEGER REFERENCES sucursales(id)');
   }
 
+  // Registrar Compra al estilo de un comprobante real: documento, serie-número
+  // del proveedor, moneda/tipo de cambio, tipo de compra y destino de la
+  // operación (para crédito fiscal), más descuento y percepción globales.
+  const PURCHASE_NEW_COLUMNS = [
+    ['tipo_comprobante', "TEXT NOT NULL DEFAULT 'factura'"],
+    ['serie', 'TEXT'],
+    ['numero_doc', 'TEXT'],
+    ['moneda', "TEXT NOT NULL DEFAULT 'PEN'"],
+    ['tipo_cambio', 'REAL NOT NULL DEFAULT 1'],
+    ['tipo_compra', "TEXT NOT NULL DEFAULT 'mercaderia'"],
+    ['tipo_operacion', "TEXT NOT NULL DEFAULT 'gravada_exportacion'"],
+    ['descuento_pct', 'REAL NOT NULL DEFAULT 0'],
+    ['percepcion', 'REAL NOT NULL DEFAULT 0'],
+    ['no_gravado', 'REAL NOT NULL DEFAULT 0'],
+  ];
+  for (const [col, def] of PURCHASE_NEW_COLUMNS) {
+    if (!purchaseColumns.includes(col)) {
+      db.exec(`ALTER TABLE purchases ADD COLUMN ${col} ${def}`);
+    }
+  }
+  const purchaseItemColumns = db.prepare("PRAGMA table_info(purchase_items)").all().map((c) => c.name);
+  const PURCHASE_ITEM_NEW_COLUMNS = [
+    ['observacion', 'TEXT'],
+    ['unidad', "TEXT NOT NULL DEFAULT 'UND'"],
+    ['afectacion_igv', "TEXT NOT NULL DEFAULT 'gravado'"],
+  ];
+  for (const [col, def] of PURCHASE_ITEM_NEW_COLUMNS) {
+    if (!purchaseItemColumns.includes(col)) {
+      db.exec(`ALTER TABLE purchase_items ADD COLUMN ${col} ${def}`);
+    }
+  }
+
   // caja_saldos_iniciales tenia UNIQUE(fecha) — con varias sedes cada una necesita
   // su propio saldo inicial por fecha, asi que hace falta recrear la tabla con
   // UNIQUE(fecha, sucursal_id). Los datos existentes se asignan a la sede principal.

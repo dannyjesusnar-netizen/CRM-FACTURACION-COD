@@ -10,6 +10,11 @@ router.use(requirePermiso('compras'));
 router.use(resolveSucursal);
 
 const FORMAS_PAGO = ['efectivo', 'tarjeta', 'banco'];
+const TIPOS_COMPROBANTE = ['factura', 'boleta', 'ticket', 'recibo_honorarios', 'otros'];
+const MONEDAS = ['PEN', 'USD'];
+const TIPOS_COMPRA = ['mercaderia', 'servicio', 'activo_fijo', 'envase_embalaje', 'otros'];
+const TIPOS_OPERACION = ['gravada_exportacion', 'no_gravada', 'sin_derecho_credito', 'no_gravado'];
+const AFECTACIONES_IGV = ['gravado', 'exonerado', 'inafecto'];
 
 function igvRate() {
   const row = db.prepare('SELECT igv_rate FROM empresa_config WHERE id = 1').get();
@@ -60,20 +65,52 @@ router.get('/:id', (req, res) => {
 });
 
 router.post('/', requireAccion('compras', 'registrar_compra'), (req, res) => {
-  const { supplier_id, items, fecha, forma_pago, observaciones } = req.body || {};
+  const {
+    supplier_id, items, fecha, forma_pago, observaciones,
+    tipo_comprobante, serie, numero_doc, moneda, tipo_cambio,
+    tipo_compra, tipo_operacion, descuento_pct, percepcion,
+  } = req.body || {};
 
-  if (!supplier_id) return res.status(400).json({ error: 'supplier_id es requerido.' });
+  if (!supplier_id) return res.status(400).json({ error: 'Selecciona un proveedor.' });
   if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: 'Debe incluir al menos un item.' });
   }
   if (forma_pago && !FORMAS_PAGO.includes(forma_pago)) {
     return res.status(400).json({ error: 'forma_pago invalida. Use efectivo, tarjeta o banco.' });
   }
+  if (!tipo_comprobante || !TIPOS_COMPROBANTE.includes(tipo_comprobante)) {
+    return res.status(400).json({ error: 'Selecciona el tipo de documento.' });
+  }
+  if (!serie) return res.status(400).json({ error: 'La serie del documento es requerida.' });
+  if (!numero_doc) return res.status(400).json({ error: 'El número del documento es requerido.' });
+  if (!fecha) return res.status(400).json({ error: 'La fecha de emisión es requerida.' });
+  if (!moneda || !MONEDAS.includes(moneda)) {
+    return res.status(400).json({ error: 'Selecciona la moneda.' });
+  }
+  const tipoCambio = moneda === 'USD' ? Number(tipo_cambio || 0) : 1;
+  if (moneda === 'USD' && tipoCambio <= 0) {
+    return res.status(400).json({ error: 'Ingresa un tipo de cambio válido.' });
+  }
+  if (!tipo_compra || !TIPOS_COMPRA.includes(tipo_compra)) {
+    return res.status(400).json({ error: 'Selecciona el tipo de compra.' });
+  }
+  if (!tipo_operacion || !TIPOS_OPERACION.includes(tipo_operacion)) {
+    return res.status(400).json({ error: 'Selecciona el destino de la operación (Compra).' });
+  }
+  const descuentoPct = Number(descuento_pct || 0);
+  if (descuentoPct < 0 || descuentoPct > 100) {
+    return res.status(400).json({ error: 'El descuento debe estar entre 0 y 100%.' });
+  }
+  const percepcionMonto = round2(Number(percepcion || 0));
+  if (percepcionMonto < 0) return res.status(400).json({ error: 'La percepción no puede ser negativa.' });
 
   const supplier = db.prepare('SELECT * FROM suppliers WHERE id = ?').get(supplier_id);
   if (!supplier) return res.status(404).json({ error: 'Proveedor no encontrado.' });
 
-  let total = 0;
+  const rate = igvRate();
+  let subtotalGravado = 0;
+  let igvTotal = 0;
+  let noGravado = 0;
   const preparedItems = [];
   for (const it of items) {
     const product = db.prepare('SELECT * FROM products WHERE id = ?').get(it.product_id);
@@ -84,41 +121,72 @@ router.post('/', requireAccion('compras', 'registrar_compra'), (req, res) => {
     const cantidad = Number(it.cantidad || 0);
     const costo_unitario = Number(it.costo_unitario || 0);
     if (cantidad <= 0) return res.status(400).json({ error: 'La cantidad de cada item debe ser mayor a 0.' });
-    const lineTotal = round2(cantidad * costo_unitario);
-    total += lineTotal;
-    preparedItems.push({ product_id: product.id, cantidad, costo_unitario, subtotal: lineTotal });
+    const afectacion_igv = AFECTACIONES_IGV.includes(it.afectacion_igv) ? it.afectacion_igv : 'gravado';
+    const unidad = (it.unidad || 'UND').toString().slice(0, 20);
+
+    const lineBruta = round2(cantidad * costo_unitario);
+    const lineNeta = round2(lineBruta * (1 - descuentoPct / 100));
+    if (afectacion_igv === 'gravado') {
+      const igvLinea = round2(lineNeta - lineNeta / (1 + rate));
+      subtotalGravado += lineNeta - igvLinea;
+      igvTotal += igvLinea;
+    } else {
+      noGravado += lineNeta;
+    }
+
+    preparedItems.push({
+      product_id: product.id, cantidad, costo_unitario, subtotal: lineBruta,
+      observacion: it.observacion || null, unidad, afectacion_igv,
+    });
   }
 
-  total = round2(total);
-  const subtotal = round2(total / (1 + igvRate()));
-  const igv = round2(total - subtotal);
+  subtotalGravado = round2(subtotalGravado);
+  igvTotal = round2(igvTotal);
+  noGravado = round2(noGravado);
+  const total = round2(subtotalGravado + igvTotal + noGravado + percepcionMonto);
 
   const insertAll = db.transaction(() => {
     const numero = nextNumero();
     const info = db.prepare(
-      `INSERT INTO purchases (numero, supplier_id, created_by, fecha, forma_pago, subtotal, igv, total, estado, observaciones, sucursal_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'registrada', ?, ?)`
+      `INSERT INTO purchases (
+         numero, supplier_id, created_by, fecha, forma_pago, subtotal, igv, total, estado, observaciones, sucursal_id,
+         tipo_comprobante, serie, numero_doc, moneda, tipo_cambio, tipo_compra, tipo_operacion, descuento_pct, percepcion, no_gravado
+       )
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'registrada', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       numero,
       supplier_id,
       req.user?.id || null,
       fecha || new Date().toISOString().slice(0, 10),
       forma_pago || 'efectivo',
-      subtotal,
-      igv,
+      subtotalGravado,
+      igvTotal,
       total,
       observaciones || null,
-      req.sucursalId
+      req.sucursalId,
+      tipo_comprobante,
+      serie,
+      numero_doc,
+      moneda,
+      tipoCambio,
+      tipo_compra,
+      tipo_operacion,
+      descuentoPct,
+      percepcionMonto,
+      noGravado
     );
     const purchaseId = info.lastInsertRowid;
     const insertItem = db.prepare(
-      `INSERT INTO purchase_items (purchase_id, product_id, cantidad, costo_unitario, subtotal)
-       VALUES (?, ?, ?, ?, ?)`
+      `INSERT INTO purchase_items (purchase_id, product_id, cantidad, costo_unitario, subtotal, observacion, unidad, afectacion_igv)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     );
     const referencia = `COMPRA-${String(numero).padStart(5, '0')}`;
 
     for (const it of preparedItems) {
-      insertItem.run(purchaseId, it.product_id, it.cantidad, it.costo_unitario, it.subtotal);
+      insertItem.run(
+        purchaseId, it.product_id, it.cantidad, it.costo_unitario, it.subtotal,
+        it.observacion, it.unidad, it.afectacion_igv
+      );
       incrementarStock(it.product_id, it.cantidad, {
         tipoMovimiento: 'compra',
         motivo: `Compra a ${supplier.nombre}`,
