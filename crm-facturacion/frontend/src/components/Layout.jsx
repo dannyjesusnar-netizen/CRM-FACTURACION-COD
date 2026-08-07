@@ -3,7 +3,6 @@ import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { useTheme } from '../context/ThemeContext';
-import api from '../api';
 import SedeSwitcher from './SedeSwitcher';
 import {
   TrendingUp, ShoppingCart, Bike, Wallet, Users, Calculator, ClipboardList, FileText,
@@ -23,14 +22,13 @@ const SUBNAV_ITEMS = [
 ];
 
 export default function Layout() {
-  const { user, logout, sucursal } = useAuth();
+  const { user, logout, sucursal, empresa } = useAuth();
   const toast = useToast();
   const { isDark, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
-  const [empresa, setEmpresa] = useState(null);
 
   useEffect(() => {
     function onClickOutside(e) {
@@ -38,10 +36,6 @@ export default function Layout() {
     }
     document.addEventListener('mousedown', onClickOutside);
     return () => document.removeEventListener('mousedown', onClickOutside);
-  }, []);
-
-  useEffect(() => {
-    api.get('/empresa').then((res) => setEmpresa(res.data)).catch(() => {});
   }, []);
 
   function handleLogout() {

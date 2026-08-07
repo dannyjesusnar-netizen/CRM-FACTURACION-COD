@@ -1,4 +1,4 @@
-import { createContext, useContext, useState } from 'react';
+import { createContext, useContext, useEffect, useState } from 'react';
 import api from '../api';
 
 const AuthContext = createContext(null);
@@ -15,6 +15,19 @@ export function AuthProvider({ children }) {
     return raw ? JSON.parse(raw) : null;
   });
   const [sucursal, setSucursalState] = useState(readSucursal);
+  // Datos de la empresa (nombre, RUC, logo, etc.) centralizados aquí para que
+  // la barra superior (Layout) se actualice de inmediato apenas se guardan
+  // cambios en Configuración → Empresa, sin necesitar recargar la página.
+  const [empresa, setEmpresa] = useState(null);
+
+  function refreshEmpresa() {
+    return api.get('/empresa').then((res) => setEmpresa(res.data)).catch(() => {});
+  }
+
+  useEffect(() => {
+    if (user) refreshEmpresa();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
 
   function setSucursal(id, nombre) {
     localStorage.setItem('crm_sucursal_id', String(id));
@@ -51,7 +64,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, sucursal, setSucursal, limpiarSucursal }}>
+    <AuthContext.Provider value={{ user, login, logout, sucursal, setSucursal, limpiarSucursal, empresa, setEmpresa, refreshEmpresa }}>
       {children}
     </AuthContext.Provider>
   );
