@@ -109,4 +109,19 @@ router.put('/:id/live/users/:userId/rol', (req, res) =>
   proxy(req, res, `/users/${req.params.userId}/rol`, { method: 'PUT', body: {} })
 );
 
+// GET /api/companies/:id/live/registros — historial completo (pendiente,
+// aprobado, rechazado) de empresas que se auto-registraron en esa instancia
+// desde su pantalla "Registrar mi empresa".
+router.get('/:id/live/registros', (req, res) => proxy(req, res, '/registros'));
+
+// PUT /api/companies/:id/live/registros/:ruc/aprobar
+router.put('/:id/live/registros/:ruc/aprobar', (req, res) =>
+  proxy(req, res, `/registros/${req.params.ruc}/aprobar`, { method: 'PUT', body: {} })
+);
+
+// PUT /api/companies/:id/live/registros/:ruc/rechazar
+router.put('/:id/live/registros/:ruc/rechazar', (req, res) =>
+  proxy(req, res, `/registros/${req.params.ruc}/rechazar`, { method: 'PUT', body: {} })
+);
+
 module.exports = router;

@@ -303,6 +303,33 @@ por cada una.
   registrada arranca sin datos de ejemplo: solo el catálogo de métodos de
   pago, las series de comprobantes por defecto, una sede ("Sede Principal")
   y el cliente genérico "CLIENTES VARIOS".
+- Debe aceptar los **Términos de Servicio** y la **Política de Privacidad**
+  (`/terminos`, `/privacidad`) para poder registrarse — la fecha de
+  aceptación queda guardada como constancia.
+- Desde el **panel central** (`panel-central/`), la pantalla de detalle de
+  cada empresa tiene una sección **"Empresas registradas desde 'Registrar
+  mi empresa'"** con el historial completo (pendientes, aprobadas y
+  rechazadas, con fecha de alta y de aprobación) y botones para
+  aprobar/rechazar sin necesitar `curl`.
+
+### Verificación real del RUC contra SUNAT (`RUC_LOOKUP_TOKEN`)
+
+SUNAT no expone una API pública oficial para consultar RUC. El registro
+puede verificar el RUC contra un proveedor externo que sí ofrece una API
+sobre esos mismos datos públicos ([apis.net.pe](https://apis.net.pe/), con
+plan gratuito limitado):
+
+| Variable | Valor |
+| --- | --- |
+| `RUC_LOOKUP_TOKEN` | token de tu cuenta en apis.net.pe (u otro proveedor compatible) |
+
+- Sin esta variable, el registro sigue funcionando igual que antes: solo
+  valida que el RUC tenga 11 dígitos.
+- Con la variable configurada, el registro se rechaza si el proveedor
+  confirma que el RUC **no existe** o que figura **inactivo** en SUNAT.
+- Si el proveedor externo falla o no responde a tiempo, el registro
+  **nunca se bloquea** por eso — es una verificación de mejor esfuerzo, no
+  un requisito indispensable.
 
 ## Estructura del proyecto
 

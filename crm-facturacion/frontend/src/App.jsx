@@ -7,6 +7,8 @@ import RequirePermiso from './components/RequirePermiso';
 import Layout from './components/Layout';
 import Login from './pages/Login';
 import RegistroEmpresa from './pages/RegistroEmpresa';
+import PoliticaPrivacidad from './pages/PoliticaPrivacidad';
+import TerminosServicio from './pages/TerminosServicio';
 import Menu from './pages/Menu';
 import Dashboard from './pages/Dashboard';
 import Clients from './pages/Clients';
@@ -37,6 +39,8 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/registro" element={<RegistroEmpresa />} />
+          <Route path="/privacidad" element={<PoliticaPrivacidad />} />
+          <Route path="/terminos" element={<TerminosServicio />} />
           <Route
             path="/seleccionar-sede"
             element={

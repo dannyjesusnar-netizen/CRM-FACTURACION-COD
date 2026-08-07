@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 const db = require('../db');
 const tenantRegistry = require('../tenantRegistry');
 const { resolveTenantDb } = require('../utils/tenant');
+const { consultarRuc } = require('../utils/rucLookup');
 const { JWT_SECRET, requireAuth } = require('../middleware/auth');
 const { passwordError } = require('../utils/password');
 const { permisosDeUsuario } = require('../utils/permisos');
@@ -75,14 +76,17 @@ router.post('/login', (req, res) => {
 // (aislada del resto) y su primera cuenta Gerencia, pero queda "pendiente"
 // hasta que el dueño del producto la apruebe (ver /api/platform) — no se
 // puede iniciar sesión todavía con ella.
-router.post('/register', (req, res) => {
+router.post('/register', async (req, res) => {
   const {
     ruc, razon_social, nombre_comercial, direccion_fiscal, telefono, email,
-    nombres, apellidos, dni, password,
+    nombres, apellidos, dni, password, acepta_terminos,
   } = req.body || {};
 
   if (!ruc || !razon_social || !nombres || !apellidos || !dni || !password) {
     return res.status(400).json({ error: 'RUC, razón social, nombres, apellidos, DNI y contraseña son requeridos.' });
+  }
+  if (!acepta_terminos) {
+    return res.status(400).json({ error: 'Debes aceptar los Términos de Servicio y la Política de Privacidad.' });
   }
   if (!/^\d{11}$/.test(ruc)) {
     return res.status(400).json({ error: 'El RUC debe tener 11 dígitos.' });
@@ -93,6 +97,20 @@ router.post('/register', (req, res) => {
   const pwdErr = passwordError(password);
   if (pwdErr) {
     return res.status(400).json({ error: pwdErr });
+  }
+
+  // Verificación real contra SUNAT (mejor esfuerzo, vía un proveedor externo
+  // — ver utils/rucLookup.js). Sin RUC_LOOKUP_TOKEN configurado o si el
+  // servicio no responde, esto no bloquea el registro; solo se rechaza
+  // cuando hay una respuesta clara de que el RUC no existe o está inactivo.
+  const rucInfo = await consultarRuc(ruc);
+  if (rucInfo.verificado) {
+    if (!rucInfo.existe) {
+      return res.status(400).json({ error: 'Ese RUC no existe en SUNAT.' });
+    }
+    if (rucInfo.estado && rucInfo.estado.toUpperCase() !== 'ACTIVO') {
+      return res.status(400).json({ error: `Ese RUC figura como "${rucInfo.estado}" en SUNAT — no se puede registrar.` });
+    }
   }
 
   if (tenantRegistry.findTenant(ruc)) {
