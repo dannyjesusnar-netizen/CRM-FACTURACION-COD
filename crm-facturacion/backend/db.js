@@ -171,6 +171,17 @@ CREATE TABLE IF NOT EXISTS metodos_pago (
   created_at TEXT DEFAULT (datetime('now'))
 );
 
+-- Serie y siguiente correlativo de cada tipo de documento que el sistema
+-- realmente emite (Configuración -> Series y Sucursal). El correlativo real
+-- que se usa al emitir siempre es el mayor entre "MAX(numero) ya usado" y lo
+-- guardado aquí — así Gerencia puede adelantar el número (para retomar una
+-- numeración física ya usada) sin arriesgarse nunca a repetir uno existente.
+CREATE TABLE IF NOT EXISTS series_config (
+  tipo_documento TEXT PRIMARY KEY,   -- factura | boleta | nota_credito | cotizacion | guia_remitente
+  serie TEXT NOT NULL,
+  siguiente_numero INTEGER NOT NULL DEFAULT 1
+);
+
 CREATE TABLE IF NOT EXISTS sucursal_stock (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   product_id INTEGER NOT NULL REFERENCES products(id),
@@ -511,6 +522,7 @@ const EMPRESA_NEW_COLUMNS = [
   ['mostrar_datos_contacto_pdf', 'INTEGER NOT NULL DEFAULT 1'],
   ['tamano_pdf', "TEXT NOT NULL DEFAULT 'A4'"],
   ['terminos_condiciones_pdf', 'TEXT'],
+  ['igv_rate', 'REAL NOT NULL DEFAULT 0.18'],
 ];
 for (const [col, def] of EMPRESA_NEW_COLUMNS) {
   if (!empresaColumns.includes(col)) {
@@ -676,6 +688,24 @@ if (metodoPagoCount === 0) {
     ['banco', 'Banco (antiguo)', 'transferencia', '#94a3b8', '🏦', 91, 0],
   ];
   metodos.forEach((m) => insertMetodo.run(...m));
+}
+
+// Series de documentos: se siembran con las mismas series que el sistema
+// venía usando hardcodeadas, para que activar esta pantalla no le cambie el
+// número a nadie de un día para otro — recién desde Configuración se editan.
+const serieConfigCount = db.prepare('SELECT COUNT(*) AS n FROM series_config').get().n;
+if (serieConfigCount === 0) {
+  const insertSerie = db.prepare(
+    'INSERT INTO series_config (tipo_documento, serie, siguiente_numero) VALUES (?, ?, 1)'
+  );
+  const series = [
+    ['factura', 'F001'],
+    ['boleta', 'B001'],
+    ['nota_credito', 'FC01'],
+    ['cotizacion', 'CL02'],
+    ['guia_remitente', 'TL02'],
+  ];
+  series.forEach((s) => insertSerie.run(...s));
 }
 
 // Receta de ejemplo (Producción): envasado de pre-entreno a partir del mix a granel

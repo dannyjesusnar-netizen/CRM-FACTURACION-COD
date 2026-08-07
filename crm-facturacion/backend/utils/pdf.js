@@ -21,6 +21,15 @@ function monedaLabel(moneda) {
   return moneda === 'USD' ? 'DOLARES' : 'SOLES';
 }
 
+// La tasa de IGV es configurable y puede haber cambiado desde que se emitió
+// este comprobante — por eso el % mostrado se calcula del propio igv/subtotal
+// del documento (lo real que se cobró), no de la tasa actual de la empresa.
+function igvLabel(invoice, empresa) {
+  const subtotal = Number(invoice.subtotal);
+  const tasa = subtotal > 0 ? Number(invoice.igv) / subtotal : Number(empresa?.igv_rate) || 0.18;
+  return `IGV (${Math.round(tasa * 100)}%):`;
+}
+
 function formaPagoLabel(codigo) {
   if (!codigo) return 'EFECTIVO';
   if (codigo === 'abonado') return 'CREDITO';
@@ -247,7 +256,7 @@ function buildA4Pdf(invoice, items, empresa, acento, logo, qr, cobros) {
   doc.font('Helvetica').fontSize(9).fillColor('#000');
   doc.text('Op. gravada:', 350, totalsBoxY, { width: 120, align: 'left' });
   doc.text(money(invoice.subtotal, invoice.moneda), 475, totalsBoxY, { width: 80, align: 'right' });
-  doc.text('IGV (18%):', 350, totalsBoxY + 15, { width: 120, align: 'left' });
+  doc.text(igvLabel(invoice, empresa), 350, totalsBoxY + 15, { width: 120, align: 'left' });
   doc.text(money(invoice.igv, invoice.moneda), 475, totalsBoxY + 15, { width: 80, align: 'right' });
   doc.font('Helvetica-Bold').fontSize(12).fillColor(acento);
   doc.text('TOTAL:', 350, totalsBoxY + 33, { width: 120, align: 'left' });
@@ -416,7 +425,7 @@ function buildTicketPdf(invoice, items, empresa, acento, logo, qr, cobros) {
   doc.text('Subtotal:', margin, y, { width: contentWidth - 60 });
   doc.text(money(invoice.subtotal, invoice.moneda), margin, y, { width: contentWidth, align: 'right' });
   y += 10;
-  doc.text('IGV (18%):', margin, y, { width: contentWidth - 60 });
+  doc.text(igvLabel(invoice, empresa), margin, y, { width: contentWidth - 60 });
   doc.text(money(invoice.igv, invoice.moneda), margin, y, { width: contentWidth, align: 'right' });
   y += 10;
   doc.fontSize(9).fillColor(acento);

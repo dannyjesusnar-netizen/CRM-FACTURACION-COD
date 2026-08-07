@@ -64,7 +64,9 @@ function construirPayload(invoice, items, client) {
       codigo: it.codigo_producto || String(it.product_id || 'ITEM'),
       descripcion: it.descripcion,
       cantidad: it.cantidad,
-      valor_unitario: gravado ? round2(it.precio_unitario / 1.18) : it.precio_unitario,
+      // Se deriva del subtotal/igv reales de la línea (no de una tasa fija)
+      // porque la tasa de IGV es configurable y puede variar entre comprobantes.
+      valor_unitario: gravado ? round2((it.subtotal - it.igv_item) / it.cantidad) : it.precio_unitario,
       precio_unitario: it.precio_unitario,
       descuento: it.descuento_pct ? String(round2((it.cantidad * it.precio_unitario) * (it.descuento_pct / 100))) : '',
       subtotal: it.subtotal - it.igv_item,

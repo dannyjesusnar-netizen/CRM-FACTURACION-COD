@@ -64,6 +64,34 @@ router.put('/', requireGerencia, (req, res) => {
   res.json(db.prepare('SELECT * FROM empresa_config WHERE id = 1').get());
 });
 
+// PUT /api/empresa/direccion { direccion_fiscal } -> edición rápida de la
+// dirección principal, sin tener que reenviar todo el formulario de Datos
+// de la empresa (razón social, RUC, etc.).
+router.put('/direccion', requireGerencia, (req, res) => {
+  const { direccion_fiscal } = req.body || {};
+  if (!direccion_fiscal || !direccion_fiscal.trim()) {
+    return res.status(400).json({ error: 'La dirección es requerida.' });
+  }
+  db.prepare(
+    `UPDATE empresa_config SET direccion_fiscal = ?, updated_at = datetime('now'), updated_by = ? WHERE id = 1`
+  ).run(direccion_fiscal.trim(), req.user?.id || null);
+  res.json(db.prepare('SELECT * FROM empresa_config WHERE id = 1').get());
+});
+
+// PUT /api/empresa/igv-rate { igv_rate_pct } -> tasa de IGV en porcentaje
+// (ej. 18 para 18%), se guarda internamente como fracción (0.18).
+router.put('/igv-rate', requireGerencia, (req, res) => {
+  const pct = Number(req.body?.igv_rate_pct);
+  if (!Number.isFinite(pct) || pct < 0 || pct > 30) {
+    return res.status(400).json({ error: 'La tasa de IGV debe ser un porcentaje entre 0 y 30.' });
+  }
+  const igv_rate = Math.round(pct * 100) / 10000;
+  db.prepare(
+    `UPDATE empresa_config SET igv_rate = ?, updated_at = datetime('now'), updated_by = ? WHERE id = 1`
+  ).run(igv_rate, req.user?.id || null);
+  res.json(db.prepare('SELECT * FROM empresa_config WHERE id = 1').get());
+});
+
 // GET /api/empresa/comprobante-preview -> PDF de ejemplo con los datos/ajustes actuales,
 // para previsualizar cómo se ve un comprobante real sin necesidad de emitir uno.
 router.get('/comprobante-preview', requireGerencia, async (req, res) => {

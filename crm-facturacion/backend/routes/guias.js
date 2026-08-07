@@ -2,25 +2,20 @@ const express = require('express');
 const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { requirePermiso, requireAccion } = require('../utils/permisos');
+const { siguienteNumero } = require('../utils/series');
 
 const router = express.Router();
 router.use(requireAuth);
 router.use(requirePermiso('ventas'));
 
-const SERIE = 'TL02';
 const MOTIVOS = ['venta', 'compra', 'traslado_entre_establecimientos', 'consignacion', 'otros'];
 
 function round2(n) {
   return Math.round((n + Number.EPSILON) * 100) / 100;
 }
 
-function nextNumero() {
-  const row = db.prepare('SELECT MAX(numero) AS maxNum FROM guias_remitentes WHERE serie = ?').get(SERIE);
-  return (row.maxNum || 0) + 1;
-}
-
 router.get('/siguiente-numero', (req, res) => {
-  res.json({ serie: SERIE, numero: nextNumero() });
+  res.json(siguienteNumero('guia_remitente'));
 });
 
 // GET /api/guias?estado=&client_id=&from=&to=&q=
@@ -89,13 +84,14 @@ router.post('/', requireAccion('ventas', 'guia_remision'), (req, res) => {
   });
   pesoTotal = round2(pesoTotal);
 
+  const { serie, numero: numeroSugerido } = siguienteNumero('guia_remitente');
   const insertAll = db.transaction(() => {
-    const numero = numeroManual ? Number(numeroManual) : nextNumero();
+    const numero = numeroManual ? Number(numeroManual) : numeroSugerido;
     const info = db.prepare(
       `INSERT INTO guias_remitentes (serie, numero, motivo_traslado, client_id, punto_partida, punto_llegada, peso_total, cantidad_bultos, estado, observaciones, created_by)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'emitida', ?, ?)`
     ).run(
-      SERIE,
+      serie,
       numero,
       motivo,
       client_id || null,

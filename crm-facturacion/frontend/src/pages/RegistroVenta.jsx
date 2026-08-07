@@ -37,6 +37,7 @@ export default function RegistroVenta() {
   const [pagosMixto, setPagosMixto] = useState([{ medio: 'efectivo', monto: '' }, { medio: '', monto: '' }]);
   const [error, setError] = useState('');
   const [metodosPago, setMetodosPago] = useState([]);
+  const [igvRate, setIgvRate] = useState(0.18);
 
   // Vista previa: se genera el PDF real (el mismo diseño del comprobante
   // emitido) antes de confirmar — así "Enter"/"Emitir" ya no dispara la
@@ -57,6 +58,9 @@ export default function RegistroVenta() {
         setCuenta((prev) => (prev === 'abonado' || prev === 'mixto' ? prev : res.data[0].codigo));
         setMedioAbono(res.data[0].codigo);
       }
+    });
+    api.get('/empresa').then((res) => {
+      if (res.data?.igv_rate) setIgvRate(Number(res.data.igv_rate));
     });
   }, []);
 
@@ -144,7 +148,7 @@ export default function RegistroVenta() {
       const lineBruta = cantidad * precio;
       const lineNeta = round2(lineBruta - lineBruta * (desc / 100));
       const gravado = !it.afectacion_igv || it.afectacion_igv === 'gravado' || it.afectacion_igv === 'gratuito';
-      const igvLinea = gravado ? round2(lineNeta - lineNeta / 1.18) : 0;
+      const igvLinea = gravado ? round2(lineNeta - lineNeta / (1 + igvRate)) : 0;
       totalBruto += lineNeta;
       costoTotal += cantidad * Number(it.costo || 0);
       return { ...it, importe: lineNeta, igv: igvLinea };
@@ -155,7 +159,7 @@ export default function RegistroVenta() {
     const vuelto = pago !== '' ? Math.max(0, round2(Number(pago) - total)) : 0;
     const saldoPendiente = round2(Math.max(0, total - Number(pago || 0)));
     return { rows, totalBruto, total, ganancia, vuelto, saldoPendiente };
-  }, [items, descuentoGlobal, pago]);
+  }, [items, descuentoGlobal, pago, igvRate]);
 
   const sumaPagosMixto = useMemo(
     () => round2(pagosMixto.reduce((s, p) => s + Number(p.monto || 0), 0)),
