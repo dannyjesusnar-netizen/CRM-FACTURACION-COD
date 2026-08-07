@@ -189,6 +189,7 @@ body {
 
 .login-page {
   height: 100%; display: flex; align-items: center; justify-content: center;
+  position: relative; overflow: hidden;
   background:
     radial-gradient(circle at 15% 20%, rgba(255, 255, 255, 0.08), transparent 40%),
     radial-gradient(circle at 85% 80%, rgba(255, 255, 255, 0.06), transparent 45%),
