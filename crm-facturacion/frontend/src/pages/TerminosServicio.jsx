@@ -5,7 +5,7 @@ export default function TerminosServicio() {
     <div className="login-page" style={{ alignItems: 'flex-start', padding: '40px 16px' }}>
       <div className="login-card" style={{ width: 720, maxWidth: '100%' }}>
         <div className="login-brand">
-          <span className="brand-mark">CRM</span>
+          <span className="brand-mark">QORIA</span>
           <span className="brand-suffix">Facturación</span>
         </div>
         <p className="login-subtitle">Términos de Servicio</p>

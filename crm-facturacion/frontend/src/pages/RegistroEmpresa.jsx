@@ -49,7 +49,7 @@ export default function RegistroEmpresa() {
       <div className="login-page">
         <div className="login-card">
           <div className="login-brand">
-            <span className="brand-mark">CRM</span>
+            <span className="brand-mark">QORIA</span>
             <span className="brand-suffix">Facturación</span>
           </div>
           <p className="login-subtitle">Registro recibido</p>
@@ -70,7 +70,7 @@ export default function RegistroEmpresa() {
     <div className="login-page">
       <div className="login-card" style={{ width: 480 }}>
         <div className="login-brand">
-          <span className="brand-mark">CRM</span>
+          <span className="brand-mark">QORIA</span>
           <span className="brand-suffix">Facturación</span>
         </div>
         <p className="login-subtitle">Registrar mi empresa</p>

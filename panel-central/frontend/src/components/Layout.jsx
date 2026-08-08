@@ -15,7 +15,7 @@ export default function Layout() {
     <div className="app-shell">
       <header className="topbar">
         <div className="topbar-brand" onClick={() => navigate('/empresas')}>
-          <span className="brand-mark">Panel</span>
+          <span className="brand-mark">QORIA</span>
           <span className="brand-suffix">Central</span>
         </div>
         <div className="topbar-company">{admin?.full_name || admin?.email}</div>
