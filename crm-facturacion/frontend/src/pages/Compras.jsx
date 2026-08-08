@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api from '../api';
 import { useToast } from '../context/ToastContext';
 import { useAuth } from '../context/AuthContext';
@@ -54,6 +55,7 @@ function todayStr() {
 
 export default function Compras() {
   const toast = useToast();
+  const navigate = useNavigate();
   const { sucursal } = useAuth();
   const [purchases, setPurchases] = useState([]);
   const [orders, setOrders] = useState([]);
@@ -278,6 +280,7 @@ export default function Compras() {
       <div className="ventas-actions">
         <button className="ventas-action-btn" onClick={() => openNew('compra')}>Registrar Compras</button>
         <button className="ventas-action-btn" onClick={() => openNew('orden')}>Orden de Compra</button>
+        <button className="ventas-action-btn" onClick={() => navigate('/compras/recepcion')}>Recepción de Compras</button>
       </div>
 
       <form className="filter-panel" onSubmit={handleBuscar}>

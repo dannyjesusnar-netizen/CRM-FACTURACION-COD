@@ -327,6 +327,7 @@ CREATE TABLE IF NOT EXISTS purchase_orders (
   estado TEXT NOT NULL DEFAULT 'pendiente',   -- pendiente | recibida | anulada
   observaciones TEXT,
   sucursal_id INTEGER REFERENCES sucursales(id),
+  fecha_recepcion TEXT,
   created_at TEXT DEFAULT (datetime('now'))
 );
 
@@ -638,6 +639,10 @@ CREATE TABLE IF NOT EXISTS role_acciones (
     if (!purchaseItemColumns.includes(col)) {
       db.exec(`ALTER TABLE purchase_items ADD COLUMN ${col} ${def}`);
     }
+  }
+  const purchaseOrderColumns = db.prepare("PRAGMA table_info(purchase_orders)").all().map((c) => c.name);
+  if (!purchaseOrderColumns.includes('fecha_recepcion')) {
+    db.exec('ALTER TABLE purchase_orders ADD COLUMN fecha_recepcion TEXT');
   }
 
   // caja_saldos_iniciales tenia UNIQUE(fecha) — con varias sedes cada una necesita

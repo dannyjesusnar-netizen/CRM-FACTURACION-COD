@@ -1,7 +1,7 @@
 const express = require('express');
 const db = require('../db');
 const { requireAuth, resolveSucursal } = require('../middleware/auth');
-const { round2 } = require('../utils/stock');
+const { round2, incrementarStock } = require('../utils/stock');
 const { requirePermiso, requireAccion } = require('../utils/permisos');
 
 const router = express.Router();
@@ -28,9 +28,12 @@ function nextNumero() {
 router.get('/', (req, res) => {
   const { estado, from, to, q } = req.query;
   let sql = `
-    SELECT po.*, s.nombre AS proveedor_nombre, s.ruc AS proveedor_ruc
+    SELECT po.*, s.nombre AS proveedor_nombre, s.ruc AS proveedor_ruc,
+           u.full_name AS usuario_nombre, suc.nombre AS sucursal_nombre
     FROM purchase_orders po
     JOIN suppliers s ON s.id = po.supplier_id
+    LEFT JOIN users u ON u.id = po.created_by
+    LEFT JOIN sucursales suc ON suc.id = po.sucursal_id
     WHERE po.sucursal_id = ?
   `;
   const params = [req.sucursalId];
@@ -168,6 +171,40 @@ router.post('/:id/anular', requireAccion('compras', 'anular_compra'), (req, res)
   }
   db.prepare("UPDATE purchase_orders SET estado = 'anulada' WHERE id = ?").run(req.params.id);
   res.json(db.prepare('SELECT * FROM purchase_orders WHERE id = ?').get(req.params.id));
+});
+
+// POST /api/purchase-orders/:id/recibir — convierte la orden pendiente en una
+// recepción real: ingresa el stock de cada item y marca la orden como recibida.
+router.post('/:id/recibir', requireAccion('compras', 'registrar_compra'), (req, res) => {
+  const order = db.prepare('SELECT * FROM purchase_orders WHERE id = ? AND sucursal_id = ?').get(req.params.id, req.sucursalId);
+  if (!order) return res.status(404).json({ error: 'Orden de compra no encontrada.' });
+  if (order.estado !== 'pendiente') {
+    return res.status(400).json({ error: 'Esta orden ya fue recibida o anulada.' });
+  }
+  const supplier = db.prepare('SELECT * FROM suppliers WHERE id = ?').get(order.supplier_id);
+  const items = db.prepare('SELECT * FROM purchase_order_items WHERE purchase_order_id = ?').all(order.id);
+  const fechaRecepcion = (req.body && req.body.fecha_recepcion) || new Date().toISOString().slice(0, 10);
+
+  db.transaction(() => {
+    db.prepare(
+      "UPDATE purchase_orders SET estado = 'recibida', fecha_recepcion = ? WHERE id = ?"
+    ).run(fechaRecepcion, order.id);
+    const referencia = `OC-${String(order.numero).padStart(5, '0')}`;
+    for (const it of items) {
+      const product = db.prepare('SELECT * FROM products WHERE id = ?').get(it.product_id);
+      if (!product || product.stock === null) continue; // servicios no manejan stock
+      incrementarStock(it.product_id, it.cantidad, {
+        tipoMovimiento: 'compra',
+        motivo: `Recepción de orden de compra a ${supplier?.nombre || 'proveedor'}`,
+        referencia,
+        userId: req.user?.id,
+        sucursalId: order.sucursal_id,
+      });
+    }
+  })();
+
+  const updated = db.prepare('SELECT * FROM purchase_orders WHERE id = ?').get(order.id);
+  res.json(updated);
 });
 
 module.exports = router;

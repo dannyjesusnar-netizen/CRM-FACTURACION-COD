@@ -24,6 +24,7 @@ import RegistroVenta from './pages/RegistroVenta';
 import RegistroNotaCredito from './pages/RegistroNotaCredito';
 import GuiaRemitente from './pages/GuiaRemitente';
 import Compras from './pages/Compras';
+import RecepcionCompras from './pages/RecepcionCompras';
 import Reports from './pages/Reports';
 import Configuracion from './pages/Configuracion';
 import CambiarContrasena from './pages/CambiarContrasena';
@@ -72,6 +73,7 @@ export default function App() {
             <Route path="/ventas/nota-credito/nueva" element={<RequirePermiso modulo="ventas"><RegistroNotaCredito /></RequirePermiso>} />
             <Route path="/ventas/guia-remitente/nueva" element={<RequirePermiso modulo="ventas"><GuiaRemitente /></RequirePermiso>} />
             <Route path="/compras" element={<RequirePermiso modulo="compras"><Compras /></RequirePermiso>} />
+            <Route path="/compras/recepcion" element={<RequirePermiso modulo="compras"><RecepcionCompras /></RequirePermiso>} />
             <Route path="/reportes" element={<RequirePermiso modulo="reportes"><Reports /></RequirePermiso>} />
             <Route path="/configuracion" element={<Configuracion />} />
             <Route path="/configuracion/roles/nuevo" element={<RolForm />} />
