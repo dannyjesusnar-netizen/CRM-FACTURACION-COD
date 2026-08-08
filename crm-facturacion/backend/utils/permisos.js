@@ -35,6 +35,7 @@ const ACCIONES_POR_MODULO = {
     { key: 'registrar_compra', label: 'Registrar compra', grupo: 'Compras' },
     { key: 'anular_compra', label: 'Anular compra', grupo: 'Compras' },
     { key: 'proveedores', label: 'Gestionar proveedores', grupo: 'Proveedores' },
+    { key: 'tipos_compra', label: 'Gestionar tipos de compra', grupo: 'Configuración' },
   ],
   inventario: [
     { key: 'productos', label: 'Crear / editar productos', grupo: 'Catálogo' },

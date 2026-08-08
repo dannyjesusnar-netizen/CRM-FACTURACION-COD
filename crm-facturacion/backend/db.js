@@ -327,6 +327,8 @@ CREATE TABLE IF NOT EXISTS purchase_orders (
   estado TEXT NOT NULL DEFAULT 'pendiente',   -- pendiente | recibida | anulada
   observaciones TEXT,
   sucursal_id INTEGER REFERENCES sucursales(id),
+  fecha_recepcion TEXT,
+  tipo_documento TEXT NOT NULL DEFAULT 'orden_compra',  -- orden_compra | orden_servicio
   created_at TEXT DEFAULT (datetime('now'))
 );
 
@@ -340,6 +342,21 @@ CREATE TABLE IF NOT EXISTS purchase_order_items (
   observacion TEXT,
   unidad TEXT NOT NULL DEFAULT 'UND',
   afectacion_igv TEXT NOT NULL DEFAULT 'gravado'
+);
+
+-- Catálogo administrable de "Tipo de Compra" (antes una lista fija en el
+-- código). "categoria" y "clasificacion_libros" quedan como texto libre a
+-- propósito: no fabricamos el catálogo contable/tributario oficial, cada
+-- empresa los define a su manera.
+CREATE TABLE IF NOT EXISTS tipos_compra (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  categoria TEXT NOT NULL,
+  nombre TEXT NOT NULL,
+  glosa_observacion TEXT,
+  clasificacion_libros TEXT,
+  destino_compra TEXT NOT NULL DEFAULT 'centro_costo',  -- centro_costo | ingreso_inventario
+  activo INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS cotizaciones (
@@ -639,6 +656,13 @@ CREATE TABLE IF NOT EXISTS role_acciones (
       db.exec(`ALTER TABLE purchase_items ADD COLUMN ${col} ${def}`);
     }
   }
+  const purchaseOrderColumns = db.prepare("PRAGMA table_info(purchase_orders)").all().map((c) => c.name);
+  if (!purchaseOrderColumns.includes('fecha_recepcion')) {
+    db.exec('ALTER TABLE purchase_orders ADD COLUMN fecha_recepcion TEXT');
+  }
+  if (!purchaseOrderColumns.includes('tipo_documento')) {
+    db.exec("ALTER TABLE purchase_orders ADD COLUMN tipo_documento TEXT NOT NULL DEFAULT 'orden_compra'");
+  }
 
   // caja_saldos_iniciales tenia UNIQUE(fecha) — con varias sedes cada una necesita
   // su propio saldo inicial por fecha, asi que hace falta recrear la tabla con
@@ -823,6 +847,23 @@ CREATE TABLE IF NOT EXISTS role_acciones (
       ['guia_remitente', 'TL02'],
     ];
     series.forEach((s) => insertSerie.run(...s));
+  }
+
+  // Tipos de compra: se siembran con los mismos 5 que el formulario de
+  // Compras venía usando hardcodeados, para no romper compras/órdenes ya
+  // registradas. Editable desde Compras -> Tipos de Compra.
+  const tipoCompraCount = db.prepare('SELECT COUNT(*) AS n FROM tipos_compra').get().n;
+  if (tipoCompraCount === 0) {
+    const insertTipoCompra = db.prepare(
+      `INSERT INTO tipos_compra (categoria, nombre, glosa_observacion, clasificacion_libros, destino_compra)
+       VALUES (?, ?, ?, ?, ?)`
+    );
+    const CATEGORIA_DEFAULT = 'Inversión en mercadería y activo fijo';
+    insertTipoCompra.run(CATEGORIA_DEFAULT, 'Mercadería', 'Mercadería de Productos', 'Mercadería, materia prima, suministro, envases y embalajes', 'ingreso_inventario');
+    insertTipoCompra.run(CATEGORIA_DEFAULT, 'Servicio', 'Servicios', 'Servicios prestados por terceros', 'centro_costo');
+    insertTipoCompra.run(CATEGORIA_DEFAULT, 'Activo Fijo', 'Activo Fijo', 'Bienes de capital / activo fijo', 'centro_costo');
+    insertTipoCompra.run(CATEGORIA_DEFAULT, 'Envase/Embalaje', 'Envase y Embalaje', 'Envases y embalajes', 'ingreso_inventario');
+    insertTipoCompra.run(CATEGORIA_DEFAULT, 'Gastos Varios', 'Gastos Varios', 'Otros gastos no incluidos en el numeral 4', 'centro_costo');
   }
 
   if (demo) {

@@ -1,7 +1,7 @@
 const express = require('express');
 const db = require('../db');
 const { requireAuth, resolveSucursal } = require('../middleware/auth');
-const { round2 } = require('../utils/stock');
+const { round2, incrementarStock } = require('../utils/stock');
 const { requirePermiso, requireAccion } = require('../utils/permisos');
 
 const router = express.Router();
@@ -10,7 +10,6 @@ router.use(requirePermiso('compras'));
 router.use(resolveSucursal);
 
 const MONEDAS = ['PEN', 'USD'];
-const TIPOS_COMPRA = ['mercaderia', 'servicio', 'activo_fijo', 'envase_embalaje', 'otros'];
 const TIPOS_OPERACION = ['gravada_exportacion', 'no_gravada', 'sin_derecho_credito', 'no_gravado'];
 const AFECTACIONES_IGV = ['gravado', 'exonerado', 'inafecto'];
 
@@ -28,9 +27,12 @@ function nextNumero() {
 router.get('/', (req, res) => {
   const { estado, from, to, q } = req.query;
   let sql = `
-    SELECT po.*, s.nombre AS proveedor_nombre, s.ruc AS proveedor_ruc
+    SELECT po.*, s.nombre AS proveedor_nombre, s.ruc AS proveedor_ruc,
+           u.full_name AS usuario_nombre, suc.nombre AS sucursal_nombre
     FROM purchase_orders po
     JOIN suppliers s ON s.id = po.supplier_id
+    LEFT JOIN users u ON u.id = po.created_by
+    LEFT JOIN sucursales suc ON suc.id = po.sucursal_id
     WHERE po.sucursal_id = ?
   `;
   const params = [req.sucursalId];
@@ -63,7 +65,9 @@ router.post('/', requireAccion('compras', 'registrar_compra'), (req, res) => {
     supplier_id, items, fecha, observaciones,
     serie, numero_doc, moneda, tipo_cambio,
     tipo_compra, tipo_operacion, descuento_pct, percepcion,
+    tipo_documento,
   } = req.body || {};
+  const tipoDocumento = tipo_documento === 'orden_servicio' ? 'orden_servicio' : 'orden_compra';
 
   if (!supplier_id) return res.status(400).json({ error: 'Selecciona un proveedor.' });
   if (!Array.isArray(items) || items.length === 0) {
@@ -79,7 +83,7 @@ router.post('/', requireAccion('compras', 'registrar_compra'), (req, res) => {
   if (moneda === 'USD' && tipoCambio <= 0) {
     return res.status(400).json({ error: 'Ingresa un tipo de cambio válido.' });
   }
-  if (!tipo_compra || !TIPOS_COMPRA.includes(tipo_compra)) {
+  if (!tipo_compra || !db.prepare('SELECT 1 FROM tipos_compra WHERE nombre = ? AND activo = 1').get(tipo_compra)) {
     return res.status(400).json({ error: 'Selecciona el tipo de compra.' });
   }
   if (!tipo_operacion || !TIPOS_OPERACION.includes(tipo_operacion)) {
@@ -136,12 +140,12 @@ router.post('/', requireAccion('compras', 'registrar_compra'), (req, res) => {
       `INSERT INTO purchase_orders (
          numero, supplier_id, created_by, fecha, serie, numero_doc, moneda, tipo_cambio,
          tipo_compra, tipo_operacion, descuento_pct, percepcion, subtotal, igv, no_gravado, total,
-         estado, observaciones, sucursal_id
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pendiente', ?, ?)`
+         estado, observaciones, sucursal_id, tipo_documento
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pendiente', ?, ?, ?)`
     ).run(
       numero, supplier_id, req.user?.id || null, fecha, serie, numero_doc, moneda, tipoCambio,
       tipo_compra, tipo_operacion, descuentoPct, percepcionMonto, subtotalGravado, igvTotal, noGravado, total,
-      observaciones || null, req.sucursalId
+      observaciones || null, req.sucursalId, tipoDocumento
     );
     const orderId = info.lastInsertRowid;
     const insertItem = db.prepare(
@@ -168,6 +172,40 @@ router.post('/:id/anular', requireAccion('compras', 'anular_compra'), (req, res)
   }
   db.prepare("UPDATE purchase_orders SET estado = 'anulada' WHERE id = ?").run(req.params.id);
   res.json(db.prepare('SELECT * FROM purchase_orders WHERE id = ?').get(req.params.id));
+});
+
+// POST /api/purchase-orders/:id/recibir — convierte la orden pendiente en una
+// recepción real: ingresa el stock de cada item y marca la orden como recibida.
+router.post('/:id/recibir', requireAccion('compras', 'registrar_compra'), (req, res) => {
+  const order = db.prepare('SELECT * FROM purchase_orders WHERE id = ? AND sucursal_id = ?').get(req.params.id, req.sucursalId);
+  if (!order) return res.status(404).json({ error: 'Orden de compra no encontrada.' });
+  if (order.estado !== 'pendiente') {
+    return res.status(400).json({ error: 'Esta orden ya fue recibida o anulada.' });
+  }
+  const supplier = db.prepare('SELECT * FROM suppliers WHERE id = ?').get(order.supplier_id);
+  const items = db.prepare('SELECT * FROM purchase_order_items WHERE purchase_order_id = ?').all(order.id);
+  const fechaRecepcion = (req.body && req.body.fecha_recepcion) || new Date().toISOString().slice(0, 10);
+
+  db.transaction(() => {
+    db.prepare(
+      "UPDATE purchase_orders SET estado = 'recibida', fecha_recepcion = ? WHERE id = ?"
+    ).run(fechaRecepcion, order.id);
+    const referencia = `OC-${String(order.numero).padStart(5, '0')}`;
+    for (const it of items) {
+      const product = db.prepare('SELECT * FROM products WHERE id = ?').get(it.product_id);
+      if (!product || product.stock === null) continue; // servicios no manejan stock
+      incrementarStock(it.product_id, it.cantidad, {
+        tipoMovimiento: 'compra',
+        motivo: `Recepción de orden de compra a ${supplier?.nombre || 'proveedor'}`,
+        referencia,
+        userId: req.user?.id,
+        sucursalId: order.sucursal_id,
+      });
+    }
+  })();
+
+  const updated = db.prepare('SELECT * FROM purchase_orders WHERE id = ?').get(order.id);
+  res.json(updated);
 });
 
 module.exports = router;
