@@ -374,6 +374,45 @@ llaves de prueba (`sk_test_`/`pk_test_`) y una tarjeta de prueba de Culqi,
 y confirmá que las respuestas coinciden con lo que espera
 `backend/utils/culqi.js` — ajustalo si algún campo cambió en su API.
 
+## Cobro recurrente a tus clientes con Izipay (`IZIPAY_USERNAME` / `IZIPAY_PASSWORD`)
+
+Esto es lo opuesto a la sección anterior: no es lo que vos le pagás a la
+plataforma, sino lo que **tus propios clientes te pagan a vos** cada mes
+(una cuota, una membresía, un servicio recurrente) — se configura desde
+**Personas → Suscripciones** dentro del CRM.
+
+Por cada cliente eliges el monto mensual y el día de cobro, y el cliente
+agrega su tarjeta una sola vez (nunca pasa por este servidor — se captura
+dentro del formulario embebido de Izipay). Desde ahí el cobro es
+**automático**: el mismo proceso interno que revisa la suscripción a la
+plataforma (cada 6 horas) también revisa las suscripciones de tus clientes
+y las cobra contra la tarjeta guardada, registrando el resultado en su
+historial.
+
+Para activarlo, creá una cuenta de comercio en
+[izipay.pe](https://www.izipay.pe) y agregá estas variables de entorno:
+
+| Variable | Valor |
+| --- | --- |
+| `IZIPAY_USERNAME` | el usuario (shopId) de tu cuenta de comercio |
+| `IZIPAY_PASSWORD` | la contraseña de la API (de prueba o de producción) |
+| `IZIPAY_PUBLIC_KEY` | tu llave pública — esta sí se le manda al navegador, es segura de exponer |
+| `IZIPAY_HMAC_KEY` | opcional — llave HMAC-SHA-256 de tu cuenta, para validar la firma de la respuesta del formulario |
+
+Sin `IZIPAY_USERNAME`/`IZIPAY_PASSWORD`/`IZIPAY_PUBLIC_KEY` configuradas,
+"Suscripciones" sigue funcionando con total normalidad para crear/editar
+suscripciones (monto y día de cobro), pero no se puede agregar una tarjeta
+ni se procesa ningún cobro — modo simulado, igual que el resto de
+integraciones externas de este sistema.
+
+⚠️ A diferencia de Culqi, esta integración **no pudo verificarse ni contra
+la documentación oficial de Izipay Perú ni contra una cuenta de prueba
+real** (quedaron fuera de alcance de red al escribirla). Antes de usarla en
+producción: creá una cuenta de comercio, conseguí tus credenciales de
+prueba, probá el flujo completo con una tarjeta de prueba, y confirmá que
+las respuestas coinciden con lo que espera `backend/utils/izipay.js` —
+ajustalo si algún nombre de campo cambió en su API.
+
 ## Estructura del proyecto
 
 ```

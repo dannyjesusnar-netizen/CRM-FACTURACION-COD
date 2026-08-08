@@ -29,7 +29,9 @@ const platformRoutes = require('./routes/platform');
 const metodoPagoRoutes = require('./routes/metodosPago');
 const serieRoutes = require('./routes/series');
 const suscripcionRoutes = require('./routes/suscripcion');
+const suscripcionesClientesRoutes = require('./routes/suscripcionesClientes');
 const { procesarCobrosVencidos } = require('./utils/facturacionPlataforma');
+const { procesarCobrosClientesVencidos } = require('./utils/facturacionClientes');
 
 // panel-central es una app hermana en este mismo repo (login propio, por
 // correo+contraseña, con su propia base de datos — ver panel-central/README.md).
@@ -76,6 +78,7 @@ app.use('/api/platform', platformRoutes);
 app.use('/api/metodos-pago', metodoPagoRoutes);
 app.use('/api/series', serieRoutes);
 app.use('/api/suscripcion', suscripcionRoutes);
+app.use('/api/clientes-suscripciones', suscripcionesClientesRoutes);
 
 // panel-central: su API vive en /panel-api (no /api, para no chocar con la
 // de este CRM) y su login/base de datos son completamente independientes
@@ -127,3 +130,12 @@ setInterval(() => {
   procesarCobrosVencidos().catch((err) => console.error('Error procesando cobros de suscripción:', err));
 }, SEIS_HORAS_MS);
 procesarCobrosVencidos().catch((err) => console.error('Error procesando cobros de suscripción:', err));
+
+// Cobro recurrente a los CLIENTES de esta empresa (tarjeta guardada vía
+// Izipay, ver routes/suscripcionesClientes.js). Mismo patrón que el cobro
+// de plataforma de arriba, en un sweep independiente. Si Izipay no está
+// configurado, no hace nada (ver utils/izipay.js).
+setInterval(() => {
+  procesarCobrosClientesVencidos().catch((err) => console.error('Error procesando cobros a clientes:', err));
+}, SEIS_HORAS_MS);
+procesarCobrosClientesVencidos().catch((err) => console.error('Error procesando cobros a clientes:', err));

@@ -114,6 +114,38 @@ CREATE TABLE IF NOT EXISTS cobros (
   created_at TEXT DEFAULT (datetime('now'))
 );
 
+-- Cobro recurrente mensual a un cliente (tarjeta guardada vía Izipay, ver
+-- utils/izipay.js). Independiente de "cobros" (que es el registro manual de
+-- pagos contra una factura a crédito puntual).
+CREATE TABLE IF NOT EXISTS client_suscripciones (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  client_id INTEGER NOT NULL REFERENCES clients(id),
+  monto_mensual REAL NOT NULL,
+  dia_cobro INTEGER NOT NULL DEFAULT 1,          -- 1-28
+  moneda TEXT NOT NULL DEFAULT 'PEN',
+  izipay_token TEXT,                              -- paymentMethodToken guardado
+  tarjeta_marca TEXT,
+  tarjeta_ultimos4 TEXT,
+  estado TEXT NOT NULL DEFAULT 'sin_tarjeta',     -- sin_tarjeta | activa | pago_fallido | pausada
+  fecha_inicio TEXT,
+  ultimo_cobro_at TEXT,
+  proximo_cobro_at TEXT,
+  created_by INTEGER REFERENCES users(id),
+  sucursal_id INTEGER REFERENCES sucursales(id),
+  created_at TEXT DEFAULT (datetime('now')),
+  UNIQUE(client_id)
+);
+
+CREATE TABLE IF NOT EXISTS client_suscripcion_pagos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  suscripcion_id INTEGER NOT NULL REFERENCES client_suscripciones(id) ON DELETE CASCADE,
+  monto REAL NOT NULL,
+  estado TEXT NOT NULL,           -- exitoso | fallido
+  izipay_cargo_id TEXT,
+  mensaje TEXT,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS stock_movements (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   product_id INTEGER NOT NULL REFERENCES products(id),

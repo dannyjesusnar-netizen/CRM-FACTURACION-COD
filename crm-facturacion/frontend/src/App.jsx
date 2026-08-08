@@ -12,6 +12,7 @@ import TerminosServicio from './pages/TerminosServicio';
 import Menu from './pages/Menu';
 import Dashboard from './pages/Dashboard';
 import Clients from './pages/Clients';
+import SuscripcionesClientes from './pages/SuscripcionesClientes';
 import Products from './pages/Products';
 import Movements from './pages/Movements';
 import Lotes from './pages/Lotes';
@@ -62,6 +63,7 @@ export default function App() {
             <Route path="/menu" element={<Menu />} />
             <Route path="/dashboard" element={<RequirePermiso modulo="dashboard"><Dashboard /></RequirePermiso>} />
             <Route path="/clientes" element={<RequirePermiso modulo="clientes"><Clients /></RequirePermiso>} />
+            <Route path="/clientes/suscripciones" element={<RequirePermiso modulo="clientes"><SuscripcionesClientes /></RequirePermiso>} />
             <Route path="/productos" element={<RequirePermiso modulo="inventario"><Products /></RequirePermiso>} />
             <Route path="/movimientos" element={<RequirePermiso modulo="inventario"><Movements /></RequirePermiso>} />
             <Route path="/lotes" element={<RequirePermiso modulo="inventario"><Lotes /></RequirePermiso>} />
