@@ -27,10 +27,14 @@ export default function Companies() {
   const [locales, setLocales] = useState({ disponible: false, empresas: [] });
   const [costoRuc, setCostoRuc] = useState(null);
   const [costoValor, setCostoValor] = useState('');
+  const [fechaValor, setFechaValor] = useState('');
   const [pagosRuc, setPagosRuc] = useState(null);
   const [pagos, setPagos] = useState([]);
   const [mensajesRuc, setMensajesRuc] = useState(null);
   const [mensajes, setMensajes] = useState([]);
+
+  const empresasActivas = locales.empresas.filter((t) => !t.es_original && t.estado === 'aprobado' && t.activo).length;
+  const ingresoTotal = locales.empresas.reduce((sum, t) => sum + (Number(t.ingreso_total) || 0), 0);
 
   useEffect(() => { load(); loadLocales(); }, []);
 
@@ -66,17 +70,33 @@ export default function Companies() {
   function abrirCosto(tenant) {
     setCostoRuc(tenant.ruc);
     setCostoValor(tenant.costo_mensual ?? '');
+    setFechaValor(tenant.fecha_inicio_suscripcion || '');
   }
 
   async function guardarCosto(e) {
     e.preventDefault();
     try {
-      await api.put(`/companies/locales/${costoRuc}/costo`, { costo_mensual: Number(costoValor) });
-      toast.success('Costo mensual actualizado.');
+      await api.put(`/companies/locales/${costoRuc}/costo`, {
+        costo_mensual: Number(costoValor),
+        fecha_inicio_suscripcion: fechaValor || null,
+      });
+      toast.success('Costo y fecha de pago actualizados.');
       setCostoRuc(null);
       loadLocales();
     } catch (err) {
       toast.error(err.response?.data?.error || 'No se pudo actualizar el costo.');
+    }
+  }
+
+  async function toggleActivo(t) {
+    const accion = t.activo ? 'suspender' : 'activar';
+    if (!window.confirm(`¿Seguro que quieres ${accion} a "${t.razon_social}"?`)) return;
+    try {
+      await api.put(`/companies/locales/${t.ruc}/activo`, { activo: !t.activo });
+      toast.success(t.activo ? 'Empresa suspendida.' : 'Empresa reactivada.');
+      loadLocales();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'No se pudo cambiar el estado.');
     }
   }
 
@@ -153,9 +173,24 @@ export default function Companies() {
             Tu propia empresa y las que se registraron solas desde "Registrar mi empresa" en esta misma
             instancia — aparecen automáticamente, sin que tengas que agregarlas a mano.
           </p>
+
+          <div className="stat-grid" style={{ gridTemplateColumns: 'repeat(2, minmax(160px, 220px))' }}>
+            <div className="stat-card">
+              <div className="stat-label">EMPRESAS ACTIVAS</div>
+              <div className="stat-value">{empresasActivas}</div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-label">INGRESO TOTAL</div>
+              <div className="stat-value">S/ {ingresoTotal.toFixed(2)}</div>
+            </div>
+          </div>
+
           <table className="data-table">
             <thead>
-              <tr><th>Razón social</th><th>RUC</th><th>Estado</th><th>Costo mensual</th><th>Próximo cobro</th><th></th></tr>
+              <tr>
+                <th>Razón social</th><th>RUC</th><th>Estado</th><th>Costo mensual</th>
+                <th>Fecha de pago</th><th>Próximo cobro</th><th>Ingresos</th><th>Sucursales</th><th></th>
+              </tr>
             </thead>
             <tbody>
               {locales.empresas.map((t) => (
@@ -165,18 +200,30 @@ export default function Companies() {
                   <td>
                     {t.es_original ? (
                       <span className="badge badge-good">Tu empresa</span>
+                    ) : t.estado === 'aprobado' && !t.activo ? (
+                      <span className="badge badge-critical">Suspendida</span>
+                    ) : t.estado === 'aprobado' ? (
+                      <span className="badge badge-good">Activa</span>
                     ) : (
                       <span className={'badge ' + (ESTADO_BADGE[t.estado] || 'badge-neutral')}>{ESTADO_LABEL[t.estado] || t.estado}</span>
                     )}
                   </td>
                   <td>{t.es_original ? '—' : (t.costo_mensual != null ? `S/ ${Number(t.costo_mensual).toFixed(2)}` : '—')}</td>
+                  <td>{t.es_original ? '—' : formatFecha(t.fecha_inicio_suscripcion)}</td>
                   <td>{t.es_original ? '—' : formatFecha(t.proximo_cobro_at)}</td>
+                  <td>{t.ingreso_total != null ? `S/ ${Number(t.ingreso_total).toFixed(2)}` : '—'}</td>
+                  <td>{t.sucursales_count ?? '—'}</td>
                   <td className="row-actions">
                     {!t.es_original && t.estado === 'pendiente' && (
                       <>
                         <button className="btn-link" onClick={() => aprobarLocal(t.ruc)}>Aprobar</button>
                         <button className="btn-link danger" onClick={() => rechazarLocal(t.ruc)}>Rechazar</button>
                       </>
+                    )}
+                    {!t.es_original && t.estado === 'aprobado' && (
+                      <button className={'btn-link' + (t.activo ? ' danger' : '')} onClick={() => toggleActivo(t)}>
+                        {t.activo ? 'Desactivar' : 'Activar'}
+                      </button>
                     )}
                     {!t.es_original && (
                       <>
@@ -189,7 +236,7 @@ export default function Companies() {
                 </tr>
               ))}
               {locales.empresas.length === 0 && (
-                <tr><td colSpan={6} className="empty-row">Todavía no hay empresas registradas desde "Registrar mi empresa".</td></tr>
+                <tr><td colSpan={9} className="empty-row">Todavía no hay empresas registradas desde "Registrar mi empresa".</td></tr>
               )}
             </tbody>
           </table>
@@ -256,10 +303,12 @@ export default function Companies() {
       {costoRuc && (
         <div className="modal-overlay" onClick={() => setCostoRuc(null)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h2>Costo mensual</h2>
+            <h2>Costo y fecha de pago</h2>
             <form onSubmit={guardarCosto}>
               <label>Costo mensual (S/)</label>
               <input required type="number" min="0" step="0.01" value={costoValor} onChange={(e) => setCostoValor(e.target.value)} />
+              <label>Fecha de pago (desde cuándo corre el cobro)</label>
+              <input type="date" value={fechaValor} onChange={(e) => setFechaValor(e.target.value)} />
               <div className="modal-actions">
                 <button type="button" className="btn-secondary" onClick={() => setCostoRuc(null)}>Cancelar</button>
                 <button type="submit" className="btn-primary">Guardar</button>

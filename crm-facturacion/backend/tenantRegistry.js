@@ -52,6 +52,11 @@ const TENANT_SUSCRIPCION_COLUMNS = [
   ['proximo_cobro_at', 'TEXT'],
   // sin_tarjeta | activa | pago_fallido
   ['suscripcion_estado', "TEXT NOT NULL DEFAULT 'sin_tarjeta'"],
+  // Suspensión manual del dueño de la plataforma (distinta de "rechazado":
+  // rechazado es una decisión al momento del registro, activo/inactivo se
+  // puede alternar en cualquier momento, ej. por falta de pago, sin perder
+  // el historial ni tener que volver a aprobar el registro).
+  ['activo', 'INTEGER NOT NULL DEFAULT 1'],
 ];
 for (const [col, def] of TENANT_SUSCRIPCION_COLUMNS) {
   if (!tenantColumns.includes(col)) {
@@ -94,6 +99,18 @@ function aprobarTenant(ruc) {
 
 function rechazarTenant(ruc) {
   registryDb.prepare(`UPDATE tenants SET estado = 'rechazado' WHERE ruc = ?`).run(ruc);
+  return findTenant(ruc);
+}
+
+// Suspende/reactiva el acceso de una empresa ya aprobada (ver gating en
+// routes/auth.js login) sin tocar su estado de aprobación ni su historial.
+function activarTenant(ruc) {
+  registryDb.prepare('UPDATE tenants SET activo = 1 WHERE ruc = ?').run(ruc);
+  return findTenant(ruc);
+}
+
+function desactivarTenant(ruc) {
+  registryDb.prepare('UPDATE tenants SET activo = 0 WHERE ruc = ?').run(ruc);
   return findTenant(ruc);
 }
 
@@ -150,18 +167,29 @@ function listarPagos(ruc) {
   return registryDb.prepare('SELECT * FROM pagos_plataforma WHERE ruc = ? ORDER BY created_at DESC').all(ruc);
 }
 
+// Total cobrado con éxito a esta empresa por su suscripción a la
+// plataforma — para mostrar "Ingresos" en panel-central.
+function ingresoTotal(ruc) {
+  const row = registryDb.prepare(
+    `SELECT COALESCE(SUM(monto), 0) AS total FROM pagos_plataforma WHERE ruc = ? AND estado = 'exitoso'`
+  ).get(ruc);
+  return row.total;
+}
+
 // Empresas con tarjeta activa cuyo próximo cobro ya venció — para el motor
-// de cobro recurrente (ver utils/facturacionPlataforma.js).
+// de cobro recurrente (ver utils/facturacionPlataforma.js). Una empresa
+// suspendida (activo = 0) no se cobra mientras dure la suspensión.
 function tenantsConCobroVencido() {
   const hoy = new Date().toISOString().slice(0, 10);
   return registryDb.prepare(
     `SELECT * FROM tenants
-     WHERE estado = 'aprobado' AND izipay_token IS NOT NULL AND costo_mensual IS NOT NULL
+     WHERE estado = 'aprobado' AND activo = 1 AND izipay_token IS NOT NULL AND costo_mensual IS NOT NULL
        AND proximo_cobro_at IS NOT NULL AND proximo_cobro_at <= ?`
   ).all(hoy);
 }
 
 module.exports = {
   tenantDbPath, findTenant, listPendientes, listTodos, crearTenant, aprobarTenant, rechazarTenant,
-  setCosto, guardarTarjeta, quitarTarjeta, registrarPago, listarPagos, tenantsConCobroVencido,
+  activarTenant, desactivarTenant, setCosto, guardarTarjeta, quitarTarjeta, registrarPago, listarPagos,
+  ingresoTotal, tenantsConCobroVencido,
 };

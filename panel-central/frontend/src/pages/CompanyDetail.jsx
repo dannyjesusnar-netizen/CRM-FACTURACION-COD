@@ -18,7 +18,10 @@ export default function CompanyDetail() {
   const [nuevaClave, setNuevaClave] = useState('');
   const [pwdError, setPwdError] = useState('');
   const [costoEdit, setCostoEdit] = useState({});
+  const [fechaEdit, setFechaEdit] = useState({});
   const [guardandoCosto, setGuardandoCosto] = useState(null);
+  const [pagosRuc, setPagosRuc] = useState(null);
+  const [pagos, setPagos] = useState([]);
 
   useEffect(() => { load(); }, [id]);
 
@@ -93,14 +96,35 @@ export default function CompanyDetail() {
     }
     setGuardandoCosto(r.ruc);
     try {
-      await api.put(`/companies/${id}/live/registros/${r.ruc}/costo`, { costo_mensual: costo });
-      toast.success('Costo mensual actualizado.');
+      await api.put(`/companies/${id}/live/registros/${r.ruc}/costo`, {
+        costo_mensual: costo,
+        fecha_inicio_suscripcion: fechaEdit[r.ruc] || null,
+      });
+      toast.success('Costo y fecha de pago actualizados.');
       load();
     } catch (err) {
       toast.error(err.response?.data?.error || 'No se pudo actualizar el costo.');
     } finally {
       setGuardandoCosto(null);
     }
+  }
+
+  async function handleToggleActivo(r) {
+    const accion = r.activo ? 'suspender' : 'activar';
+    if (!window.confirm(`¿Seguro que quieres ${accion} a "${r.razon_social}"?`)) return;
+    try {
+      await api.put(`/companies/${id}/live/registros/${r.ruc}/activo`, { activo: !r.activo });
+      toast.success(r.activo ? 'Empresa suspendida.' : 'Empresa reactivada.');
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'No se pudo cambiar el estado.');
+    }
+  }
+
+  async function verPagos(ruc) {
+    setPagosRuc(ruc);
+    const res = await api.get(`/companies/${id}/live/registros/${ruc}/pagos`);
+    setPagos(res.data);
   }
 
   async function handleToggleEstado(u) {
@@ -174,6 +198,7 @@ export default function CompanyDetail() {
             <p><strong>Nombre comercial:</strong> {empresa?.nombre_comercial || '—'}</p>
             <p><strong>RUC:</strong> {empresa?.ruc || '—'}</p>
             <p><strong>Teléfono:</strong> {empresa?.telefono || '—'}</p>
+            <p><strong>Sucursales:</strong> {empresa?.sucursales_count ?? '—'}</p>
           </div>
 
           <h3>Cuentas</h3>
@@ -252,7 +277,8 @@ export default function CompanyDetail() {
             <thead>
               <tr>
                 <th>Razón social</th><th>RUC</th><th>Registrada desde</th><th>Estado</th>
-                <th>Costo mensual (S/)</th><th>Suscripción</th><th>Próximo cobro</th><th></th>
+                <th>Costo mensual (S/)</th><th>Fecha de pago</th><th>Suscripción</th><th>Próximo cobro</th>
+                <th>Sucursales</th><th></th>
               </tr>
             </thead>
             <tbody>
@@ -262,7 +288,13 @@ export default function CompanyDetail() {
                   <td>{r.ruc}</td>
                   <td>{formatFecha(r.created_at)}</td>
                   <td>
-                    <span className={'badge ' + (ESTADO_BADGE[r.estado] || '')}>{ESTADO_LABEL[r.estado] || r.estado}</span>
+                    {r.estado === 'aprobado' && !r.activo ? (
+                      <span className="badge badge-critical">Suspendida</span>
+                    ) : r.estado === 'aprobado' ? (
+                      <span className="badge badge-good">Activa</span>
+                    ) : (
+                      <span className={'badge ' + (ESTADO_BADGE[r.estado] || '')}>{ESTADO_LABEL[r.estado] || r.estado}</span>
+                    )}
                   </td>
                   <td>
                     <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -280,11 +312,19 @@ export default function CompanyDetail() {
                     </div>
                   </td>
                   <td>
+                    <input
+                      type="date" style={{ width: 130 }}
+                      value={fechaEdit[r.ruc] ?? (r.fecha_inicio_suscripcion || '')}
+                      onChange={(e) => setFechaEdit({ ...fechaEdit, [r.ruc]: e.target.value })}
+                    />
+                  </td>
+                  <td>
                     <span className={'badge ' + (SUSCRIPCION_BADGE[r.suscripcion_estado] || '')}>
                       {SUSCRIPCION_LABEL[r.suscripcion_estado] || r.suscripcion_estado}
                     </span>
                   </td>
                   <td>{formatFecha(r.proximo_cobro_at)}</td>
+                  <td>{r.sucursales_count ?? '—'}</td>
                   <td className="row-actions">
                     {r.estado === 'pendiente' && (
                       <>
@@ -293,17 +333,59 @@ export default function CompanyDetail() {
                       </>
                     )}
                     {r.estado === 'aprobado' && (
-                      <button className="btn-link danger" onClick={() => handleRechazarRegistro(r)}>Rechazar</button>
+                      <>
+                        <button className={'btn-link' + (r.activo ? ' danger' : '')} onClick={() => handleToggleActivo(r)}>
+                          {r.activo ? 'Desactivar' : 'Activar'}
+                        </button>
+                        <button className="btn-link" onClick={() => verPagos(r.ruc)}>Pagos</button>
+                        <button className="btn-link danger" onClick={() => handleRechazarRegistro(r)}>Rechazar</button>
+                      </>
                     )}
                   </td>
                 </tr>
               ))}
               {(registros || []).length === 0 && (
-                <tr><td colSpan={8} className="empty-row">Todavía nadie se registró solo en esta instancia.</td></tr>
+                <tr><td colSpan={10} className="empty-row">Todavía nadie se registró solo en esta instancia.</td></tr>
               )}
             </tbody>
           </table>
         </>
+      )}
+
+      {pagosRuc && (
+        <div className="modal-overlay" onClick={() => setPagosRuc(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h2>Historial de pagos — {pagosRuc}</h2>
+            <p style={{ fontSize: 13, color: 'var(--ink-muted)', marginTop: -8 }}>
+              Total cobrado con éxito: <strong>S/ {pagos.filter((p) => p.estado === 'exitoso').reduce((s, p) => s + Number(p.monto), 0).toFixed(2)}</strong>
+            </p>
+            <table className="data-table">
+              <thead>
+                <tr><th>Fecha</th><th>Monto</th><th>Estado</th><th>Mensaje</th></tr>
+              </thead>
+              <tbody>
+                {pagos.map((p) => (
+                  <tr key={p.id}>
+                    <td>{formatFecha(p.created_at)}</td>
+                    <td>S/ {Number(p.monto).toFixed(2)}</td>
+                    <td>
+                      <span className={'badge ' + (p.estado === 'exitoso' ? 'badge-good' : 'badge-critical')}>
+                        {p.estado === 'exitoso' ? 'Exitoso' : 'Fallido'}
+                      </span>
+                    </td>
+                    <td style={{ fontSize: 12, color: 'var(--ink-muted)' }}>{p.mensaje || '—'}</td>
+                  </tr>
+                ))}
+                {pagos.length === 0 && (
+                  <tr><td colSpan={4} className="empty-row">Todavía no hay cobros registrados.</td></tr>
+                )}
+              </tbody>
+            </table>
+            <div className="modal-actions">
+              <button type="button" className="btn-secondary" onClick={() => setPagosRuc(null)}>Cerrar</button>
+            </div>
+          </div>
+        </div>
       )}
 
       {pwdModalUser && (
