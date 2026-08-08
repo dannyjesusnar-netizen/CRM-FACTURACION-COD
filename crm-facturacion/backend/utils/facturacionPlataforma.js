@@ -5,20 +5,7 @@
 const tenantRegistry = require('../tenantRegistry');
 const culqi = require('./culqi');
 const db = require('../db');
-
-// Súmale un mes a una fecha YYYY-MM-DD sin depender de librerías externas.
-// Si el mes siguiente no tiene ese día (ej. 31 de enero -> febrero), cae en
-// el último día de ese mes — evita fechas inválidas como "31 de febrero".
-function sumarUnMes(fechaISO) {
-  const [y, m, d] = fechaISO.slice(0, 10).split('-').map(Number);
-  const fecha = new Date(Date.UTC(y, m - 1, d));
-  const mesDestino = fecha.getUTCMonth() + 1;
-  fecha.setUTCMonth(mesDestino);
-  if (fecha.getUTCMonth() !== ((mesDestino % 12 + 12) % 12)) {
-    fecha.setUTCDate(0); // retrocede al último día del mes destino
-  }
-  return fecha.toISOString().slice(0, 10);
-}
+const { sumarUnMes } = require('./fechas');
 
 // Nombre + email de contacto para el cargo en Culqi: usa la cuenta
 // Gerencia de esa empresa (primer usuario, sembrado al registrarse).
