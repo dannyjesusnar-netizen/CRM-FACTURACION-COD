@@ -5,7 +5,6 @@ import RequireAuth from './components/RequireAuth';
 import Layout from './components/Layout';
 import Login from './pages/Login';
 import Companies from './pages/Companies';
-import CompanyDetail from './pages/CompanyDetail';
 import CambiarContrasena from './pages/CambiarContrasena';
 
 export default function App() {
@@ -23,7 +22,6 @@ export default function App() {
               }
             >
               <Route path="/empresas" element={<Companies />} />
-              <Route path="/empresas/:id" element={<CompanyDetail />} />
               <Route path="/cambiar-contrasena" element={<CambiarContrasena />} />
             </Route>
             <Route path="*" element={<Navigate to="/empresas" replace />} />

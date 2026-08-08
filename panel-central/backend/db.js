@@ -21,18 +21,14 @@ CREATE TABLE IF NOT EXISTS platform_admins (
   full_name TEXT,
   created_at TEXT DEFAULT (datetime('now'))
 );
-
-CREATE TABLE IF NOT EXISTS empresas_cliente (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  nombre TEXT NOT NULL,
-  ruc TEXT,
-  telefono TEXT,
-  render_url TEXT NOT NULL,
-  platform_token TEXT NOT NULL,
-  activo INTEGER NOT NULL DEFAULT 1,
-  created_at TEXT DEFAULT (datetime('now'))
-);
 `);
+
+// Limpieza de la funcionalidad "empresas en otras instancias" (administrar
+// remotamente una empresa con su propio despliegue de Render, vía URL +
+// PLATFORM_TOKEN): se decidió no usarla — todos los clientes comparten esta
+// misma instancia y se auto-registran (ver localTenants.js) — así que se
+// quita la tabla si ya existía de una versión anterior.
+db.exec('DROP TABLE IF EXISTS empresas_cliente');
 
 // Seed idempotente: solo si no hay ningun admin de plataforma todavia.
 const adminCount = db.prepare('SELECT COUNT(*) AS n FROM platform_admins').get().n;
