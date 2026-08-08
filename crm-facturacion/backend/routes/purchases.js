@@ -12,7 +12,6 @@ router.use(resolveSucursal);
 const FORMAS_PAGO = ['efectivo', 'tarjeta', 'banco'];
 const TIPOS_COMPROBANTE = ['factura', 'boleta', 'ticket', 'recibo_honorarios', 'otros'];
 const MONEDAS = ['PEN', 'USD'];
-const TIPOS_COMPRA = ['mercaderia', 'servicio', 'activo_fijo', 'envase_embalaje', 'otros'];
 const TIPOS_OPERACION = ['gravada_exportacion', 'no_gravada', 'sin_derecho_credito', 'no_gravado'];
 const AFECTACIONES_IGV = ['gravado', 'exonerado', 'inafecto'];
 
@@ -31,10 +30,11 @@ router.get('/', (req, res) => {
   const { estado, supplier_id, from, to, q } = req.query;
   let sql = `
     SELECT p.*, s.nombre AS proveedor_nombre, s.ruc AS proveedor_ruc,
-           u.full_name AS usuario_nombre
+           u.full_name AS usuario_nombre, suc.nombre AS sucursal_nombre
     FROM purchases p
     JOIN suppliers s ON s.id = p.supplier_id
     LEFT JOIN users u ON u.id = p.created_by
+    LEFT JOIN sucursales suc ON suc.id = p.sucursal_id
     WHERE p.sucursal_id = ?
   `;
   const params = [req.sucursalId];
@@ -91,7 +91,7 @@ router.post('/', requireAccion('compras', 'registrar_compra'), (req, res) => {
   if (moneda === 'USD' && tipoCambio <= 0) {
     return res.status(400).json({ error: 'Ingresa un tipo de cambio válido.' });
   }
-  if (!tipo_compra || !TIPOS_COMPRA.includes(tipo_compra)) {
+  if (!tipo_compra || !db.prepare('SELECT 1 FROM tipos_compra WHERE nombre = ? AND activo = 1').get(tipo_compra)) {
     return res.status(400).json({ error: 'Selecciona el tipo de compra.' });
   }
   if (!tipo_operacion || !TIPOS_OPERACION.includes(tipo_operacion)) {

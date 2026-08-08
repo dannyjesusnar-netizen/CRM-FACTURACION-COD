@@ -10,7 +10,6 @@ router.use(requirePermiso('compras'));
 router.use(resolveSucursal);
 
 const MONEDAS = ['PEN', 'USD'];
-const TIPOS_COMPRA = ['mercaderia', 'servicio', 'activo_fijo', 'envase_embalaje', 'otros'];
 const TIPOS_OPERACION = ['gravada_exportacion', 'no_gravada', 'sin_derecho_credito', 'no_gravado'];
 const AFECTACIONES_IGV = ['gravado', 'exonerado', 'inafecto'];
 
@@ -66,7 +65,9 @@ router.post('/', requireAccion('compras', 'registrar_compra'), (req, res) => {
     supplier_id, items, fecha, observaciones,
     serie, numero_doc, moneda, tipo_cambio,
     tipo_compra, tipo_operacion, descuento_pct, percepcion,
+    tipo_documento,
   } = req.body || {};
+  const tipoDocumento = tipo_documento === 'orden_servicio' ? 'orden_servicio' : 'orden_compra';
 
   if (!supplier_id) return res.status(400).json({ error: 'Selecciona un proveedor.' });
   if (!Array.isArray(items) || items.length === 0) {
@@ -82,7 +83,7 @@ router.post('/', requireAccion('compras', 'registrar_compra'), (req, res) => {
   if (moneda === 'USD' && tipoCambio <= 0) {
     return res.status(400).json({ error: 'Ingresa un tipo de cambio válido.' });
   }
-  if (!tipo_compra || !TIPOS_COMPRA.includes(tipo_compra)) {
+  if (!tipo_compra || !db.prepare('SELECT 1 FROM tipos_compra WHERE nombre = ? AND activo = 1').get(tipo_compra)) {
     return res.status(400).json({ error: 'Selecciona el tipo de compra.' });
   }
   if (!tipo_operacion || !TIPOS_OPERACION.includes(tipo_operacion)) {
@@ -139,12 +140,12 @@ router.post('/', requireAccion('compras', 'registrar_compra'), (req, res) => {
       `INSERT INTO purchase_orders (
          numero, supplier_id, created_by, fecha, serie, numero_doc, moneda, tipo_cambio,
          tipo_compra, tipo_operacion, descuento_pct, percepcion, subtotal, igv, no_gravado, total,
-         estado, observaciones, sucursal_id
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pendiente', ?, ?)`
+         estado, observaciones, sucursal_id, tipo_documento
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pendiente', ?, ?, ?)`
     ).run(
       numero, supplier_id, req.user?.id || null, fecha, serie, numero_doc, moneda, tipoCambio,
       tipo_compra, tipo_operacion, descuentoPct, percepcionMonto, subtotalGravado, igvTotal, noGravado, total,
-      observaciones || null, req.sucursalId
+      observaciones || null, req.sucursalId, tipoDocumento
     );
     const orderId = info.lastInsertRowid;
     const insertItem = db.prepare(

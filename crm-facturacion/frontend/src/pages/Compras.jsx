@@ -5,7 +5,11 @@ import { useToast } from '../context/ToastContext';
 import { useAuth } from '../context/AuthContext';
 import PeriodoContable from '../components/PeriodoContable';
 
-const FORMA_PAGO_LABEL = { efectivo: 'Efectivo', tarjeta: 'Tarjeta', banco: 'Transferencia/Banco' };
+const DOCUMENTO_LABEL = {
+  factura: 'FACTURA', boleta: 'BOLETA', ticket: 'TICKET',
+  recibo_honorarios: 'RECIBO POR HONORARIOS', otros: 'OTROS',
+  orden_compra: 'ORDEN DE COMPRA', orden_servicio: 'ORDEN DE SERVICIO',
+};
 
 const TIPOS_COMPROBANTE = [
   { value: 'factura', label: '01 - FACTURA' },
@@ -17,13 +21,6 @@ const TIPOS_COMPROBANTE = [
 const MONEDAS = [
   { value: 'PEN', label: 'SOLES' },
   { value: 'USD', label: 'DÓLARES' },
-];
-const TIPOS_COMPRA = [
-  { value: 'mercaderia', label: 'Mercadería' },
-  { value: 'servicio', label: 'Servicio' },
-  { value: 'activo_fijo', label: 'Activo Fijo' },
-  { value: 'envase_embalaje', label: 'Envase/Embalaje' },
-  { value: 'otros', label: 'Otros' },
 ];
 const TIPOS_OPERACION = [
   { value: 'gravada_exportacion', label: 'Con IGV Destinadas a Operaciones Gravadas y/o De Exportación' },
@@ -65,12 +62,14 @@ export default function Compras() {
   const [q, setQ] = useState('');
   const [desde, setDesde] = useState(todayStr().slice(0, 8) + '01');
   const [hasta, setHasta] = useState(todayStr());
+  const [documentoFiltro, setDocumentoFiltro] = useState('');
   const hoy = new Date();
   const [periodoMes, setPeriodoMes] = useState(hoy.getMonth() + 1);
   const [periodoAnio, setPeriodoAnio] = useState(hoy.getFullYear());
 
   const [showForm, setShowForm] = useState(false);
   const [formMode, setFormMode] = useState('compra'); // 'compra' | 'orden'
+  const [ordenDocumento, setOrdenDocumento] = useState('Orden de Compra'); // 'Orden de Compra' | 'Orden de Servicio'
   const [showSupplierForm, setShowSupplierForm] = useState(false);
   const [error, setError] = useState('');
 
@@ -80,6 +79,7 @@ export default function Compras() {
   const [formaPago, setFormaPago] = useState('efectivo');
   const [newSupplier, setNewSupplier] = useState(emptySupplier());
   const [igvRate, setIgvRate] = useState(0.18);
+  const [tiposCompra, setTiposCompra] = useState([]);
 
   const [tipoComprobante, setTipoComprobante] = useState('factura');
   const [docSerie, setDocSerie] = useState('');
@@ -87,7 +87,7 @@ export default function Compras() {
   const [fechaEmision, setFechaEmision] = useState(todayStr());
   const [moneda, setMoneda] = useState('PEN');
   const [tipoCambio, setTipoCambio] = useState(1);
-  const [tipoCompra, setTipoCompra] = useState('mercaderia');
+  const [tipoCompra, setTipoCompra] = useState('');
   const [tipoOperacion, setTipoOperacion] = useState('gravada_exportacion');
   const [descuentoPct, setDescuentoPct] = useState(0);
   const [percepcion, setPercepcion] = useState(0);
@@ -122,6 +122,7 @@ export default function Compras() {
     api.get('/empresa').then((res) => {
       if (res.data?.igv_rate) setIgvRate(Number(res.data.igv_rate));
     });
+    api.get('/tipos-compra', { params: { estado: 'activo' } }).then((res) => setTiposCompra(res.data));
   }, []);
 
   function handleBuscar(e) {
@@ -129,8 +130,9 @@ export default function Compras() {
     load();
   }
 
-  function openNew(mode = 'compra') {
+  function openNew(mode = 'compra', ordenDoc = 'Orden de Compra') {
     setFormMode(mode);
+    setOrdenDocumento(ordenDoc);
     setSupplierId('');
     setItems([emptyItem()]);
     setObservaciones('');
@@ -141,7 +143,7 @@ export default function Compras() {
     setFechaEmision(todayStr());
     setMoneda('PEN');
     setTipoCambio(1);
-    setTipoCompra('mercaderia');
+    setTipoCompra(tiposCompra[0]?.nombre || '');
     setTipoOperacion('gravada_exportacion');
     setDescuentoPct(0);
     setPercepcion(0);
@@ -217,8 +219,11 @@ export default function Compras() {
     };
     try {
       if (formMode === 'orden') {
-        await api.post('/purchase-orders', payload);
-        toast.success('Orden de compra guardada correctamente.');
+        await api.post('/purchase-orders', {
+          ...payload,
+          tipo_documento: ordenDocumento === 'Orden de Servicio' ? 'orden_servicio' : 'orden_compra',
+        });
+        toast.success(`${ordenDocumento} guardada correctamente.`);
       } else {
         await api.post('/purchases', { ...payload, forma_pago: formaPago, tipo_comprobante: tipoComprobante });
         toast.success('Compra registrada correctamente.');
@@ -270,6 +275,32 @@ export default function Compras() {
   const vigentes = purchases.filter((p) => p.estado === 'registrada');
   const sumaTotal = vigentes.reduce((s, p) => s + p.total, 0);
 
+  const registrosCompras = purchases.map((p) => ({
+    key: `compra-${p.id}`, kind: 'compra', id: p.id, fecha: p.fecha,
+    documento: DOCUMENTO_LABEL[p.tipo_comprobante] || (p.tipo_comprobante || '').toUpperCase(),
+    serie: p.serie || '—', numeroDoc: p.numero_doc || String(p.numero).padStart(5, '0'),
+    ruc: p.proveedor_ruc, nombre: p.proveedor_nombre, moneda: p.moneda || 'PEN',
+    importe: round2(Number(p.subtotal || 0) + Number(p.igv || 0) + Number(p.no_gravado || 0)),
+    tipoCambio: p.tipo_cambio || 1, total: p.total, sucursal: p.sucursal_nombre,
+    estadoLabel: p.estado === 'anulada' ? 'Anulada' : 'Registrada',
+    badgeClass: p.estado === 'anulada' ? 'badge-critical' : 'badge-good',
+    puedeAnular: p.estado === 'registrada',
+  }));
+  const registrosOrdenes = orders.map((o) => ({
+    key: `orden-${o.id}`, kind: 'orden', id: o.id, fecha: o.fecha,
+    documento: DOCUMENTO_LABEL[o.tipo_documento] || 'ORDEN DE COMPRA',
+    serie: o.serie || '—', numeroDoc: o.numero_doc || String(o.numero).padStart(5, '0'),
+    ruc: o.proveedor_ruc, nombre: o.proveedor_nombre, moneda: o.moneda || 'PEN',
+    importe: round2(Number(o.subtotal || 0) + Number(o.igv || 0) + Number(o.no_gravado || 0)),
+    tipoCambio: o.tipo_cambio || 1, total: o.total, sucursal: o.sucursal_nombre,
+    estadoLabel: o.estado === 'anulada' ? 'Anulada' : o.estado === 'recibida' ? 'Recibida' : 'Pendiente',
+    badgeClass: o.estado === 'anulada' ? 'badge-critical' : o.estado === 'recibida' ? 'badge-good' : 'badge-warning',
+    puedeAnular: o.estado === 'pendiente',
+  }));
+  const registros = [...registrosCompras, ...registrosOrdenes]
+    .filter((r) => !documentoFiltro || r.documento === documentoFiltro)
+    .sort((a, b) => (a.fecha === b.fecha ? b.id - a.id : (a.fecha < b.fecha ? 1 : -1)));
+
   return (
     <div>
       <div className="page-header">
@@ -279,8 +310,10 @@ export default function Compras() {
 
       <div className="ventas-actions">
         <button className="ventas-action-btn" onClick={() => openNew('compra')}>Registrar Compras</button>
-        <button className="ventas-action-btn" onClick={() => openNew('orden')}>Orden de Compra</button>
+        <button className="ventas-action-btn" onClick={() => openNew('orden', 'Orden de Compra')}>Orden de Compra</button>
+        <button className="ventas-action-btn" onClick={() => openNew('orden', 'Orden de Servicio')}>Orden de Servicio</button>
         <button className="ventas-action-btn" onClick={() => navigate('/compras/recepcion')}>Recepción de Compras</button>
+        <button className="ventas-action-btn" onClick={() => navigate('/compras/tipos')}>Tipos de Compra</button>
       </div>
 
       <form className="filter-panel" onSubmit={handleBuscar}>
@@ -296,6 +329,17 @@ export default function Compras() {
           <label>Hasta</label>
           <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} />
         </div>
+        <div className="filter-field">
+          <label>Documento</label>
+          <select value={documentoFiltro} onChange={(e) => setDocumentoFiltro(e.target.value)}>
+            <option value="">Todos</option>
+            {Object.values(DOCUMENTO_LABEL).map((label) => <option key={label} value={label}>{label}</option>)}
+          </select>
+        </div>
+        <div className="filter-field">
+          <label>Sucursal</label>
+          <input readOnly value={sucursal?.nombre || '—'} style={{ width: 120 }} />
+        </div>
         <div className="filter-actions">
           <button type="submit" className="btn-secondary">Buscar</button>
         </div>
@@ -306,49 +350,55 @@ export default function Compras() {
           <table className="data-table compact">
             <thead>
               <tr>
-                <th>Fecha</th>
-                <th>Nro</th>
-                <th>Proveedor</th>
-                <th>RUC</th>
-                <th style={{ textAlign: 'right' }}>Subtotal</th>
+                <th>Registro</th>
+                <th>Documento</th>
+                <th>Serie</th>
+                <th>Número</th>
+                <th>Nro Doc</th>
+                <th>Nombre o Razón Social</th>
+                <th>(M)</th>
+                <th style={{ textAlign: 'right' }}>Importe</th>
+                <th style={{ textAlign: 'right' }}>T.C.</th>
                 <th style={{ textAlign: 'right' }}>Total</th>
-                <th>Forma de pago</th>
+                <th>Sucursal</th>
                 <th>Estado</th>
-                <th>Baja</th>
+                <th>Acciones</th>
               </tr>
             </thead>
             <tbody>
-              {purchases.map((p) => (
-                <tr key={p.id}>
-                  <td>{p.fecha}</td>
-                  <td>{String(p.numero).padStart(5, '0')}</td>
-                  <td>{p.proveedor_nombre}</td>
-                  <td>{p.proveedor_ruc}</td>
-                  <td style={{ textAlign: 'right' }}>S/ {Number(p.subtotal).toFixed(2)}</td>
-                  <td style={{ textAlign: 'right' }}>S/ {Number(p.total).toFixed(2)}</td>
-                  <td style={{ textTransform: 'capitalize' }}>{FORMA_PAGO_LABEL[p.forma_pago] || p.forma_pago}</td>
+              {registros.map((r) => (
+                <tr key={r.key}>
+                  <td>{r.fecha}</td>
+                  <td>{r.documento}</td>
+                  <td>{r.serie}</td>
+                  <td>{r.numeroDoc}</td>
+                  <td>{r.ruc}</td>
+                  <td>{r.nombre}</td>
+                  <td>{r.moneda === 'USD' ? '$' : 'S/'}</td>
+                  <td style={{ textAlign: 'right' }}>{r.importe.toFixed(2)}</td>
+                  <td style={{ textAlign: 'right' }}>{Number(r.tipoCambio).toFixed(3)}</td>
+                  <td style={{ textAlign: 'right' }}>{Number(r.total).toFixed(2)}</td>
+                  <td>{r.sucursal || '—'}</td>
+                  <td><span className={'badge ' + r.badgeClass}>{r.estadoLabel}</span></td>
                   <td>
-                    <span className={'badge ' + (p.estado === 'anulada' ? 'badge-critical' : 'badge-good')}>
-                      {p.estado === 'anulada' ? 'Anulada' : 'Registrada'}
-                    </span>
-                  </td>
-                  <td>
-                    {p.estado === 'registrada' ? (
-                      <button className="btn-link danger" onClick={() => handleAnular(p.id)}>Anular</button>
+                    {r.puedeAnular ? (
+                      <button className="btn-link danger" onClick={() => (r.kind === 'compra' ? handleAnular(r.id) : handleAnularOrder(r.id))}>
+                        Anular
+                      </button>
                     ) : (
                       <span className="icon-link muted">—</span>
                     )}
                   </td>
                 </tr>
               ))}
-              {purchases.length === 0 && (
-                <tr><td colSpan={9} className="empty-row">No hay compras en el rango seleccionado.</td></tr>
+              {registros.length === 0 && (
+                <tr><td colSpan={13} className="empty-row">No hay registros en el rango seleccionado.</td></tr>
               )}
             </tbody>
             <tfoot>
               <tr className="totals-footer">
-                <td colSpan={5}>Cantidad: {vigentes.length}</td>
-                <td colSpan={4}>
+                <td colSpan={6}>Cantidad: {registros.length}</td>
+                <td colSpan={7}>
                   Gran Total S/ <input readOnly value={sumaTotal.toFixed(2)} />
                 </td>
               </tr>
@@ -357,61 +407,16 @@ export default function Compras() {
         </div>
       </div>
 
-      <h2 className="page-title" style={{ fontSize: 16, marginTop: 28 }}>Órdenes de Compra</h2>
-      <div className="panel">
-        <div className="table-scroll">
-          <table className="data-table compact">
-            <thead>
-              <tr>
-                <th>Fecha</th>
-                <th>Nro</th>
-                <th>Proveedor</th>
-                <th>RUC</th>
-                <th style={{ textAlign: 'right' }}>Total</th>
-                <th>Estado</th>
-                <th>Baja</th>
-              </tr>
-            </thead>
-            <tbody>
-              {orders.map((o) => (
-                <tr key={o.id}>
-                  <td>{o.fecha}</td>
-                  <td>{String(o.numero).padStart(5, '0')}</td>
-                  <td>{o.proveedor_nombre}</td>
-                  <td>{o.proveedor_ruc}</td>
-                  <td style={{ textAlign: 'right' }}>S/ {Number(o.total).toFixed(2)}</td>
-                  <td>
-                    <span className={'badge ' + (o.estado === 'anulada' ? 'badge-critical' : o.estado === 'recibida' ? 'badge-good' : 'badge-warning')}>
-                      {o.estado === 'anulada' ? 'Anulada' : o.estado === 'recibida' ? 'Recibida' : 'Pendiente'}
-                    </span>
-                  </td>
-                  <td>
-                    {o.estado === 'pendiente' ? (
-                      <button className="btn-link danger" onClick={() => handleAnularOrder(o.id)}>Anular</button>
-                    ) : (
-                      <span className="icon-link muted">—</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-              {orders.length === 0 && (
-                <tr><td colSpan={7} className="empty-row">No hay órdenes de compra en el rango seleccionado.</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
       {showForm && (
         <div className="modal-overlay" onClick={() => setShowForm(false)}>
           <div className="modal modal-xl" onClick={(e) => e.stopPropagation()}>
-            <h2>{formMode === 'orden' ? 'Orden de Compra' : 'Registrar Compra'}</h2>
+            <h2>{formMode === 'orden' ? ordenDocumento : 'Registrar Compra'}</h2>
             <form onSubmit={handleSubmit}>
               <div className="compra-header-grid">
                 <div>
                   <label>Documento</label>
                   {formMode === 'orden' ? (
-                    <input readOnly value="Orden de Compra" />
+                    <input readOnly value={ordenDocumento} />
                   ) : (
                     <select required value={tipoComprobante} onChange={(e) => setTipoComprobante(e.target.value)}>
                       {TIPOS_COMPROBANTE.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
@@ -465,7 +470,8 @@ export default function Compras() {
                 <div>
                   <label>Tipo de Compra</label>
                   <select required value={tipoCompra} onChange={(e) => setTipoCompra(e.target.value)}>
-                    {TIPOS_COMPRA.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                    <option value="">Selecciona...</option>
+                    {tiposCompra.map((t) => <option key={t.id} value={t.nombre}>{t.nombre}</option>)}
                   </select>
                 </div>
                 <div>
