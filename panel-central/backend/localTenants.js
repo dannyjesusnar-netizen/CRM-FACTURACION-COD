@@ -8,6 +8,8 @@
 // instancia al lado), esto queda deshabilitado sin romper nada — el resto
 // del panel (empresas agregadas a mano con su propia URL) sigue
 // funcionando igual.
+const bcrypt = require('bcryptjs');
+
 let tenantRegistry = null;
 let resolveTenantDb = null;
 let crmDb = null;
@@ -25,38 +27,12 @@ function disponible() {
   return Boolean(tenantRegistry);
 }
 
-// La empresa DUEÑA de este despliegue (la que ya venía con la instancia,
-// nunca pasó por "Registrar mi empresa") no tiene fila en tenantRegistry
-// a propósito: su JWT lleva ruc=null justo para que "Mis pagos" nunca le
-// pida pagarse una suscripción a sí misma (ver routes/suscripcion.js). Por
-// eso NO se inserta en tenants_registry.db — en vez de eso se arma una
-// fila "de solo lectura" leyendo empresa_config directo de su propia base,
-// para que igual aparezca en "CUENTAS REGISTRADAS" sin que el dueño tenga
-// que agregarla a mano con URL/token.
-function empresaOriginal() {
-  if (!crmDb) return null;
-  const config = crmDb.prepare('SELECT ruc, razon_social, nombre_comercial FROM empresa_config WHERE id = 1').get();
-  if (!config || !config.ruc) return null;
-  const { n: sucursales_count } = crmDb.prepare('SELECT COUNT(*) AS n FROM sucursales WHERE activo = 1').get();
-  return {
-    ruc: config.ruc,
-    razon_social: config.nombre_comercial || config.razon_social,
-    estado: 'aprobado',
-    activo: 1,
-    costo_mensual: null,
-    fecha_inicio_suscripcion: null,
-    proximo_cobro_at: null,
-    created_at: null,
-    ingreso_total: null,
-    sucursales_count,
-    es_original: true,
-  };
-}
-
-// Cuánto le corresponde a cada RUC ver en el conteo de sucursales/ingresos
-// requiere leer su propia base aislada (cross-db, ver listarMensajes más
-// abajo para la misma técnica) — se calcula por fila al listar, no es
-// costoso porque todo corre en el mismo proceso (sin red).
+// El número de sucursales de cada empresa vive en su propia base aislada
+// (cross-db, ver listarMensajes más abajo para la misma técnica) — se
+// calcula por fila al listar, no es costoso porque todo corre en el mismo
+// proceso (sin red). Incluye a la instalación base (ver
+// tenantRegistry.js:adoptarInstanciaBase): su db_file ya apunta a la base
+// de siempre, así que resolveTenantDb la resuelve igual que a cualquiera.
 function sucursalesCount(ruc) {
   if (!resolveTenantDb || !crmDb) return null;
   const tenantDb = resolveTenantDb(ruc);
@@ -66,21 +42,16 @@ function sucursalesCount(ruc) {
 
 function listarEmpresas() {
   if (!tenantRegistry) return [];
-  const original = empresaOriginal();
-  const registradas = tenantRegistry.listTodos().map((t) => ({
+  return tenantRegistry.listTodos().map((t) => ({
     ...t,
     ingreso_total: tenantRegistry.ingresoTotal(t.ruc),
     sucursales_count: sucursalesCount(t.ruc),
   }));
-  return original ? [original, ...registradas] : registradas;
 }
 
 function encontrar(ruc) {
   if (!tenantRegistry) return null;
-  const tenant = tenantRegistry.findTenant(ruc);
-  if (tenant) return tenant;
-  const original = empresaOriginal();
-  return original && original.ruc === ruc ? original : null;
+  return tenantRegistry.findTenant(ruc);
 }
 
 function aprobar(ruc) {
@@ -132,7 +103,30 @@ function marcarMensajeLeido(ruc, id) {
   });
 }
 
+// Cuentas de empleados de esa empresa (mismo cross-db que listarMensajes),
+// para poder restablecerles la clave desde acá cuando lo pidan.
+function listarUsuarios(ruc) {
+  if (!resolveTenantDb || !crmDb) return [];
+  const tenantDb = resolveTenantDb(ruc);
+  if (!tenantDb) return [];
+  return crmDb.runWithDb(tenantDb, () =>
+    crmDb.prepare('SELECT id, full_name, nombres, apellidos, dni, email, role, activo FROM users ORDER BY nombres ASC, full_name ASC').all()
+  );
+}
+
+function restablecerClave(ruc, userId, password) {
+  if (!resolveTenantDb || !crmDb) return null;
+  const tenantDb = resolveTenantDb(ruc);
+  if (!tenantDb) return null;
+  return crmDb.runWithDb(tenantDb, () => {
+    const existing = crmDb.prepare('SELECT id FROM users WHERE id = ?').get(userId);
+    if (!existing) return null;
+    crmDb.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(bcrypt.hashSync(password, 10), userId);
+    return crmDb.prepare('SELECT id, full_name, nombres, apellidos, dni, email, role, activo FROM users WHERE id = ?').get(userId);
+  });
+}
+
 module.exports = {
   disponible, listarEmpresas, encontrar, aprobar, rechazar, activar, desactivar, setCosto, listarPagos,
-  listarMensajes, marcarMensajeLeido,
+  listarMensajes, marcarMensajeLeido, listarUsuarios, restablecerClave,
 };

@@ -139,6 +139,18 @@ export default function CompanyDetail() {
     }
   }
 
+  const CLAVE_DEFECTO = 'Lima2026*';
+
+  async function handleRestablecerClaveDefecto(u) {
+    if (!window.confirm(`¿Restablecer la contraseña de "${u.full_name}" a "${CLAVE_DEFECTO}"?`)) return;
+    try {
+      await api.put(`/companies/${id}/live/users/${u.id}/password`, { new_password: CLAVE_DEFECTO });
+      toast.success(`Contraseña restablecida a "${CLAVE_DEFECTO}".`);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'No se pudo restablecer la contraseña.');
+    }
+  }
+
   async function handleRestaurarGerencia(u) {
     if (!window.confirm(`¿Restaurar a "${u.full_name}" como Gerencia? Esto le da de vuelta acceso total en su CRM.`)) return;
     try {
@@ -226,7 +238,8 @@ export default function CompanyDetail() {
                     <button className={'btn-link' + (u.activo ? ' danger' : '')} onClick={() => handleToggleEstado(u)}>
                       {u.activo ? 'Desactivar' : 'Activar'}
                     </button>
-                    <button className="btn-link" onClick={() => openPasswordModal(u)}>Restaurar clave</button>
+                    <button className="btn-link" onClick={() => handleRestablecerClaveDefecto(u)}>Restablecer a Lima2026*</button>
+                    <button className="btn-link" onClick={() => openPasswordModal(u)}>Restaurar clave (otra)</button>
                     {u.role !== 'gerencia' && (
                       <button className="btn-link" onClick={() => handleRestaurarGerencia(u)}>Restaurar como Gerencia</button>
                     )}

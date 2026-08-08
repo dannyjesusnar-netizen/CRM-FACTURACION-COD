@@ -31,6 +31,8 @@ const serieRoutes = require('./routes/series');
 const suscripcionRoutes = require('./routes/suscripcion');
 const mensajesSoporteRoutes = require('./routes/mensajesSoporte');
 const { procesarCobrosVencidos } = require('./utils/facturacionPlataforma');
+const db = require('./db');
+const tenantRegistry = require('./tenantRegistry');
 
 // panel-central es una app hermana en este mismo repo (login propio, por
 // correo+contraseña, con su propia base de datos — ver panel-central/README.md).
@@ -114,6 +116,19 @@ app.use((err, req, res, next) => {
   console.error(err);
   res.status(500).json({ error: 'Error interno del servidor.' });
 });
+
+// Si la instalación base ya tiene RUC configurado (Configuración > Datos de
+// la empresa), la da de alta en el registro de la plataforma como un
+// cliente más — para instalaciones que ya guardaron sus datos antes de que
+// existiera esta función, sin que el dueño tenga que volver a guardar nada
+// (ver tenantRegistry.js:adoptarInstanciaBase).
+const empresaBase = db.prepare('SELECT ruc, razon_social, nombre_comercial FROM empresa_config WHERE id = 1').get();
+if (empresaBase?.ruc) {
+  tenantRegistry.adoptarInstanciaBase({
+    ruc: empresaBase.ruc,
+    razon_social: empresaBase.nombre_comercial || empresaBase.razon_social,
+  });
+}
 
 app.listen(PORT, () => {
   console.log(`CRM Facturacion backend escuchando en puerto ${PORT}`);

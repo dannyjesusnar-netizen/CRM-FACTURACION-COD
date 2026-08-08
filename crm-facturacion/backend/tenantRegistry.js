@@ -1,7 +1,7 @@
 const path = require('path');
 const fs = require('fs');
 const Database = require('better-sqlite3');
-const { DATA_DIR } = require('./db');
+const { DATA_DIR, DEFAULT_DB_PATH } = require('./db');
 
 // Registro central de empresas registradas desde "Registrar mi empresa"
 // (login → botón Registro). Es una base sqlite propia, separada de la de
@@ -57,6 +57,12 @@ const TENANT_SUSCRIPCION_COLUMNS = [
   // puede alternar en cualquier momento, ej. por falta de pago, sin perder
   // el historial ni tener que volver a aprobar el registro).
   ['activo', 'INTEGER NOT NULL DEFAULT 1'],
+  // Marca la fila que corresponde a la instalación base de este despliegue
+  // (la que ya venía con la instancia, nunca pasó por "Registrar mi
+  // empresa") — ver adoptarInstanciaBase más abajo. Es un cliente normal y
+  // facturable como cualquier otro, solo que su db_file es la de siempre
+  // (DEFAULT_DB_PATH) en vez de un archivo nuevo en /tenants.
+  ['es_instalacion_base', 'INTEGER NOT NULL DEFAULT 0'],
 ];
 for (const [col, def] of TENANT_SUSCRIPCION_COLUMNS) {
   if (!tenantColumns.includes(col)) {
@@ -89,6 +95,39 @@ function crearTenant({ ruc, razon_social }) {
   registryDb.prepare(
     `INSERT INTO tenants (ruc, razon_social, db_file, estado, terminos_aceptados_at) VALUES (?, ?, ?, 'pendiente', datetime('now'))`
   ).run(ruc, razon_social, db_file);
+  return findTenant(ruc);
+}
+
+// La empresa que corre en la instalación base de este despliegue (la que
+// ya venía con la instancia, nunca pasó por "Registrar mi empresa") es un
+// cliente real como cualquier otro — el dueño de la plataforma la vende
+// igual que a las que se auto-registran, solo que sus datos ya estaban acá
+// desde el principio. Esto la da de alta en el registro (aprobada, activa,
+// apuntando a la base de siempre en vez de crear una nueva) para que
+// panel-central pueda facturarla igual que a las demás. Se llama al
+// guardar Configuración → Datos de la empresa y al arrancar el servidor.
+function adoptarInstanciaBase({ ruc, razon_social }) {
+  if (!ruc || !razon_social) return null;
+  const existingBase = registryDb.prepare('SELECT * FROM tenants WHERE es_instalacion_base = 1').get();
+  if (existingBase && existingBase.ruc === ruc) {
+    if (existingBase.razon_social !== razon_social) {
+      registryDb.prepare('UPDATE tenants SET razon_social = ? WHERE ruc = ?').run(razon_social, ruc);
+    }
+    return findTenant(ruc);
+  }
+  // Si ese RUC ya pertenece a otra empresa (auto-registrada de verdad), no
+  // se pisa — un RUC no debería repetirse, pero por seguridad no se toca.
+  const conflicto = registryDb.prepare('SELECT * FROM tenants WHERE ruc = ? AND es_instalacion_base = 0').get(ruc);
+  if (conflicto) return null;
+  if (existingBase) {
+    // El RUC de la instalación base cambió (se corrigió en Configuración):
+    // se mueve la fila en vez de dejar una duplicada.
+    registryDb.prepare('DELETE FROM tenants WHERE ruc = ?').run(existingBase.ruc);
+  }
+  registryDb.prepare(
+    `INSERT INTO tenants (ruc, razon_social, db_file, estado, activo, es_instalacion_base, approved_at, terminos_aceptados_at)
+     VALUES (?, ?, ?, 'aprobado', 1, 1, datetime('now'), datetime('now'))`
+  ).run(ruc, razon_social, DEFAULT_DB_PATH);
   return findTenant(ruc);
 }
 
@@ -189,7 +228,7 @@ function tenantsConCobroVencido() {
 }
 
 module.exports = {
-  tenantDbPath, findTenant, listPendientes, listTodos, crearTenant, aprobarTenant, rechazarTenant,
-  activarTenant, desactivarTenant, setCosto, guardarTarjeta, quitarTarjeta, registrarPago, listarPagos,
-  ingresoTotal, tenantsConCobroVencido,
+  tenantDbPath, findTenant, listPendientes, listTodos, crearTenant, adoptarInstanciaBase, aprobarTenant,
+  rechazarTenant, activarTenant, desactivarTenant, setCosto, guardarTarjeta, quitarTarjeta, registrarPago,
+  listarPagos, ingresoTotal, tenantsConCobroVencido,
 };
