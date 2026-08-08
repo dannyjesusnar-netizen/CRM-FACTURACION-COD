@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import api from '../api';
 import { useToast } from '../context/ToastContext';
 
@@ -7,7 +6,6 @@ const EMPTY_FORM = { tipo_documento: 'DNI', numero_documento: '', nombre: '', di
 
 export default function Clients() {
   const toast = useToast();
-  const navigate = useNavigate();
   const [clients, setClients] = useState([]);
   const [sucursales, setSucursales] = useState([]);
   const [q, setQ] = useState('');
@@ -89,10 +87,7 @@ export default function Clients() {
     <div>
       <div className="page-header">
         <h1 className="page-title">Clientes</h1>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn-secondary" onClick={() => navigate('/clientes/suscripciones')}>Suscripciones</button>
-          <button className="btn-primary" onClick={openNew}>+ Nuevo cliente</button>
-        </div>
+        <button className="btn-primary" onClick={openNew}>+ Nuevo cliente</button>
       </div>
 
       <form className="search-bar" onSubmit={handleSearch}>

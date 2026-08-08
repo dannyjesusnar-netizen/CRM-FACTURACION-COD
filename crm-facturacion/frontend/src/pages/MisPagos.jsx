@@ -12,31 +12,37 @@ function formatFecha(f) {
   return String(f).slice(0, 10);
 }
 
-// Carga el script de Culqi.js una sola vez (checkout emergente que
-// tokeniza la tarjeta en el navegador — el número real nunca pasa por
-// nuestro backend, ver routes/suscripcion.js).
-function useCulqiScript() {
-  const [listo, setListo] = useState(Boolean(window.Culqi));
+// Carga el script embebido de Izipay (KR.js), que necesita la llave pública
+// del comercio en el propio tag <script> para inicializarse — recién se
+// puede cargar cuando conocemos la llave (respuesta de POST .../form-token).
+// La tarjeta se captura DENTRO del widget de Izipay — nuestro código nunca
+// ve el número real, ver routes/suscripcion.js.
+function useIzipayScript(publicKey) {
+  const [listo, setListo] = useState(false);
   useEffect(() => {
-    if (window.Culqi) { setListo(true); return; }
+    if (!publicKey) return;
+    if (window.KR) { setListo(true); return; }
     const script = document.createElement('script');
-    script.src = 'https://checkout.culqi.com/js/v4';
+    script.src = 'https://static.micuentaweb.pe/static/js/krypton-client/V4.0/stable/kr-payment-form.min.js';
+    script.setAttribute('kr-public-key', publicKey);
     script.async = true;
     script.onload = () => setListo(true);
     document.body.appendChild(script);
     return () => { document.body.removeChild(script); };
-  }, []);
+  }, [publicKey]);
   return listo;
 }
 
 export default function MisPagos() {
   const { user } = useAuth();
   const toast = useToast();
-  const culqiListo = useCulqiScript();
   const [data, setData] = useState(null);
   const [noAplica, setNoAplica] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [guardandoTarjeta, setGuardandoTarjeta] = useState(false);
+  const [pagando, setPagando] = useState(false);
+  const [formToken, setFormToken] = useState(null);
+  const [publicKey, setPublicKey] = useState(null);
+  const izipayListo = useIzipayScript(publicKey);
 
   useEffect(() => { load(); }, []);
 
@@ -51,40 +57,32 @@ export default function MisPagos() {
       .finally(() => setLoading(false));
   }
 
-  function abrirCulqi() {
-    if (!culqiListo || !window.Culqi) {
-      toast.error('El formulario de pago todavía está cargando, esperá un segundo e intentá de nuevo.');
-      return;
+  async function pagar() {
+    try {
+      const res = await api.post('/suscripcion/form-token');
+      setPublicKey(res.data.izipay_public_key);
+      setFormToken(res.data.formToken);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'El cobro de suscripciones todavía no está configurado. Contacta al soporte de la plataforma.');
     }
-    if (!data?.culqi_public_key) {
-      toast.error('El cobro de suscripciones todavía no está configurado. Contacta al soporte de la plataforma.');
-      return;
-    }
-    window.Culqi.publicKey = data.culqi_public_key;
-    window.culqi = function culqiCallback() {
-      if (window.Culqi.token) {
-        const tokenId = window.Culqi.token.id;
-        setGuardandoTarjeta(true);
-        api.post('/suscripcion/tarjeta', { token_id: tokenId })
-          .then(() => {
-            toast.success('Tarjeta guardada. El cobro mensual se hace automáticamente.');
-            load();
-          })
-          .catch((err) => toast.error(err.response?.data?.error || 'No se pudo guardar la tarjeta.'))
-          .finally(() => setGuardandoTarjeta(false));
-      } else if (window.Culqi.order) {
-        toast.error('No se pudo completar. Intenta con otro método.');
-      } else {
-        toast.error(window.Culqi.error?.user_message || 'No se pudo procesar la tarjeta.');
-      }
-    };
-    window.Culqi.settings({
-      title: 'CRM Facturación — Suscripción',
-      currency: 'PEN',
-      amount: Math.round((data.suscripcion?.costo_mensual || 0) * 100),
-    });
-    window.Culqi.open();
   }
+
+  useEffect(() => {
+    if (!formToken || !izipayListo || !window.KR) return;
+    window.KR.setFormConfig({ formToken, 'kr-language': 'es-PE' });
+    window.KR.onSubmit((event) => {
+      setPagando(true);
+      api.post('/suscripcion/tarjeta', { kr_answer: JSON.stringify(event.clientAnswer), kr_hash: event.hash })
+        .then(() => {
+          toast.success('Tarjeta guardada. El cobro mensual se hace automáticamente.');
+          setFormToken(null);
+          load();
+        })
+        .catch((err) => toast.error(err.response?.data?.error || 'No se pudo guardar la tarjeta.'))
+        .finally(() => setPagando(false));
+      return false; // evita que Izipay redirija la página
+    });
+  }, [formToken, izipayListo]);
 
   async function quitarTarjeta() {
     if (!window.confirm('¿Quitar la tarjeta guardada? El cobro automático se pausa hasta que agregues una nueva.')) return;
@@ -157,13 +155,21 @@ export default function MisPagos() {
                 <span>{s.tarjeta_marca || 'Tarjeta'} terminada en {s.tarjeta_ultimos4 || '****'}</span>
                 <button type="button" className="btn-link danger" onClick={quitarTarjeta}>Quitar</button>
               </div>
+            ) : formToken ? (
+              <div style={{ marginTop: 6 }}>
+                <p style={{ fontSize: 13, color: 'var(--ink-muted)', marginBottom: 8 }}>
+                  Ingresa los datos de tu tarjeta. El número nunca pasa por nuestros servidores.
+                </p>
+                <div className="kr-embedded" kr-form-token={formToken} kr-card-form-expanded="true" />
+                {pagando && <p style={{ fontSize: 13 }}>Guardando...</p>}
+              </div>
             ) : (
               <div style={{ marginTop: 6 }}>
                 <p style={{ fontSize: 13, color: 'var(--ink-muted)', marginBottom: 8 }}>
                   Todavía no registraste una tarjeta — el cobro mensual automático no puede empezar hasta que agregues una.
                 </p>
-                <button type="button" className="btn-primary" style={{ width: 'auto' }} disabled={guardandoTarjeta} onClick={abrirCulqi}>
-                  {guardandoTarjeta ? 'Guardando...' : 'Agregar tarjeta'}
+                <button type="button" className="btn-primary" style={{ width: 'auto' }} onClick={pagar}>
+                  PAGAR
                 </button>
               </div>
             )}

@@ -25,7 +25,7 @@ empresa registrada:
 - Aprobar o rechazar las empresas que se auto-registraron (multi-empresa).
 - Asignar el **costo mensual de suscripción** de cada empresa registrada —
   ver "Suscripción a la plataforma" en `crm-facturacion/README.md` para el
-  cobro recurrente (Culqi) del lado del CRM.
+  cobro recurrente (Izipay) del lado del CRM.
 
 ## Cómo funciona
 
