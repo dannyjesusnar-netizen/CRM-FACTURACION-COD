@@ -54,6 +54,7 @@ html.dark {
 * { box-sizing: border-box; }
 
 html, body, #root { height: 100%; margin: 0; }
+html, body { overflow-x: hidden; max-width: 100%; }
 
 html { transition: background 0.25s var(--ease-out); }
 
@@ -202,6 +203,32 @@ html.dark .content {
 .app-bg-decor { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 0; }
 .content-body { position: relative; z-index: 1; }
 .content-wide { max-width: 1400px; width: 100%; margin: 0 auto; box-sizing: border-box; }
+
+/* ---------- Responsive: móvil ----------
+   El shell (topbar/subnav/content) estaba pensado solo para escritorio: en
+   pantallas angostas el topbar no cabía (nombre de empresa se encimaba,
+   "GERENCIA" se cortaba) y eso empujaba a toda la página a desbordar hacia
+   los costados. Acá se angosta lo decorativo/secundario primero. */
+@media (max-width: 640px) {
+  .topbar { padding: 0 12px; gap: 10px; }
+  .topbar-company { display: none; }
+  .brand-suffix { display: none; }
+  .sede-switcher-btn span { max-width: 88px; }
+  .user-menu .user-name { display: none; }
+  .user-dropdown { right: -8px; min-width: 220px; }
+
+  .subnav { padding: 0 8px; scrollbar-width: none; }
+  .subnav::-webkit-scrollbar { display: none; }
+  .subnav-item { padding: 12px 12px; font-size: 12.5px; }
+
+  .content { padding: 16px 14px; }
+  .content-wide { max-width: 100%; }
+
+  .menu-page { padding: 28px 12px 36px; border-radius: 20px; }
+  .menu-title { font-size: 20px; letter-spacing: 1px; margin-bottom: 22px; }
+  .menu-grid { gap: 12px; grid-template-columns: repeat(2, 1fr); }
+  .menu-tile { padding: 20px 10px; }
+}
 
 /* ---------- Login ---------- */
 
@@ -419,24 +446,24 @@ html.dark .menu-page {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 18px; max-width: 1100px; margin: 0 auto;
 }
 .menu-tile {
-  background: linear-gradient(155deg, #fbfcfe 0%, #e7ecf2 20%, #cdd6e1 42%, #f3f6f9 58%, #d6dee8 78%, #f4f7fa 100%);
-  border: 1px solid rgba(148, 163, 184, 0.55);
-  border-radius: 16px; padding: 26px 14px;
+  background: linear-gradient(165deg, #ffffff 0%, #f7f9fc 100%);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 18px; padding: 26px 14px;
   cursor: pointer; transition: box-shadow 0.2s var(--ease-out), transform 0.2s var(--ease-out), border-color 0.2s var(--ease-out);
   position: relative; text-align: center;
-  box-shadow: var(--shadow-md), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  box-shadow: var(--shadow-sm), inset 0 1px 0 rgba(255, 255, 255, 0.8);
 }
 html.dark .menu-tile {
-  background: linear-gradient(155deg, #414957 0%, #2a3038 22%, #1c2129 45%, #3a4149 62%, #232933 82%, #363d47 100%);
-  border-color: rgba(255, 255, 255, 0.1);
-  box-shadow: var(--shadow-md), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  background: linear-gradient(165deg, #262c36 0%, #1d222a 100%);
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow: var(--shadow-sm), inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 .menu-tile:hover { box-shadow: var(--shadow-xl), inset 0 1px 0 rgba(255, 255, 255, 0.7); transform: translateY(-5px); border-color: rgba(99, 102, 241, 0.4); }
 html.dark .menu-tile:hover { box-shadow: var(--shadow-xl), inset 0 1px 0 rgba(255, 255, 255, 0.1); }
 .menu-tile:active { transform: translateY(-1px) scale(0.98); }
-.menu-tile.disabled { cursor: default; opacity: 0.94; border-color: rgba(234, 88, 12, 0.45); }
-.menu-tile.disabled:hover { box-shadow: var(--shadow-md), inset 0 1px 0 rgba(255, 255, 255, 0.7); transform: none; border-color: rgba(234, 88, 12, 0.6); }
-html.dark .menu-tile.disabled:hover { box-shadow: var(--shadow-md), inset 0 1px 0 rgba(255, 255, 255, 0.08); }
+.menu-tile.disabled { cursor: default; opacity: 0.82; border-style: dashed; border-color: rgba(148, 163, 184, 0.5); }
+.menu-tile.disabled:hover { box-shadow: var(--shadow-sm), inset 0 1px 0 rgba(255, 255, 255, 0.7); transform: none; border-color: rgba(148, 163, 184, 0.7); }
+html.dark .menu-tile.disabled:hover { box-shadow: var(--shadow-sm), inset 0 1px 0 rgba(255, 255, 255, 0.05); }
 .menu-tile-icon {
   width: 56px; height: 56px; margin: 0 auto 12px; border-radius: 16px;
   display: flex; align-items: center; justify-content: center; color: #fff;
@@ -449,9 +476,11 @@ html.dark .menu-tile.disabled:hover { box-shadow: var(--shadow-md), inset 0 1px 
 .menu-tile-label { font-weight: 800; font-size: 14px; color: var(--ink); letter-spacing: -0.01em; }
 .menu-tile-desc { font-size: 11px; color: var(--ink-secondary); margin-top: 4px; }
 .badge-soon {
-  position: absolute; top: 10px; right: 10px; font-size: 9px; font-weight: 700; background: var(--orange);
-  color: #fff; padding: 2px 7px; border-radius: 999px; letter-spacing: 0.02em; box-shadow: 0 2px 6px rgba(234, 88, 12, 0.4);
+  position: absolute; top: 10px; right: 10px; font-size: 9px; font-weight: 700;
+  background: rgba(100, 116, 139, 0.14); color: var(--ink-secondary);
+  padding: 2px 7px; border-radius: 999px; letter-spacing: 0.02em;
 }
+html.dark .badge-soon { background: rgba(148, 163, 184, 0.14); }
 
 /* ---------- Stat cards & charts ---------- */
 
