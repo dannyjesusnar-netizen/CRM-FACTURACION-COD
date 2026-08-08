@@ -1,12 +1,13 @@
 const express = require('express');
 const db = require('../db');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, resolveSucursal } = require('../middleware/auth');
 const { requirePermiso, requireAccion } = require('../utils/permisos');
 const { siguienteNumero } = require('../utils/series');
 
 const router = express.Router();
 router.use(requireAuth);
 router.use(requirePermiso('ventas'));
+router.use(resolveSucursal);
 
 function igvRate() {
   const row = db.prepare('SELECT igv_rate FROM empresa_config WHERE id = 1').get();
@@ -18,7 +19,7 @@ function round2(n) {
 }
 
 router.get('/siguiente-numero', (req, res) => {
-  res.json(siguienteNumero('cotizacion'));
+  res.json(siguienteNumero('cotizacion', req.sucursalId));
 });
 
 // GET /api/cotizaciones?estado=&client_id=&from=&to=&q=
@@ -89,7 +90,7 @@ router.post('/', requireAccion('ventas', 'cotizacion'), (req, res) => {
   const subtotal = round2(total / (1 + igvRate()));
   const igv = round2(total - subtotal);
 
-  const { serie, numero: numeroSugerido } = siguienteNumero('cotizacion');
+  const { serie, numero: numeroSugerido } = siguienteNumero('cotizacion', req.sucursalId);
   const insertAll = db.transaction(() => {
     const numero = numeroManual ? Number(numeroManual) : numeroSugerido;
     const info = db.prepare(

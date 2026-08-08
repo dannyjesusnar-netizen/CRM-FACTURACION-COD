@@ -3,6 +3,7 @@ const fs = require('fs');
 const { AsyncLocalStorage } = require('async_hooks');
 const bcrypt = require('bcryptjs');
 const Database = require('better-sqlite3');
+const { siguienteSerieDisponible, SERIE_BASE_POR_TIPO } = require('./utils/serieCodegen');
 
 // DATA_DIR es configurable para poder apuntar a un disco persistente de
 // Render (plan pago) montado, por ejemplo, en /var/data — sin la variable,
@@ -193,14 +194,18 @@ CREATE TABLE IF NOT EXISTS metodos_pago (
 );
 
 -- Serie y siguiente correlativo de cada tipo de documento que el sistema
--- realmente emite (Configuración -> Series y Sucursal). El correlativo real
--- que se usa al emitir siempre es el mayor entre "MAX(numero) ya usado" y lo
--- guardado aquí — así Gerencia puede adelantar el número (para retomar una
--- numeración física ya usada) sin arriesgarse nunca a repetir uno existente.
+-- realmente emite (Configuración -> Series y Sucursal), por SEDE — SUNAT
+-- exige que cada punto de emisión tenga su propia serie, nunca compartida
+-- con otra sede. El correlativo real que se usa al emitir siempre es el
+-- mayor entre "MAX(numero) ya usado" y lo guardado aquí — así Gerencia
+-- puede adelantar el número (para retomar una numeración física ya usada)
+-- sin arriesgarse nunca a repetir uno existente.
 CREATE TABLE IF NOT EXISTS series_config (
-  tipo_documento TEXT PRIMARY KEY,   -- factura | boleta | nota_credito | cotizacion | guia_remitente
+  tipo_documento TEXT NOT NULL,      -- factura | boleta | nota_credito | cotizacion | guia_remitente | orden_compra | orden_servicio
+  sucursal_id INTEGER NOT NULL REFERENCES sucursales(id),
   serie TEXT NOT NULL,
-  siguiente_numero INTEGER NOT NULL DEFAULT 1
+  siguiente_numero INTEGER NOT NULL DEFAULT 1,
+  PRIMARY KEY (tipo_documento, sucursal_id)
 );
 
 CREATE TABLE IF NOT EXISTS sucursal_stock (
@@ -846,22 +851,61 @@ CREATE TABLE IF NOT EXISTS role_acciones (
     metodos.forEach((m) => insertMetodo.run(...m));
   }
 
-  // Series de documentos: se siembran con las mismas series que el sistema
-  // venía usando hardcodeadas, para que activar esta pantalla no le cambie el
-  // número a nadie de un día para otro — recién desde Configuración se editan.
-  const serieConfigCount = db.prepare('SELECT COUNT(*) AS n FROM series_config').get().n;
-  if (serieConfigCount === 0) {
-    const insertSerie = db.prepare(
-      'INSERT INTO series_config (tipo_documento, serie, siguiente_numero) VALUES (?, ?, 1)'
+  // Series de documentos, por sede (ver el comentario de la tabla arriba).
+  // Si la base viene de antes de que "series_config" tuviera sucursal_id, se
+  // migra: la sede principal conserva exactamente la serie que ya usaba (no
+  // le cambia el número a nadie de un día para otro) y a cada sede adicional
+  // que ya existiera se le asigna una serie nueva, distinta de las demás.
+  const serieConfigCols = db.prepare('PRAGMA table_info(series_config)').all();
+  const serieConfigTieneSucursal = serieConfigCols.some((c) => c.name === 'sucursal_id');
+  if (serieConfigCols.length > 0 && !serieConfigTieneSucursal) {
+    const filasViejas = db.prepare('SELECT * FROM series_config').all();
+    db.exec('ALTER TABLE series_config RENAME TO series_config_pre_sedes');
+    db.exec(`
+      CREATE TABLE series_config (
+        tipo_documento TEXT NOT NULL,
+        sucursal_id INTEGER NOT NULL REFERENCES sucursales(id),
+        serie TEXT NOT NULL,
+        siguiente_numero INTEGER NOT NULL DEFAULT 1,
+        PRIMARY KEY (tipo_documento, sucursal_id)
+      )
+    `);
+    const sucursalesOrdenadas = db.prepare('SELECT id FROM sucursales ORDER BY es_principal DESC, id ASC').all();
+    const insertMigrada = db.prepare(
+      'INSERT INTO series_config (tipo_documento, sucursal_id, serie, siguiente_numero) VALUES (?, ?, ?, ?)'
     );
-    const series = [
-      ['factura', 'F001'],
-      ['boleta', 'B001'],
-      ['nota_credito', 'FC01'],
-      ['cotizacion', 'CL02'],
-      ['guia_remitente', 'TL02'],
-    ];
-    series.forEach((s) => insertSerie.run(...s));
+    const seriesPorTipo = db.prepare('SELECT serie FROM series_config WHERE tipo_documento = ?');
+    db.transaction(() => {
+      for (const fila of filasViejas) {
+        sucursalesOrdenadas.forEach((suc, idx) => {
+          if (idx === 0) {
+            insertMigrada.run(fila.tipo_documento, suc.id, fila.serie, fila.siguiente_numero);
+          } else {
+            const existentes = seriesPorTipo.all(fila.tipo_documento).map((r) => r.serie);
+            insertMigrada.run(fila.tipo_documento, suc.id, siguienteSerieDisponible(fila.tipo_documento, existentes), 1);
+          }
+        });
+      }
+    })();
+    db.exec('DROP TABLE series_config_pre_sedes');
+  }
+
+  // Retrocompletado: toda sede (nueva o ya existente) recibe una fila por
+  // cada tipo de documento conocido, con una serie propia si aún no tenía —
+  // cubre tanto sedes creadas antes de que existiera este tipo de documento
+  // (p.ej. orden_compra/orden_servicio) como sedes nuevas recién creadas.
+  const todasLasSucursales = db.prepare('SELECT id FROM sucursales ORDER BY es_principal DESC, id ASC').all();
+  const existeFila = db.prepare('SELECT 1 FROM series_config WHERE tipo_documento = ? AND sucursal_id = ?');
+  const seriesPorTipoActual = db.prepare('SELECT serie FROM series_config WHERE tipo_documento = ?');
+  const insertSiFalta = db.prepare(
+    'INSERT INTO series_config (tipo_documento, sucursal_id, serie, siguiente_numero) VALUES (?, ?, ?, 1)'
+  );
+  for (const tipo of Object.keys(SERIE_BASE_POR_TIPO)) {
+    for (const suc of todasLasSucursales) {
+      if (existeFila.get(tipo, suc.id)) continue;
+      const existentes = seriesPorTipoActual.all(tipo).map((r) => r.serie);
+      insertSiFalta.run(tipo, suc.id, siguienteSerieDisponible(tipo, existentes));
+    }
   }
   // Órdenes de compra/servicio se agregaron después — se siembran aparte
   // (con INSERT OR IGNORE) para que las bases ya existentes también las reciban.

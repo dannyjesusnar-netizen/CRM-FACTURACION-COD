@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../db');
 const { requireAuth, requireGerencia } = require('../middleware/auth');
+const { sembrarSeriesParaSucursal } = require('../utils/series');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -39,6 +40,9 @@ router.post('/', requireGerencia, (req, res) => {
   }
   try {
     const info = db.prepare('INSERT INTO sucursales (nombre, direccion) VALUES (?, ?)').run(nombre, direccion || null);
+    // Cada sede necesita su propia serie por tipo de documento (SUNAT no
+    // permite compartirla entre puntos de emisión distintos).
+    sembrarSeriesParaSucursal(info.lastInsertRowid);
     res.status(201).json(db.prepare('SELECT * FROM sucursales WHERE id = ?').get(info.lastInsertRowid));
   } catch (err) {
     res.status(400).json({ error: 'Ya existe una sucursal con ese nombre.' });

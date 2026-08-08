@@ -1,12 +1,13 @@
 const express = require('express');
 const db = require('../db');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, resolveSucursal } = require('../middleware/auth');
 const { requirePermiso, requireAccion } = require('../utils/permisos');
 const { siguienteNumero } = require('../utils/series');
 
 const router = express.Router();
 router.use(requireAuth);
 router.use(requirePermiso('ventas'));
+router.use(resolveSucursal);
 
 const MOTIVOS = ['venta', 'compra', 'traslado_entre_establecimientos', 'consignacion', 'otros'];
 
@@ -15,7 +16,7 @@ function round2(n) {
 }
 
 router.get('/siguiente-numero', (req, res) => {
-  res.json(siguienteNumero('guia_remitente'));
+  res.json(siguienteNumero('guia_remitente', req.sucursalId));
 });
 
 // GET /api/guias?estado=&client_id=&from=&to=&q=
@@ -84,7 +85,7 @@ router.post('/', requireAccion('ventas', 'guia_remision'), (req, res) => {
   });
   pesoTotal = round2(pesoTotal);
 
-  const { serie, numero: numeroSugerido } = siguienteNumero('guia_remitente');
+  const { serie, numero: numeroSugerido } = siguienteNumero('guia_remitente', req.sucursalId);
   const insertAll = db.transaction(() => {
     const numero = numeroManual ? Number(numeroManual) : numeroSugerido;
     const info = db.prepare(
