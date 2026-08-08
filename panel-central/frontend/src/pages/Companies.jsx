@@ -150,8 +150,8 @@ export default function Companies() {
             <h1 className="page-title" style={{ margin: 0 }}>CUENTAS REGISTRADAS</h1>
           </div>
           <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -8 }}>
-            Empresas que se registraron solas desde "Registrar mi empresa" en esta misma instancia —
-            aparecen automáticamente, sin que tengas que agregarlas a mano.
+            Tu propia empresa y las que se registraron solas desde "Registrar mi empresa" en esta misma
+            instancia — aparecen automáticamente, sin que tengas que agregarlas a mano.
           </p>
           <table className="data-table">
             <thead>
@@ -162,18 +162,28 @@ export default function Companies() {
                 <tr key={t.ruc}>
                   <td>{t.razon_social}</td>
                   <td>{t.ruc}</td>
-                  <td><span className={'badge ' + (ESTADO_BADGE[t.estado] || 'badge-neutral')}>{ESTADO_LABEL[t.estado] || t.estado}</span></td>
-                  <td>{t.costo_mensual != null ? `S/ ${Number(t.costo_mensual).toFixed(2)}` : '—'}</td>
-                  <td>{formatFecha(t.proximo_cobro_at)}</td>
+                  <td>
+                    {t.es_original ? (
+                      <span className="badge badge-good">Tu empresa</span>
+                    ) : (
+                      <span className={'badge ' + (ESTADO_BADGE[t.estado] || 'badge-neutral')}>{ESTADO_LABEL[t.estado] || t.estado}</span>
+                    )}
+                  </td>
+                  <td>{t.es_original ? '—' : (t.costo_mensual != null ? `S/ ${Number(t.costo_mensual).toFixed(2)}` : '—')}</td>
+                  <td>{t.es_original ? '—' : formatFecha(t.proximo_cobro_at)}</td>
                   <td className="row-actions">
-                    {t.estado === 'pendiente' && (
+                    {!t.es_original && t.estado === 'pendiente' && (
                       <>
                         <button className="btn-link" onClick={() => aprobarLocal(t.ruc)}>Aprobar</button>
                         <button className="btn-link danger" onClick={() => rechazarLocal(t.ruc)}>Rechazar</button>
                       </>
                     )}
-                    <button className="btn-link" onClick={() => abrirCosto(t)}>Costo</button>
-                    <button className="btn-link" onClick={() => verPagos(t.ruc)}>Pagos</button>
+                    {!t.es_original && (
+                      <>
+                        <button className="btn-link" onClick={() => abrirCosto(t)}>Costo</button>
+                        <button className="btn-link" onClick={() => verPagos(t.ruc)}>Pagos</button>
+                      </>
+                    )}
                     <button className="btn-link" onClick={() => verMensajes(t.ruc)}>Mensajes</button>
                   </td>
                 </tr>
