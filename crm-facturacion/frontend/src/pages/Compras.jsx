@@ -153,6 +153,13 @@ export default function Compras() {
     setGuiaNumero('');
     setError('');
     setShowForm(true);
+    if (mode === 'orden') {
+      const tipo = ordenDoc === 'Orden de Servicio' ? 'orden_servicio' : 'orden_compra';
+      api.get('/purchase-orders/siguiente-numero', { params: { tipo } }).then((res) => {
+        setDocSerie(res.data.serie);
+        setDocNumero(String(res.data.numero));
+      });
+    }
   }
 
   function updateItem(idx, patch) {
@@ -491,7 +498,11 @@ export default function Compras() {
                 <div>
                   <label>Serie - Nro</label>
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                    <input required placeholder="Serie" value={docSerie} onChange={(e) => setDocSerie(e.target.value)} style={{ width: 90 }} />
+                    {formMode === 'orden' ? (
+                      <input readOnly value={docSerie} style={{ width: 90 }} />
+                    ) : (
+                      <input required placeholder="Serie" value={docSerie} onChange={(e) => setDocSerie(e.target.value)} style={{ width: 90 }} />
+                    )}
                     <span>-</span>
                     <input required placeholder="Número" value={docNumero} onChange={(e) => setDocNumero(e.target.value)} />
                   </div>
