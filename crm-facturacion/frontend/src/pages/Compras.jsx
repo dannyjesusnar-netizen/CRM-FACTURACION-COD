@@ -271,6 +271,40 @@ export default function Compras() {
     }
   }
 
+  async function handleGuiaFile(e) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    const formData = new FormData();
+    formData.append('file', file);
+    try {
+      const res = await api.post('/purchases/parse-guia', formData);
+      const data = res.data;
+      if (data.guia_serie) setGuiaSerie(data.guia_serie);
+      if (data.guia_numero) setGuiaNumero(data.guia_numero);
+      if (data.supplier_encontrado && data.supplier_id) {
+        setSupplierId(data.supplier_id);
+      } else if (data.ruc) {
+        setNewSupplier({ ...emptySupplier(), ruc: data.ruc, nombre: data.razon_social || '' });
+        setShowSupplierForm(true);
+        toast.info('El proveedor de la guía no está registrado. Completa los datos y créalo.');
+      }
+      if (Array.isArray(data.items) && data.items.length > 0) {
+        setItems(data.items.map((it) => ({
+          product_id: it.product_id || '',
+          cantidad: it.cantidad || 1,
+          costo_unitario: 0,
+          unidad: it.unidad || 'UND',
+          afectacion_igv: 'gravado',
+          observacion: it.product_id ? '' : it.descripcion,
+        })));
+      }
+      toast.success(data.advertencia || 'Guía leída. Revisa los datos e ingresa los costos.');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'No se pudo leer la guía.');
+    }
+  }
+
   async function handleNewSupplier(e) {
     e.preventDefault();
     if (!newSupplier.nombre) { toast.error('El nombre del proveedor es requerido.'); return; }
@@ -470,6 +504,10 @@ export default function Compras() {
                       <span>-</span>
                       <input placeholder="Número" value={guiaNumero} onChange={(e) => setGuiaNumero(e.target.value)} />
                     </div>
+                    <label className="btn-link" style={{ marginTop: 4, display: 'inline-block', cursor: 'pointer' }}>
+                      Subir guía (XML o PDF) para autocompletar
+                      <input type="file" accept=".xml,.pdf" style={{ display: 'none' }} onChange={handleGuiaFile} />
+                    </label>
                   </div>
                 )}
                 <div>

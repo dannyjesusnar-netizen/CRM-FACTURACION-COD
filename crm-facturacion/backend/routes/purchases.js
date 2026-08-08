@@ -1,13 +1,78 @@
 const express = require('express');
+const multer = require('multer');
 const db = require('../db');
 const { requireAuth, resolveSucursal } = require('../middleware/auth');
 const { incrementarStock, ajustarStockSucursal, round2 } = require('../utils/stock');
 const { requirePermiso, requireAccion } = require('../utils/permisos');
+const { parseGuiaXml, parseGuiaPdf } = require('../utils/guiaParser');
 
 const router = express.Router();
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 router.use(requireAuth);
 router.use(requirePermiso('compras'));
 router.use(resolveSucursal);
+
+function normalizar(s) {
+  return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+}
+
+// Empareja cada ítem leído de la guía con un producto ya existente (por
+// código o por coincidencia de nombre), para dejar el combo pre-seleccionado
+// en el formulario. Si no encuentra nada, el usuario lo elige a mano.
+function emparejarProductos(items) {
+  const productos = db.prepare("SELECT id, nombre, codigo, codigo_barras FROM products WHERE tipo = 'producto'").all();
+  return items.map((it) => {
+    let match = null;
+    if (it.codigo) {
+      match = productos.find((p) => p.codigo === it.codigo || p.codigo_barras === it.codigo);
+    }
+    if (!match && it.descripcion) {
+      const desc = normalizar(it.descripcion);
+      match = productos.find((p) => {
+        const nombre = normalizar(p.nombre);
+        return nombre === desc || nombre.includes(desc) || desc.includes(nombre);
+      });
+    }
+    return { ...it, product_id: match ? match.id : null };
+  });
+}
+
+// POST /api/purchases/parse-guia — sube la guía (XML SUNAT o PDF con texto)
+// que entregó el proveedor y devuelve proveedor/serie-número/ítems para
+// autocompletar el formulario de Registrar Compra. No consulta nada externo.
+router.post('/parse-guia', requireAccion('compras', 'registrar_compra'), upload.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Sube un archivo de guía (XML o PDF).' });
+  const nombre = (req.file.originalname || '').toLowerCase();
+  const esXml = nombre.endsWith('.xml') || req.file.mimetype === 'text/xml' || req.file.mimetype === 'application/xml';
+  const esPdf = nombre.endsWith('.pdf') || req.file.mimetype === 'application/pdf';
+
+  let resultado;
+  if (esXml) {
+    resultado = await parseGuiaXml(req.file.buffer);
+  } else if (esPdf) {
+    resultado = await parseGuiaPdf(req.file.buffer);
+  } else {
+    return res.status(400).json({
+      error: 'Formato no soportado todavía. Sube el XML de la guía o un PDF con texto (no una foto/escaneo).',
+    });
+  }
+  if (resultado.error) return res.status(422).json({ error: resultado.error });
+
+  const supplier = resultado.ruc ? db.prepare('SELECT * FROM suppliers WHERE ruc = ?').get(resultado.ruc) : null;
+  const items = emparejarProductos(resultado.items || []);
+
+  res.json({
+    fuente: resultado.fuente,
+    advertencia: resultado.advertencia || null,
+    ruc: resultado.ruc,
+    razon_social: resultado.razon_social,
+    guia_serie: resultado.guia_serie,
+    guia_numero: resultado.guia_numero,
+    supplier_id: supplier ? supplier.id : null,
+    supplier_encontrado: !!supplier,
+    items,
+  });
+});
 
 const FORMAS_PAGO = ['efectivo', 'tarjeta', 'banco'];
 const TIPOS_COMPROBANTE = ['factura', 'boleta', 'ticket', 'recibo_honorarios', 'otros'];
