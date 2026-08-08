@@ -60,6 +60,21 @@ router.get('/locales/:ruc/pagos', (req, res) => {
   res.json(localTenants.listarPagos(req.params.ruc));
 });
 
+// GET /api/companies/locales/:ruc/mensajes — mensajes que le escribieron
+// al asistente ODIN desde el CRM de esa empresa.
+router.get('/locales/:ruc/mensajes', (req, res) => {
+  if (!getLocalTenantOr404(req, res)) return;
+  res.json(localTenants.listarMensajes(req.params.ruc));
+});
+
+// PUT /api/companies/locales/:ruc/mensajes/:id/leido
+router.put('/locales/:ruc/mensajes/:id/leido', (req, res) => {
+  if (!getLocalTenantOr404(req, res)) return;
+  const mensaje = localTenants.marcarMensajeLeido(req.params.ruc, req.params.id);
+  if (!mensaje) return res.status(404).json({ error: 'Mensaje no encontrado.' });
+  res.json(mensaje);
+});
+
 function sinToken(company) {
   const { platform_token, ...rest } = company;
   return rest;
@@ -188,6 +203,15 @@ router.put('/:id/live/registros/:ruc/costo', (req, res) =>
 // GET /api/companies/:id/live/registros/:ruc/pagos — historial de cobros.
 router.get('/:id/live/registros/:ruc/pagos', (req, res) =>
   proxy(req, res, `/registros/${req.params.ruc}/pagos`)
+);
+
+// GET /api/companies/:id/live/mensajes-soporte — mensajes que le
+// escribieron al asistente ODIN desde el CRM de esa empresa remota.
+router.get('/:id/live/mensajes-soporte', (req, res) => proxy(req, res, '/mensajes-soporte'));
+
+// PUT /api/companies/:id/live/mensajes-soporte/:msgId/leido
+router.put('/:id/live/mensajes-soporte/:msgId/leido', (req, res) =>
+  proxy(req, res, `/mensajes-soporte/${req.params.msgId}/leido`, { method: 'PUT', body: {} })
 );
 
 module.exports = router;

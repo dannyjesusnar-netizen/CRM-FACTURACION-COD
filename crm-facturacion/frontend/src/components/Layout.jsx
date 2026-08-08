@@ -6,6 +6,7 @@ import { useTheme } from '../context/ThemeContext';
 import SedeSwitcher from './SedeSwitcher';
 import FloatingShapes from './FloatingShapes';
 import FloatingIcons from './FloatingIcons';
+import OdinWidget from './OdinWidget';
 import {
   TrendingUp, ShoppingCart, Bike, Wallet, Users, Calculator, ClipboardList, FileText,
   Moon, Sun, Settings, ChevronDown, Phone, FileSignature, Lock, Video, BarChart3, LogOut, UsersRound,
@@ -168,6 +169,8 @@ export default function Layout() {
           <Outlet />
         </div>
       </main>
+
+      <OdinWidget />
     </div>
   );
 }
