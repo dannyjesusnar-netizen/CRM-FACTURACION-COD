@@ -1,4 +1,5 @@
 const db = require('../db');
+const { siguienteSerieDisponible } = require('./serieCodegen');
 
 // Dónde vive cada tipo de documento y cómo se filtra su MAX(numero) real.
 const TABLA_POR_TIPO = {
@@ -14,19 +15,22 @@ const TABLA_POR_TIPO = {
   orden_servicio: { tabla: 'purchase_orders', where: "tipo_documento = 'orden_servicio'", columnaNumero: 'CAST(numero_doc AS INTEGER)' },
 };
 
-function getSerieConfig(tipo) {
-  return db.prepare('SELECT * FROM series_config WHERE tipo_documento = ?').get(tipo);
+function getSerieConfig(tipo, sucursalId) {
+  return db.prepare('SELECT * FROM series_config WHERE tipo_documento = ? AND sucursal_id = ?').get(tipo, sucursalId);
 }
 
-function listSeries() {
-  return db.prepare('SELECT * FROM series_config').all();
+function listSeries(sucursalId) {
+  return db.prepare('SELECT * FROM series_config WHERE sucursal_id = ?').all(sucursalId);
 }
 
-// Serie y siguiente número real para emitir: el mayor entre lo ya usado en
-// los datos (por si Gerencia nunca tocó esta pantalla) y lo configurado
-// manualmente — nunca puede retroceder ni pisar un número ya emitido.
-function siguienteNumero(tipo) {
-  const cfg = getSerieConfig(tipo);
+// Serie y siguiente número real para emitir, para la sede dada: el mayor
+// entre lo ya usado en los datos (por si Gerencia nunca tocó esta pantalla)
+// y lo configurado manualmente — nunca puede retroceder ni pisar un número
+// ya emitido. Cada sede tiene su propia serie (nunca compartida con otra),
+// así que filtrar por "serie" ya aísla los datos de esta sede sin necesidad
+// de un JOIN adicional por sucursal_id.
+function siguienteNumero(tipo, sucursalId) {
+  const cfg = getSerieConfig(tipo, sucursalId);
   const destino = TABLA_POR_TIPO[tipo];
   if (!cfg || !destino) return null;
   const row = db.prepare(
@@ -36,4 +40,17 @@ function siguienteNumero(tipo) {
   return { serie: cfg.serie, numero: Math.max(desdeData, cfg.siguiente_numero) };
 }
 
-module.exports = { TABLA_POR_TIPO, getSerieConfig, listSeries, siguienteNumero };
+// Crea, con una serie propia (nunca repetida entre sedes), la fila de cada
+// tipo de documento para una sede nueva — se llama al crear una sede desde
+// Configuración -> Sucursales.
+function sembrarSeriesParaSucursal(sucursalId) {
+  const insert = db.prepare(
+    'INSERT OR IGNORE INTO series_config (tipo_documento, sucursal_id, serie, siguiente_numero) VALUES (?, ?, ?, 1)'
+  );
+  for (const tipo of Object.keys(TABLA_POR_TIPO)) {
+    const existentes = db.prepare('SELECT serie FROM series_config WHERE tipo_documento = ?').all(tipo).map((r) => r.serie);
+    insert.run(tipo, sucursalId, siguienteSerieDisponible(tipo, existentes));
+  }
+}
+
+module.exports = { TABLA_POR_TIPO, getSerieConfig, listSeries, siguienteNumero, sembrarSeriesParaSucursal };

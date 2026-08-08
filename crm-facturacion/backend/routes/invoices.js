@@ -33,7 +33,7 @@ function round2(n) {
 router.get('/siguiente-numero', (req, res) => {
   const tipo = req.query.tipo;
   if (!TIPOS_COMPROBANTE.includes(tipo)) return res.status(400).json({ error: 'tipo invalido.' });
-  const sugerido = siguienteNumero(tipo);
+  const sugerido = siguienteNumero(tipo, req.sucursalId);
   res.json(sugerido);
 });
 
@@ -224,7 +224,7 @@ router.post('/', async (req, res) => {
   // 0 hasta el total) — el resto queda como saldo pendiente.
   const montoPagado = esAbonado ? Math.min(total, Math.max(0, round2(Number(montoPagadoBody || 0)))) : total;
 
-  const { serie, numero: numeroSugerido } = siguienteNumero(tipo_comprobante);
+  const { serie, numero: numeroSugerido } = siguienteNumero(tipo_comprobante, req.sucursalId);
   const fechaEmisionFinal = fecha_emision || new Date().toISOString().slice(0, 10);
 
   const insertAll = db.transaction(() => {
@@ -420,7 +420,7 @@ router.post('/preview-pdf', async (req, res) => {
 
   const invoicePreview = {
     tipo_comprobante: ['factura', 'boleta', 'nota_credito', 'cotizacion'].includes(tipo_comprobante) ? tipo_comprobante : 'boleta',
-    serie: serie || siguienteNumero(tipo_comprobante)?.serie || 'B001',
+    serie: serie || siguienteNumero(tipo_comprobante, req.sucursalId)?.serie || 'B001',
     numero: numero || 0,
     fecha_emision: fechaFinal,
     moneda: moneda || 'PEN',

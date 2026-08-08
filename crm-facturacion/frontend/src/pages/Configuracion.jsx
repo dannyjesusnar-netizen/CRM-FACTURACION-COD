@@ -148,7 +148,6 @@ export default function Configuracion() {
     loadLimiteSucursales();
     loadRoles();
     loadMetodosPago();
-    loadSeries();
   }, []);
 
   useEffect(() => {
@@ -172,6 +171,13 @@ export default function Configuracion() {
     }
   }, [sucursalSeleccionadaId, sucursales]);
 
+  // Las series son por sede (SUNAT exige una serie distinta por punto de
+  // emisión) — cada vez que se cambia la sede seleccionada arriba, se
+  // recargan sus propias series.
+  useEffect(() => {
+    if (sucursalSeleccionadaId) loadSeries(sucursalSeleccionadaId);
+  }, [sucursalSeleccionadaId]);
+
   function loadUsuarios() {
     const params = {};
     if (q) params.q = q;
@@ -194,11 +200,12 @@ export default function Configuracion() {
     api.get('/metodos-pago', { params: { todos: 1 } }).then((res) => setMetodosPago(res.data));
   }
 
-  function loadSeries() {
+  function loadSeries(sucursalId) {
     // El correlativo editable arranca en el número real que se va a usar
     // (ya combinado con lo que se emitió), no en el valor crudo guardado —
     // así el admin ve y edita el número que de verdad importa.
-    api.get('/series').then((res) => setSeries(res.data.map((s) => ({ ...s, siguiente_numero: s.siguiente_numero_real }))));
+    api.get('/series', { params: { sucursal_id: sucursalId } })
+      .then((res) => setSeries(res.data.map((s) => ({ ...s, siguiente_numero: s.siguiente_numero_real }))));
   }
 
   async function handleModificarDireccion() {
@@ -256,13 +263,14 @@ export default function Configuracion() {
   }
 
   async function handleModificarSeries(tipos, setSaving) {
+    if (!sucursalSeleccionadaId) return;
     setErrorSeries('');
     setSaving(true);
     try {
       const payload = series
         .filter((s) => tipos.includes(s.tipo_documento))
         .map((s) => ({ tipo_documento: s.tipo_documento, serie: s.serie, siguiente_numero: s.siguiente_numero }));
-      const res = await api.put('/series', { series: payload });
+      const res = await api.put('/series', { sucursal_id: sucursalSeleccionadaId, series: payload });
       setSeries(res.data.map((s) => ({ ...s, siguiente_numero: s.siguiente_numero_real })));
       toast.success('Series actualizadas.');
     } catch (err) {
@@ -886,9 +894,11 @@ export default function Configuracion() {
 
               {errorSeries && <div className="form-error">{errorSeries}</div>}
 
-              <h3>Series y correlativos</h3>
+              <h3>Series y correlativos {sucursalEditNombre && `— ${sucursalEditNombre}`}</h3>
               <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -8 }}>
-                El correlativo es el siguiente número que se va a usar al emitir. Nunca puede quedar por debajo de lo
+                Estas series son solo de la sede elegida arriba en "Editar Series de la Sucursal" — SUNAT exige que
+                cada sede (punto de emisión) tenga su propia serie por tipo de documento, nunca compartida con otra.
+                El correlativo es el siguiente número que se va a usar al emitir; nunca puede quedar por debajo de lo
                 que ya se emitió — subirlo es seguro (por ejemplo, para retomar una numeración física ya usada).
               </p>
 
