@@ -303,6 +303,45 @@ CREATE TABLE IF NOT EXISTS purchase_items (
   subtotal REAL NOT NULL DEFAULT 0
 );
 
+-- Orden de Compra: una solicitud al proveedor, todavía no es una compra
+-- recibida (no afecta stock). "Recepción de Compras" la convertirá en una
+-- compra real más adelante.
+CREATE TABLE IF NOT EXISTS purchase_orders (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  numero INTEGER NOT NULL,
+  supplier_id INTEGER NOT NULL REFERENCES suppliers(id),
+  created_by INTEGER REFERENCES users(id),
+  fecha TEXT NOT NULL,
+  serie TEXT,
+  numero_doc TEXT,
+  moneda TEXT NOT NULL DEFAULT 'PEN',
+  tipo_cambio REAL NOT NULL DEFAULT 1,
+  tipo_compra TEXT NOT NULL DEFAULT 'mercaderia',
+  tipo_operacion TEXT NOT NULL DEFAULT 'gravada_exportacion',
+  descuento_pct REAL NOT NULL DEFAULT 0,
+  percepcion REAL NOT NULL DEFAULT 0,
+  subtotal REAL NOT NULL DEFAULT 0,
+  igv REAL NOT NULL DEFAULT 0,
+  no_gravado REAL NOT NULL DEFAULT 0,
+  total REAL NOT NULL DEFAULT 0,
+  estado TEXT NOT NULL DEFAULT 'pendiente',   -- pendiente | recibida | anulada
+  observaciones TEXT,
+  sucursal_id INTEGER REFERENCES sucursales(id),
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS purchase_order_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  purchase_order_id INTEGER NOT NULL REFERENCES purchase_orders(id) ON DELETE CASCADE,
+  product_id INTEGER NOT NULL REFERENCES products(id),
+  cantidad REAL NOT NULL,
+  costo_unitario REAL NOT NULL DEFAULT 0,
+  subtotal REAL NOT NULL DEFAULT 0,
+  observacion TEXT,
+  unidad TEXT NOT NULL DEFAULT 'UND',
+  afectacion_igv TEXT NOT NULL DEFAULT 'gravado'
+);
+
 CREATE TABLE IF NOT EXISTS cotizaciones (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   serie TEXT NOT NULL DEFAULT 'CL02',
