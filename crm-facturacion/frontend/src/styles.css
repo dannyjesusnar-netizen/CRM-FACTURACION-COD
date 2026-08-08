@@ -230,6 +230,46 @@ html.dark .content {
   .menu-tile { padding: 20px 10px; }
 }
 
+/* ---------- Asistente ODIN ---------- */
+.odin-widget { position: fixed; right: 20px; bottom: 20px; z-index: 120; display: flex; flex-direction: column; align-items: flex-end; gap: 12px; }
+.odin-fab {
+  width: 56px; height: 56px; border-radius: 50%; background: var(--surface); border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0;
+  box-shadow: var(--shadow-md); transition: transform 0.15s var(--ease-out), box-shadow 0.15s var(--ease-out);
+}
+.odin-fab:hover { transform: translateY(-2px) scale(1.04); box-shadow: 0 10px 24px rgba(15, 23, 42, 0.16); }
+.odin-panel {
+  width: 320px; max-width: calc(100vw - 40px); max-height: 440px; display: flex; flex-direction: column;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 16px; overflow: hidden;
+  box-shadow: var(--shadow-md); animation: fadeUp 0.18s var(--ease-out);
+}
+.odin-panel-header { display: flex; align-items: center; gap: 10px; padding: 14px 14px; border-bottom: 1px solid var(--border); background: var(--surface-hover); }
+.odin-panel-title { font-weight: 800; font-size: 14px; color: var(--ink); }
+.odin-panel-subtitle { font-size: 11.5px; color: var(--ink-secondary); }
+.odin-close-btn { margin-left: auto; background: none; border: none; color: var(--ink-secondary); cursor: pointer; padding: 4px; border-radius: 6px; }
+.odin-close-btn:hover { background: var(--surface); color: var(--ink); }
+.odin-msg-log { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 8px; min-height: 160px; }
+.odin-msg { font-size: 13px; line-height: 1.45; padding: 9px 12px; border-radius: 12px; max-width: 88%; }
+.odin-msg-bot { background: var(--surface-hover); color: var(--ink); align-self: flex-start; border-bottom-left-radius: 4px; }
+.odin-msg-user { background: var(--brand-blue); color: #fff; align-self: flex-end; border-bottom-right-radius: 4px; }
+.odin-input-row { display: flex; align-items: flex-end; gap: 8px; padding: 10px; border-top: 1px solid var(--border); }
+.odin-input-row textarea {
+  flex: 1; resize: none; border: 1px solid var(--border); border-radius: 10px; padding: 9px 11px;
+  font-size: 13px; font-family: inherit; color: var(--ink); background: var(--surface); max-height: 90px;
+}
+.odin-send-btn {
+  width: 34px; height: 34px; border-radius: 10px; background: var(--brand-blue); color: #fff; border: none;
+  display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0;
+}
+.odin-send-btn:hover:not(:disabled) { background: var(--brand-blue-dark); }
+.odin-send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+@media (max-width: 640px) {
+  .odin-widget { right: 12px; bottom: 12px; }
+  .odin-fab { width: 50px; height: 50px; }
+  .odin-panel { width: calc(100vw - 24px); max-height: 70vh; }
+}
+
 /* ---------- Login ---------- */
 
 .login-page {

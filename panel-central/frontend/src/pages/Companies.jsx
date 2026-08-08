@@ -29,6 +29,8 @@ export default function Companies() {
   const [costoValor, setCostoValor] = useState('');
   const [pagosRuc, setPagosRuc] = useState(null);
   const [pagos, setPagos] = useState([]);
+  const [mensajesRuc, setMensajesRuc] = useState(null);
+  const [mensajes, setMensajes] = useState([]);
 
   useEffect(() => { load(); loadLocales(); }, []);
 
@@ -82,6 +84,17 @@ export default function Companies() {
     setPagosRuc(ruc);
     const res = await api.get(`/companies/locales/${ruc}/pagos`);
     setPagos(res.data);
+  }
+
+  async function verMensajes(ruc) {
+    setMensajesRuc(ruc);
+    const res = await api.get(`/companies/locales/${ruc}/mensajes`);
+    setMensajes(res.data);
+  }
+
+  async function marcarMensajeLeido(id) {
+    await api.put(`/companies/locales/${mensajesRuc}/mensajes/${id}/leido`);
+    setMensajes((prev) => prev.map((m) => (m.id === id ? { ...m, leido: 1 } : m)));
   }
 
   function openNew() {
@@ -161,6 +174,7 @@ export default function Companies() {
                     )}
                     <button className="btn-link" onClick={() => abrirCosto(t)}>Costo</button>
                     <button className="btn-link" onClick={() => verPagos(t.ruc)}>Pagos</button>
+                    <button className="btn-link" onClick={() => verMensajes(t.ruc)}>Mensajes</button>
                   </td>
                 </tr>
               ))}
@@ -273,6 +287,41 @@ export default function Companies() {
             </table>
             <div className="modal-actions">
               <button type="button" className="btn-secondary" onClick={() => setPagosRuc(null)}>Cerrar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {mensajesRuc && (
+        <div className="modal-overlay" onClick={() => setMensajesRuc(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h2>Mensajes a ODIN — {mensajesRuc}</h2>
+            <table className="data-table">
+              <thead>
+                <tr><th>Fecha</th><th>De</th><th>Mensaje</th><th></th></tr>
+              </thead>
+              <tbody>
+                {mensajes.map((m) => (
+                  <tr key={m.id}>
+                    <td>{formatFecha(m.created_at)}</td>
+                    <td>{m.nombre_usuario || '—'}</td>
+                    <td style={{ fontSize: 13 }}>{m.mensaje}</td>
+                    <td>
+                      {m.leido ? (
+                        <span className="badge badge-good">Leído</span>
+                      ) : (
+                        <button className="btn-link" onClick={() => marcarMensajeLeido(m.id)}>Marcar leído</button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+                {mensajes.length === 0 && (
+                  <tr><td colSpan={4} className="empty-row">Todavía no le escribieron a ODIN desde esta cuenta.</td></tr>
+                )}
+              </tbody>
+            </table>
+            <div className="modal-actions">
+              <button type="button" className="btn-secondary" onClick={() => setMensajesRuc(null)}>Cerrar</button>
             </div>
           </div>
         </div>

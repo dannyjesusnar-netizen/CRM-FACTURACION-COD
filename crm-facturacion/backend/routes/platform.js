@@ -109,4 +109,17 @@ router.get('/registros/:ruc/pagos', (req, res) => {
   res.json(tenantRegistry.listarPagos(req.params.ruc));
 });
 
+// Mensajes que las cuentas de esta empresa le escribieron al asistente
+// ODIN (ver routes/mensajesSoporte.js) — leídos desde panel-central.
+router.get('/mensajes-soporte', (req, res) => {
+  res.json(db.prepare('SELECT * FROM mensajes_soporte ORDER BY created_at DESC').all());
+});
+
+router.put('/mensajes-soporte/:id/leido', (req, res) => {
+  const existing = db.prepare('SELECT * FROM mensajes_soporte WHERE id = ?').get(req.params.id);
+  if (!existing) return res.status(404).json({ error: 'Mensaje no encontrado.' });
+  db.prepare('UPDATE mensajes_soporte SET leido = 1 WHERE id = ?').run(req.params.id);
+  res.json(db.prepare('SELECT * FROM mensajes_soporte WHERE id = ?').get(req.params.id));
+});
+
 module.exports = router;

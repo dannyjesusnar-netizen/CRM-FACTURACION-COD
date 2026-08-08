@@ -29,6 +29,7 @@ const platformRoutes = require('./routes/platform');
 const metodoPagoRoutes = require('./routes/metodosPago');
 const serieRoutes = require('./routes/series');
 const suscripcionRoutes = require('./routes/suscripcion');
+const mensajesSoporteRoutes = require('./routes/mensajesSoporte');
 const { procesarCobrosVencidos } = require('./utils/facturacionPlataforma');
 
 // panel-central es una app hermana en este mismo repo (login propio, por
@@ -76,6 +77,7 @@ app.use('/api/platform', platformRoutes);
 app.use('/api/metodos-pago', metodoPagoRoutes);
 app.use('/api/series', serieRoutes);
 app.use('/api/suscripcion', suscripcionRoutes);
+app.use('/api/mensajes-soporte', mensajesSoporteRoutes);
 
 // panel-central: su API vive en /panel-api (no /api, para no chocar con la
 // de este CRM) y su login/base de datos son completamente independientes

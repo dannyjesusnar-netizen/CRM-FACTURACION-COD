@@ -428,6 +428,19 @@ CREATE TABLE IF NOT EXISTS empresa_config (
   updated_at TEXT DEFAULT (datetime('now')),
   updated_by INTEGER REFERENCES users(id)
 );
+
+-- Mensajes que cualquier cuenta le escribe al asistente ODIN (widget
+-- flotante del CRM). Por ahora no hay respuesta automática con IA: cada
+-- mensaje llega al panel-central del dueño de la plataforma para que lo
+-- lea (ver routes/mensajesSoporte.js y routes/platform.js).
+CREATE TABLE IF NOT EXISTS mensajes_soporte (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER REFERENCES users(id),
+  nombre_usuario TEXT,
+  mensaje TEXT NOT NULL,
+  leido INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT DEFAULT (datetime('now'))
+);
 `);
 
   // --- Migracion: agregar columnas nuevas a bases de datos ya existentes ---

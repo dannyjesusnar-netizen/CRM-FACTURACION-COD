@@ -11,6 +11,7 @@ export default function CompanyDetail() {
   const [empresa, setEmpresa] = useState(null);
   const [users, setUsers] = useState(null);
   const [registros, setRegistros] = useState(null);
+  const [mensajes, setMensajes] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [pwdModalUser, setPwdModalUser] = useState(null);
@@ -25,14 +26,16 @@ export default function CompanyDetail() {
     setLoading(true);
     setError('');
     try {
-      const [empresaRes, usersRes, registrosRes] = await Promise.all([
+      const [empresaRes, usersRes, registrosRes, mensajesRes] = await Promise.all([
         api.get(`/companies/${id}/live/empresa`),
         api.get(`/companies/${id}/live/users`),
         api.get(`/companies/${id}/live/registros`).catch(() => ({ data: [] })),
+        api.get(`/companies/${id}/live/mensajes-soporte`).catch(() => ({ data: [] })),
       ]);
       setEmpresa(empresaRes.data);
       setUsers(usersRes.data);
       setRegistros(registrosRes.data);
+      setMensajes(mensajesRes.data);
     } catch (err) {
       setError(err.response?.data?.error || 'No se pudo contactar la instancia.');
     } finally {
@@ -65,6 +68,15 @@ export default function CompanyDetail() {
   function formatFecha(f) {
     if (!f) return '—';
     return f.replace('T', ' ').slice(0, 16);
+  }
+
+  async function handleMarcarMensajeLeido(m) {
+    try {
+      await api.put(`/companies/${id}/live/mensajes-soporte/${m.id}/leido`);
+      setMensajes((prev) => prev.map((x) => (x.id === m.id ? { ...x, leido: 1 } : x)));
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'No se pudo marcar el mensaje como leído.');
+    }
   }
 
   const ESTADO_BADGE = { pendiente: '', aprobado: 'badge-good', rechazado: 'badge-critical' };
@@ -198,6 +210,35 @@ export default function CompanyDetail() {
               ))}
               {(users || []).length === 0 && (
                 <tr><td colSpan={6} className="empty-row">No hay cuentas registradas en esa instancia.</td></tr>
+              )}
+            </tbody>
+          </table>
+
+          <h3 style={{ marginTop: 28 }}>Mensajes de soporte (asistente ODIN)</h3>
+          <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -8 }}>
+            Mensajes que las cuentas de esta empresa le escribieron al asistente ODIN desde el CRM.
+          </p>
+          <table className="data-table">
+            <thead>
+              <tr><th>Fecha</th><th>De</th><th>Mensaje</th><th></th></tr>
+            </thead>
+            <tbody>
+              {(mensajes || []).map((m) => (
+                <tr key={m.id}>
+                  <td>{formatFecha(m.created_at)}</td>
+                  <td>{m.nombre_usuario || '—'}</td>
+                  <td style={{ fontSize: 13 }}>{m.mensaje}</td>
+                  <td>
+                    {m.leido ? (
+                      <span className="badge badge-good">Leído</span>
+                    ) : (
+                      <button className="btn-link" onClick={() => handleMarcarMensajeLeido(m)}>Marcar leído</button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+              {(mensajes || []).length === 0 && (
+                <tr><td colSpan={4} className="empty-row">Todavía nadie le escribió a ODIN desde esta empresa.</td></tr>
               )}
             </tbody>
           </table>

@@ -9,10 +9,16 @@
 // del panel (empresas agregadas a mano con su propia URL) sigue
 // funcionando igual.
 let tenantRegistry = null;
+let resolveTenantDb = null;
+let crmDb = null;
 try {
   tenantRegistry = require('../../crm-facturacion/backend/tenantRegistry');
+  resolveTenantDb = require('../../crm-facturacion/backend/utils/tenant').resolveTenantDb;
+  crmDb = require('../../crm-facturacion/backend/db');
 } catch {
   tenantRegistry = null;
+  resolveTenantDb = null;
+  crmDb = null;
 }
 
 function disponible() {
@@ -45,4 +51,32 @@ function listarPagos(ruc) {
   return tenantRegistry.listarPagos(ruc);
 }
 
-module.exports = { disponible, listarEmpresas, encontrar, aprobar, rechazar, setCosto, listarPagos };
+// Los mensajes que le escriben al asistente ODIN (widget del CRM) viven en
+// la base de datos AISLADA de cada empresa (crm-facturacion/backend/db.js
+// es multi-tenant: un archivo .db por RUC), no en el registro central de
+// tenantRegistry. Por eso hace falta resolver esa base puntual y correr la
+// consulta dentro de ella — mismo patrón que usa
+// crm-facturacion/backend/routes/auth.js al registrar una empresa nueva.
+function listarMensajes(ruc) {
+  if (!resolveTenantDb || !crmDb) return [];
+  const tenantDb = resolveTenantDb(ruc);
+  if (!tenantDb) return [];
+  return crmDb.runWithDb(tenantDb, () =>
+    crmDb.prepare('SELECT * FROM mensajes_soporte ORDER BY created_at DESC').all()
+  );
+}
+
+function marcarMensajeLeido(ruc, id) {
+  if (!resolveTenantDb || !crmDb) return null;
+  const tenantDb = resolveTenantDb(ruc);
+  if (!tenantDb) return null;
+  return crmDb.runWithDb(tenantDb, () => {
+    crmDb.prepare('UPDATE mensajes_soporte SET leido = 1 WHERE id = ?').run(id);
+    return crmDb.prepare('SELECT * FROM mensajes_soporte WHERE id = ?').get(id);
+  });
+}
+
+module.exports = {
+  disponible, listarEmpresas, encontrar, aprobar, rechazar, setCosto, listarPagos,
+  listarMensajes, marcarMensajeLeido,
+};
