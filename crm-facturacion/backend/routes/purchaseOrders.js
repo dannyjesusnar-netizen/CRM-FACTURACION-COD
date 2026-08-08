@@ -3,6 +3,7 @@ const db = require('../db');
 const { requireAuth, resolveSucursal } = require('../middleware/auth');
 const { round2, incrementarStock } = require('../utils/stock');
 const { requirePermiso, requireAccion } = require('../utils/permisos');
+const { siguienteNumero } = require('../utils/series');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -22,6 +23,14 @@ function nextNumero() {
   const row = db.prepare('SELECT MAX(numero) AS maxNum FROM purchase_orders').get();
   return (row.maxNum || 0) + 1;
 }
+
+// GET /api/purchase-orders/siguiente-numero?tipo=orden_compra|orden_servicio ->
+// { serie, numero } sugerido para el formulario, según la serie de la sede activa.
+router.get('/siguiente-numero', (req, res) => {
+  const tipo = req.query.tipo === 'orden_servicio' ? 'orden_servicio' : 'orden_compra';
+  const sugerido = siguienteNumero(tipo, req.sucursalId);
+  res.json(sugerido);
+});
 
 // GET /api/purchase-orders?estado=&from=&to=&q=
 router.get('/', (req, res) => {
