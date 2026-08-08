@@ -25,14 +25,42 @@ function disponible() {
   return Boolean(tenantRegistry);
 }
 
+// La empresa DUEÑA de este despliegue (la que ya venía con la instancia,
+// nunca pasó por "Registrar mi empresa") no tiene fila en tenantRegistry
+// a propósito: su JWT lleva ruc=null justo para que "Mis pagos" nunca le
+// pida pagarse una suscripción a sí misma (ver routes/suscripcion.js). Por
+// eso NO se inserta en tenants_registry.db — en vez de eso se arma una
+// fila "de solo lectura" leyendo empresa_config directo de su propia base,
+// para que igual aparezca en "CUENTAS REGISTRADAS" sin que el dueño tenga
+// que agregarla a mano con URL/token.
+function empresaOriginal() {
+  if (!crmDb) return null;
+  const config = crmDb.prepare('SELECT ruc, razon_social, nombre_comercial FROM empresa_config WHERE id = 1').get();
+  if (!config || !config.ruc) return null;
+  return {
+    ruc: config.ruc,
+    razon_social: config.nombre_comercial || config.razon_social,
+    estado: 'aprobado',
+    costo_mensual: null,
+    proximo_cobro_at: null,
+    created_at: null,
+    es_original: true,
+  };
+}
+
 function listarEmpresas() {
   if (!tenantRegistry) return [];
-  return tenantRegistry.listTodos();
+  const original = empresaOriginal();
+  const registradas = tenantRegistry.listTodos();
+  return original ? [original, ...registradas] : registradas;
 }
 
 function encontrar(ruc) {
   if (!tenantRegistry) return null;
-  return tenantRegistry.findTenant(ruc);
+  const tenant = tenantRegistry.findTenant(ruc);
+  if (tenant) return tenant;
+  const original = empresaOriginal();
+  return original && original.ruc === ruc ? original : null;
 }
 
 function aprobar(ruc) {
