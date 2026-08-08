@@ -2,9 +2,63 @@ const express = require('express');
 const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { platformRequest } = require('../utils/httpClient');
+const localTenants = require('../localTenants');
 
 const router = express.Router();
 router.use(requireAuth);
+
+// GET /api/companies/locales — empresas registradas vía "Registrar mi
+// empresa" en la MISMA instancia donde corre este panel (co-desplegado,
+// ver localTenants.js). Automático: sin URL ni token.
+router.get('/locales', (req, res) => {
+  if (!localTenants.disponible()) return res.json({ disponible: false, empresas: [] });
+  res.json({ disponible: true, empresas: localTenants.listarEmpresas() });
+});
+
+function getLocalTenantOr404(req, res) {
+  if (!localTenants.disponible()) {
+    res.status(404).json({ error: 'Esta instancia del panel no tiene una instancia local co-desplegada.' });
+    return null;
+  }
+  const tenant = localTenants.encontrar(req.params.ruc);
+  if (!tenant) {
+    res.status(404).json({ error: 'Registro no encontrado.' });
+    return null;
+  }
+  return tenant;
+}
+
+// PUT /api/companies/locales/:ruc/aprobar
+router.put('/locales/:ruc/aprobar', (req, res) => {
+  if (!getLocalTenantOr404(req, res)) return;
+  res.json(localTenants.aprobar(req.params.ruc));
+});
+
+// PUT /api/companies/locales/:ruc/rechazar
+router.put('/locales/:ruc/rechazar', (req, res) => {
+  if (!getLocalTenantOr404(req, res)) return;
+  res.json(localTenants.rechazar(req.params.ruc));
+});
+
+// PUT /api/companies/locales/:ruc/costo { costo_mensual, fecha_inicio_suscripcion? }
+router.put('/locales/:ruc/costo', (req, res) => {
+  if (!getLocalTenantOr404(req, res)) return;
+  const costo = Number(req.body?.costo_mensual);
+  if (!Number.isFinite(costo) || costo < 0) {
+    return res.status(400).json({ error: 'costo_mensual debe ser un número mayor o igual a 0.' });
+  }
+  res.json(localTenants.setCosto(req.params.ruc, {
+    costo_mensual: costo,
+    fecha_inicio_suscripcion: req.body?.fecha_inicio_suscripcion || null,
+  }));
+});
+
+// GET /api/companies/locales/:ruc/pagos — historial de cobros de la
+// suscripción de esa empresa.
+router.get('/locales/:ruc/pagos', (req, res) => {
+  if (!getLocalTenantOr404(req, res)) return;
+  res.json(localTenants.listarPagos(req.params.ruc));
+});
 
 function sinToken(company) {
   const { platform_token, ...rest } = company;

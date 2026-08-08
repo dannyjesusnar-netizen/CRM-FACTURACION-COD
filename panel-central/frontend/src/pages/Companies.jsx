@@ -7,6 +7,14 @@ function emptyForm() {
   return { nombre: '', ruc: '', telefono: '', render_url: '', platform_token: '' };
 }
 
+const ESTADO_LABEL = { pendiente: 'Pendiente', aprobado: 'Aprobado', rechazado: 'Rechazado' };
+const ESTADO_BADGE = { pendiente: 'badge-warning', aprobado: 'badge-good', rechazado: 'badge-critical' };
+
+function formatFecha(f) {
+  if (!f) return '—';
+  return String(f).slice(0, 10);
+}
+
 export default function Companies() {
   const navigate = useNavigate();
   const toast = useToast();
@@ -16,10 +24,64 @@ export default function Companies() {
   const [form, setForm] = useState(emptyForm());
   const [error, setError] = useState('');
 
-  useEffect(() => { load(); }, []);
+  const [locales, setLocales] = useState({ disponible: false, empresas: [] });
+  const [costoRuc, setCostoRuc] = useState(null);
+  const [costoValor, setCostoValor] = useState('');
+  const [pagosRuc, setPagosRuc] = useState(null);
+  const [pagos, setPagos] = useState([]);
+
+  useEffect(() => { load(); loadLocales(); }, []);
 
   function load() {
     api.get('/companies').then((res) => setCompanies(res.data));
+  }
+
+  function loadLocales() {
+    api.get('/companies/locales').then((res) => setLocales(res.data));
+  }
+
+  async function aprobarLocal(ruc) {
+    try {
+      await api.put(`/companies/locales/${ruc}/aprobar`);
+      toast.success('Empresa aprobada. Ya puede iniciar sesión.');
+      loadLocales();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'No se pudo aprobar.');
+    }
+  }
+
+  async function rechazarLocal(ruc) {
+    if (!window.confirm('¿Rechazar este registro?')) return;
+    try {
+      await api.put(`/companies/locales/${ruc}/rechazar`);
+      toast.success('Registro rechazado.');
+      loadLocales();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'No se pudo rechazar.');
+    }
+  }
+
+  function abrirCosto(tenant) {
+    setCostoRuc(tenant.ruc);
+    setCostoValor(tenant.costo_mensual ?? '');
+  }
+
+  async function guardarCosto(e) {
+    e.preventDefault();
+    try {
+      await api.put(`/companies/locales/${costoRuc}/costo`, { costo_mensual: Number(costoValor) });
+      toast.success('Costo mensual actualizado.');
+      setCostoRuc(null);
+      loadLocales();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'No se pudo actualizar el costo.');
+    }
+  }
+
+  async function verPagos(ruc) {
+    setPagosRuc(ruc);
+    const res = await api.get(`/companies/locales/${ruc}/pagos`);
+    setPagos(res.data);
   }
 
   function openNew() {
@@ -69,14 +131,55 @@ export default function Companies() {
 
   return (
     <div>
-      <div className="report-toolbar">
-        <h1 className="page-title" style={{ margin: 0 }}>EMPRESAS</h1>
+      {locales.disponible && (
+        <>
+          <div className="report-toolbar">
+            <h1 className="page-title" style={{ margin: 0 }}>CUENTAS REGISTRADAS</h1>
+          </div>
+          <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -8 }}>
+            Empresas que se registraron solas desde "Registrar mi empresa" en esta misma instancia —
+            aparecen automáticamente, sin que tengas que agregarlas a mano.
+          </p>
+          <table className="data-table">
+            <thead>
+              <tr><th>Razón social</th><th>RUC</th><th>Estado</th><th>Costo mensual</th><th>Próximo cobro</th><th></th></tr>
+            </thead>
+            <tbody>
+              {locales.empresas.map((t) => (
+                <tr key={t.ruc}>
+                  <td>{t.razon_social}</td>
+                  <td>{t.ruc}</td>
+                  <td><span className={'badge ' + (ESTADO_BADGE[t.estado] || 'badge-neutral')}>{ESTADO_LABEL[t.estado] || t.estado}</span></td>
+                  <td>{t.costo_mensual != null ? `S/ ${Number(t.costo_mensual).toFixed(2)}` : '—'}</td>
+                  <td>{formatFecha(t.proximo_cobro_at)}</td>
+                  <td className="row-actions">
+                    {t.estado === 'pendiente' && (
+                      <>
+                        <button className="btn-link" onClick={() => aprobarLocal(t.ruc)}>Aprobar</button>
+                        <button className="btn-link danger" onClick={() => rechazarLocal(t.ruc)}>Rechazar</button>
+                      </>
+                    )}
+                    <button className="btn-link" onClick={() => abrirCosto(t)}>Costo</button>
+                    <button className="btn-link" onClick={() => verPagos(t.ruc)}>Pagos</button>
+                  </td>
+                </tr>
+              ))}
+              {locales.empresas.length === 0 && (
+                <tr><td colSpan={6} className="empty-row">Todavía no hay empresas registradas desde "Registrar mi empresa".</td></tr>
+              )}
+            </tbody>
+          </table>
+        </>
+      )}
+
+      <div className="report-toolbar" style={{ marginTop: locales.disponible ? 32 : 0 }}>
+        <h1 className="page-title" style={{ margin: 0 }}>EMPRESAS EN OTRAS INSTANCIAS</h1>
         <button className="btn-primary" style={{ width: 'auto' }} onClick={openNew}>+ Nueva empresa</button>
       </div>
       <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -8 }}>
-        Cada empresa es una instancia de Render independiente. Regístrala una vez con su URL y el
-        token que configuraste ahí (variable <code>PLATFORM_TOKEN</code>) para poder ver y administrar
-        sus cuentas admin desde aquí.
+        Para empresas que corren en su propia instancia de Render, separada de esta. Regístrala una vez
+        con su URL y el token que configuraste ahí (variable <code>PLATFORM_TOKEN</code>) para poder ver
+        y administrar sus cuentas admin desde aquí.
       </p>
 
       <table className="data-table">
@@ -96,7 +199,7 @@ export default function Companies() {
             </tr>
           ))}
           {companies.length === 0 && (
-            <tr><td colSpan={4} className="empty-row">Todavía no registraste ninguna empresa.</td></tr>
+            <tr><td colSpan={4} className="empty-row">Todavía no registraste ninguna empresa en otra instancia.</td></tr>
           )}
         </tbody>
       </table>
@@ -122,6 +225,55 @@ export default function Companies() {
                 <button type="submit" className="btn-primary">{editingId ? 'Guardar cambios' : 'Registrar empresa'}</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {costoRuc && (
+        <div className="modal-overlay" onClick={() => setCostoRuc(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h2>Costo mensual</h2>
+            <form onSubmit={guardarCosto}>
+              <label>Costo mensual (S/)</label>
+              <input required type="number" min="0" step="0.01" value={costoValor} onChange={(e) => setCostoValor(e.target.value)} />
+              <div className="modal-actions">
+                <button type="button" className="btn-secondary" onClick={() => setCostoRuc(null)}>Cancelar</button>
+                <button type="submit" className="btn-primary">Guardar</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {pagosRuc && (
+        <div className="modal-overlay" onClick={() => setPagosRuc(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h2>Historial de pagos — {pagosRuc}</h2>
+            <table className="data-table">
+              <thead>
+                <tr><th>Fecha</th><th>Monto</th><th>Estado</th><th>Mensaje</th></tr>
+              </thead>
+              <tbody>
+                {pagos.map((p) => (
+                  <tr key={p.id}>
+                    <td>{formatFecha(p.created_at)}</td>
+                    <td>S/ {Number(p.monto).toFixed(2)}</td>
+                    <td>
+                      <span className={'badge ' + (p.estado === 'exitoso' ? 'badge-good' : 'badge-critical')}>
+                        {p.estado === 'exitoso' ? 'Exitoso' : 'Fallido'}
+                      </span>
+                    </td>
+                    <td style={{ fontSize: 12, color: 'var(--ink-muted)' }}>{p.mensaje || '—'}</td>
+                  </tr>
+                ))}
+                {pagos.length === 0 && (
+                  <tr><td colSpan={4} className="empty-row">Todavía no hay cobros registrados.</td></tr>
+                )}
+              </tbody>
+            </table>
+            <div className="modal-actions">
+              <button type="button" className="btn-secondary" onClick={() => setPagosRuc(null)}>Cerrar</button>
+            </div>
           </div>
         </div>
       )}
