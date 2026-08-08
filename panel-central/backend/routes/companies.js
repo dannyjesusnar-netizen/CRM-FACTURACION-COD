@@ -81,6 +81,22 @@ router.put('/locales/:ruc/mensajes/:id/leido', (req, res) => {
   res.json(mensaje);
 });
 
+// GET /api/companies/locales/:ruc/usuarios — empleados de esa empresa.
+router.get('/locales/:ruc/usuarios', (req, res) => {
+  if (!getLocalTenantOr404(req, res)) return;
+  res.json(localTenants.listarUsuarios(req.params.ruc));
+});
+
+// PUT /api/companies/locales/:ruc/usuarios/:userId/password { new_password }
+router.put('/locales/:ruc/usuarios/:userId/password', (req, res) => {
+  if (!getLocalTenantOr404(req, res)) return;
+  const { new_password } = req.body || {};
+  if (!new_password) return res.status(400).json({ error: 'Falta la nueva contraseña.' });
+  const usuario = localTenants.restablecerClave(req.params.ruc, req.params.userId, new_password);
+  if (!usuario) return res.status(404).json({ error: 'Usuario no encontrado.' });
+  res.json(usuario);
+});
+
 function sinToken(company) {
   const { platform_token, ...rest } = company;
   return rest;

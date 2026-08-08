@@ -1,5 +1,6 @@
 const express = require('express');
 const db = require('../db');
+const tenantRegistry = require('../tenantRegistry');
 const { requireAuth, requireGerencia } = require('../middleware/auth');
 const { buildInvoicePdf } = require('../utils/pdf');
 
@@ -61,6 +62,12 @@ router.put('/', requireGerencia, (req, res) => {
     terminos_condiciones_pdf !== undefined ? (terminos_condiciones_pdf || null) : existing?.terminos_condiciones_pdf || null,
     req.user?.id || null
   );
+  // Si esta sesión es de la instalación base (no de una empresa que ya se
+  // auto-registró), su RUC recién configurado la da de alta en el registro
+  // de la plataforma como un cliente más — ver tenantRegistry.js.
+  if (!req.user?.ruc) {
+    tenantRegistry.adoptarInstanciaBase({ ruc, razon_social: nombre_comercial || razon_social });
+  }
   res.json(db.prepare('SELECT * FROM empresa_config WHERE id = 1').get());
 });
 
