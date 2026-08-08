@@ -4,11 +4,35 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { useTheme } from '../context/ThemeContext';
 import SedeSwitcher from './SedeSwitcher';
+import FloatingShapes from './FloatingShapes';
+import FloatingIcons from './FloatingIcons';
 import {
   TrendingUp, ShoppingCart, Bike, Wallet, Users, Calculator, ClipboardList, FileText,
   Moon, Sun, Settings, ChevronDown, Phone, FileSignature, Lock, Video, BarChart3, LogOut, UsersRound,
   Building2, CreditCard,
 } from 'lucide-react';
+
+// Fondo decorativo compartido por toda la app (misma línea gráfica del
+// login/menú): formas simples + iconos de negocio, flotando muy tenue
+// detrás del contenido de cada pantalla.
+const APP_SHAPES = [
+  { type: 'dot', top: '5%', left: '3%', size: 11, color: '#fbbf24', delay: '0s' },
+  { type: 'plus', top: '9%', left: '96%', size: 15, color: '#6366f1', delay: '0.4s' },
+  { type: 'square', top: '22%', left: '1%', size: 12, color: '#f472b6', delay: '0.8s' },
+  { type: 'dot', top: '35%', left: '98%', size: 9, color: '#22c55e', delay: '0.3s' },
+  { type: 'plus', top: '52%', left: '2%', size: 13, color: '#22c55e', delay: '1.1s' },
+  { type: 'square', top: '64%', left: '97%', size: 11, color: '#fbbf24', delay: '0.6s' },
+  { type: 'dot', top: '78%', left: '4%', size: 8, color: '#f472b6', delay: '0.9s' },
+  { type: 'plus', top: '88%', left: '95%', size: 14, color: '#6366f1', delay: '0.2s' },
+  { type: 'dot', top: '92%', left: '15%', size: 9, color: '#6366f1', delay: '0.7s' },
+];
+const APP_ICONS = [
+  { type: 'computer', top: '14%', left: '6%', size: 30, delay: '0.1s' },
+  { type: 'calculator', top: '18%', left: '92%', size: 26, delay: '0.5s' },
+  { type: 'truck', top: '46%', left: '95%', size: 34, delay: '0.75s' },
+  { type: 'dollar', top: '70%', left: '3%', size: 26, delay: '0.35s' },
+  { type: 'soles', top: '82%', left: '92%', size: 26, delay: '1s' },
+];
 
 const SUBNAV_ITEMS = [
   { to: '/ventas', label: 'Ventas', Icon: TrendingUp, active: true, modulo: 'ventas' },
@@ -135,8 +159,14 @@ export default function Layout() {
         })}
       </nav>
 
-      <main className="content content-wide">
-        <Outlet />
+      <main className="content">
+        <div className="app-bg-decor">
+          <FloatingShapes shapes={APP_SHAPES} />
+          <FloatingIcons icons={APP_ICONS} />
+        </div>
+        <div className="content-wide content-body">
+          <Outlet />
+        </div>
       </main>
     </div>
   );
