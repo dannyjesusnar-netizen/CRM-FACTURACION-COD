@@ -42,7 +42,46 @@ const DOC_LABELS = {
   nota_credito: 'Nota de Crédito',
   cotizacion: 'Cotización',
   guia_remitente: 'Guía Remitente',
+  orden_compra: 'Orden de Compra',
+  orden_servicio: 'Orden de Servicio',
 };
+
+// Cómo se reparte la tabla de "Series y correlativos" en columnas, igual que
+// la pantalla de referencia: Ventas en dos columnas lado a lado, Compras aparte.
+const SERIES_VENTAS_COL1 = ['factura', 'nota_credito', 'guia_remitente'];
+const SERIES_VENTAS_COL2 = ['boleta', 'cotizacion'];
+const SERIES_COMPRAS = ['orden_compra', 'orden_servicio'];
+
+function SerieTable({ tipos, series, updateSerieField }) {
+  const filas = tipos.map((t) => series.find((s) => s.tipo_documento === t)).filter(Boolean);
+  return (
+    <table className="data-table">
+      <thead>
+        <tr><th>Documento</th><th>Serie</th><th>Correlativo</th></tr>
+      </thead>
+      <tbody>
+        {filas.map((s) => (
+          <tr key={s.tipo_documento}>
+            <td>{DOC_LABELS[s.tipo_documento] || s.tipo_documento}</td>
+            <td>
+              <input value={s.serie} maxLength={10}
+                onChange={(e) => updateSerieField(s.tipo_documento, { serie: e.target.value.toUpperCase() })}
+                style={{ width: 90 }} />
+            </td>
+            <td>
+              <input type="number" min="1" value={s.siguiente_numero}
+                onChange={(e) => updateSerieField(s.tipo_documento, { siguiente_numero: e.target.value })}
+                style={{ width: 100 }} />
+            </td>
+          </tr>
+        ))}
+        {filas.length === 0 && (
+          <tr><td colSpan={3} className="empty-row">Cargando series...</td></tr>
+        )}
+      </tbody>
+    </table>
+  );
+}
 
 export default function Configuracion() {
   const { user, refreshEmpresa, sucursal: sucursalActiva, setSucursal: setSucursalActiva } = useAuth();
@@ -91,7 +130,8 @@ export default function Configuracion() {
   // --- Series y Sucursal ---
   const [series, setSeries] = useState([]);
   const [errorSeries, setErrorSeries] = useState('');
-  const [savingSeries, setSavingSeries] = useState(false);
+  const [savingSeriesVentas, setSavingSeriesVentas] = useState(false);
+  const [savingSeriesCompras, setSavingSeriesCompras] = useState(false);
   const [direccionPrincipal, setDireccionPrincipal] = useState('');
   const [savingDireccion, setSavingDireccion] = useState(false);
   const [sucursalSeleccionadaId, setSucursalSeleccionadaId] = useState('');
@@ -215,18 +255,20 @@ export default function Configuracion() {
     setSeries((prev) => prev.map((s) => (s.tipo_documento === tipo ? { ...s, ...patch } : s)));
   }
 
-  async function handleModificarSeries() {
+  async function handleModificarSeries(tipos, setSaving) {
     setErrorSeries('');
-    setSavingSeries(true);
+    setSaving(true);
     try {
-      const payload = series.map((s) => ({ tipo_documento: s.tipo_documento, serie: s.serie, siguiente_numero: s.siguiente_numero }));
+      const payload = series
+        .filter((s) => tipos.includes(s.tipo_documento))
+        .map((s) => ({ tipo_documento: s.tipo_documento, serie: s.serie, siguiente_numero: s.siguiente_numero }));
       const res = await api.put('/series', { series: payload });
       setSeries(res.data.map((s) => ({ ...s, siguiente_numero: s.siguiente_numero_real })));
       toast.success('Series actualizadas.');
     } catch (err) {
       setErrorSeries(err.response?.data?.error || 'No se pudieron actualizar las series.');
     } finally {
-      setSavingSeries(false);
+      setSaving(false);
     }
   }
 
@@ -849,34 +891,29 @@ export default function Configuracion() {
                 El correlativo es el siguiente número que se va a usar al emitir. Nunca puede quedar por debajo de lo
                 que ya se emitió — subirlo es seguro (por ejemplo, para retomar una numeración física ya usada).
               </p>
-              <table className="data-table">
-                <thead>
-                  <tr><th>Documento</th><th>Serie</th><th>Correlativo</th></tr>
-                </thead>
-                <tbody>
-                  {series.map((s) => (
-                    <tr key={s.tipo_documento}>
-                      <td>{DOC_LABELS[s.tipo_documento] || s.tipo_documento}</td>
-                      <td>
-                        <input value={s.serie} maxLength={10}
-                          onChange={(e) => updateSerieField(s.tipo_documento, { serie: e.target.value.toUpperCase() })}
-                          style={{ width: 90 }} />
-                      </td>
-                      <td>
-                        <input type="number" min="1" value={s.siguiente_numero}
-                          onChange={(e) => updateSerieField(s.tipo_documento, { siguiente_numero: e.target.value })}
-                          style={{ width: 100 }} />
-                      </td>
-                    </tr>
-                  ))}
-                  {series.length === 0 && (
-                    <tr><td colSpan={3} className="empty-row">Cargando series...</td></tr>
-                  )}
-                </tbody>
-              </table>
+
+              <h4 style={{ marginBottom: 6 }}>VENTAS</h4>
+              <div className="series-columns">
+                <SerieTable tipos={SERIES_VENTAS_COL1} series={series} updateSerieField={updateSerieField} />
+                <SerieTable tipos={SERIES_VENTAS_COL2} series={series} updateSerieField={updateSerieField} />
+              </div>
               <div className="report-toolbar" style={{ justifyContent: 'flex-end' }}>
-                <button type="button" className="btn-primary" style={{ width: 'auto' }} onClick={handleModificarSeries} disabled={savingSeries || series.length === 0}>
-                  {savingSeries ? 'Guardando...' : 'Modificar Series'}
+                <button type="button" className="btn-primary" style={{ width: 'auto' }}
+                  onClick={() => handleModificarSeries([...SERIES_VENTAS_COL1, ...SERIES_VENTAS_COL2], setSavingSeriesVentas)}
+                  disabled={savingSeriesVentas || series.length === 0}>
+                  {savingSeriesVentas ? 'Guardando...' : 'Modificar Series'}
+                </button>
+              </div>
+
+              <h4 style={{ marginBottom: 6, marginTop: 24 }}>COMPRAS</h4>
+              <div className="series-columns">
+                <SerieTable tipos={SERIES_COMPRAS} series={series} updateSerieField={updateSerieField} />
+              </div>
+              <div className="report-toolbar" style={{ justifyContent: 'flex-end' }}>
+                <button type="button" className="btn-primary" style={{ width: 'auto' }}
+                  onClick={() => handleModificarSeries(SERIES_COMPRAS, setSavingSeriesCompras)}
+                  disabled={savingSeriesCompras || series.length === 0}>
+                  {savingSeriesCompras ? 'Guardando...' : 'Modificar Series'}
                 </button>
               </div>
             </>
