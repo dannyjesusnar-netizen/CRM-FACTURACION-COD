@@ -56,6 +56,7 @@ export default function Compras() {
   const toast = useToast();
   const { sucursal } = useAuth();
   const [purchases, setPurchases] = useState([]);
+  const [orders, setOrders] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [products, setProducts] = useState([]);
 
@@ -67,6 +68,7 @@ export default function Compras() {
   const [periodoAnio, setPeriodoAnio] = useState(hoy.getFullYear());
 
   const [showForm, setShowForm] = useState(false);
+  const [formMode, setFormMode] = useState('compra'); // 'compra' | 'orden'
   const [showSupplierForm, setShowSupplierForm] = useState(false);
   const [error, setError] = useState('');
 
@@ -96,6 +98,7 @@ export default function Compras() {
     if (h) params.to = h;
     if (q) params.q = q;
     api.get('/purchases', { params }).then((res) => setPurchases(res.data));
+    api.get('/purchase-orders', { params }).then((res) => setOrders(res.data));
   }
 
   function aplicarPeriodo({ mes, anio, desde: d, hasta: h }) {
@@ -124,7 +127,8 @@ export default function Compras() {
     load();
   }
 
-  function openNew() {
+  function openNew(mode = 'compra') {
+    setFormMode(mode);
     setSupplierId('');
     setItems([emptyItem()]);
     setObservaciones('');
@@ -188,35 +192,39 @@ export default function Compras() {
       setError('Completa todos los items (producto y cantidad).');
       return;
     }
+    const payload = {
+      supplier_id: Number(supplierId),
+      items: items.map((it) => ({
+        product_id: Number(it.product_id),
+        cantidad: Number(it.cantidad),
+        costo_unitario: Number(it.costo_unitario),
+        unidad: it.unidad,
+        afectacion_igv: it.afectacion_igv,
+        observacion: it.observacion,
+      })),
+      observaciones,
+      serie: docSerie,
+      numero_doc: docNumero,
+      fecha: fechaEmision,
+      moneda,
+      tipo_cambio: Number(tipoCambio),
+      tipo_compra: tipoCompra,
+      tipo_operacion: tipoOperacion,
+      descuento_pct: Number(descuentoPct || 0),
+      percepcion: Number(percepcion || 0),
+    };
     try {
-      await api.post('/purchases', {
-        supplier_id: Number(supplierId),
-        items: items.map((it) => ({
-          product_id: Number(it.product_id),
-          cantidad: Number(it.cantidad),
-          costo_unitario: Number(it.costo_unitario),
-          unidad: it.unidad,
-          afectacion_igv: it.afectacion_igv,
-          observacion: it.observacion,
-        })),
-        observaciones,
-        forma_pago: formaPago,
-        tipo_comprobante: tipoComprobante,
-        serie: docSerie,
-        numero_doc: docNumero,
-        fecha: fechaEmision,
-        moneda,
-        tipo_cambio: Number(tipoCambio),
-        tipo_compra: tipoCompra,
-        tipo_operacion: tipoOperacion,
-        descuento_pct: Number(descuentoPct || 0),
-        percepcion: Number(percepcion || 0),
-      });
+      if (formMode === 'orden') {
+        await api.post('/purchase-orders', payload);
+        toast.success('Orden de compra guardada correctamente.');
+      } else {
+        await api.post('/purchases', { ...payload, forma_pago: formaPago, tipo_comprobante: tipoComprobante });
+        toast.success('Compra registrada correctamente.');
+      }
       setShowForm(false);
-      toast.success('Compra registrada correctamente.');
       load();
     } catch (err) {
-      setError(err.response?.data?.error || 'Error al registrar la compra.');
+      setError(err.response?.data?.error || 'Error al guardar.');
     }
   }
 
@@ -228,6 +236,17 @@ export default function Compras() {
       load();
     } catch (err) {
       toast.error(err.response?.data?.error || 'No se pudo anular la compra.');
+    }
+  }
+
+  async function handleAnularOrder(id) {
+    if (!window.confirm('¿Anular esta orden de compra?')) return;
+    try {
+      await api.post(`/purchase-orders/${id}/anular`);
+      toast.success('Orden de compra anulada.');
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'No se pudo anular la orden.');
     }
   }
 
@@ -257,7 +276,8 @@ export default function Compras() {
       </div>
 
       <div className="ventas-actions">
-        <button className="ventas-action-btn" onClick={openNew}>Registrar Compras</button>
+        <button className="ventas-action-btn" onClick={() => openNew('compra')}>Registrar Compras</button>
+        <button className="ventas-action-btn" onClick={() => openNew('orden')}>Orden de Compra</button>
       </div>
 
       <form className="filter-panel" onSubmit={handleBuscar}>
@@ -334,17 +354,66 @@ export default function Compras() {
         </div>
       </div>
 
+      <h2 className="page-title" style={{ fontSize: 16, marginTop: 28 }}>Órdenes de Compra</h2>
+      <div className="panel">
+        <div className="table-scroll">
+          <table className="data-table compact">
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Nro</th>
+                <th>Proveedor</th>
+                <th>RUC</th>
+                <th style={{ textAlign: 'right' }}>Total</th>
+                <th>Estado</th>
+                <th>Baja</th>
+              </tr>
+            </thead>
+            <tbody>
+              {orders.map((o) => (
+                <tr key={o.id}>
+                  <td>{o.fecha}</td>
+                  <td>{String(o.numero).padStart(5, '0')}</td>
+                  <td>{o.proveedor_nombre}</td>
+                  <td>{o.proveedor_ruc}</td>
+                  <td style={{ textAlign: 'right' }}>S/ {Number(o.total).toFixed(2)}</td>
+                  <td>
+                    <span className={'badge ' + (o.estado === 'anulada' ? 'badge-critical' : o.estado === 'recibida' ? 'badge-good' : 'badge-warning')}>
+                      {o.estado === 'anulada' ? 'Anulada' : o.estado === 'recibida' ? 'Recibida' : 'Pendiente'}
+                    </span>
+                  </td>
+                  <td>
+                    {o.estado === 'pendiente' ? (
+                      <button className="btn-link danger" onClick={() => handleAnularOrder(o.id)}>Anular</button>
+                    ) : (
+                      <span className="icon-link muted">—</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+              {orders.length === 0 && (
+                <tr><td colSpan={7} className="empty-row">No hay órdenes de compra en el rango seleccionado.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       {showForm && (
         <div className="modal-overlay" onClick={() => setShowForm(false)}>
           <div className="modal modal-xl" onClick={(e) => e.stopPropagation()}>
-            <h2>Registrar Compra</h2>
+            <h2>{formMode === 'orden' ? 'Orden de Compra' : 'Registrar Compra'}</h2>
             <form onSubmit={handleSubmit}>
               <div className="compra-header-grid">
                 <div>
                   <label>Documento</label>
-                  <select required value={tipoComprobante} onChange={(e) => setTipoComprobante(e.target.value)}>
-                    {TIPOS_COMPROBANTE.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-                  </select>
+                  {formMode === 'orden' ? (
+                    <input readOnly value="Orden de Compra" />
+                  ) : (
+                    <select required value={tipoComprobante} onChange={(e) => setTipoComprobante(e.target.value)}>
+                      {TIPOS_COMPROBANTE.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                    </select>
+                  )}
                 </div>
                 <div>
                   <label>Proveedor</label>
@@ -407,14 +476,16 @@ export default function Compras() {
                     {MONEDAS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
                   </select>
                 </div>
-                <div>
-                  <label>Forma de pago</label>
-                  <select value={formaPago} onChange={(e) => setFormaPago(e.target.value)}>
-                    <option value="efectivo">Efectivo</option>
-                    <option value="tarjeta">Tarjeta</option>
-                    <option value="banco">Transferencia / Banco</option>
-                  </select>
-                </div>
+                {formMode !== 'orden' && (
+                  <div>
+                    <label>Forma de pago</label>
+                    <select value={formaPago} onChange={(e) => setFormaPago(e.target.value)}>
+                      <option value="efectivo">Efectivo</option>
+                      <option value="tarjeta">Tarjeta</option>
+                      <option value="banco">Transferencia / Banco</option>
+                    </select>
+                  </div>
+                )}
               </div>
 
               <label>Items</label>
@@ -500,7 +571,7 @@ export default function Compras() {
               {error && <div className="form-error">{error}</div>}
               <div className="modal-actions">
                 <button type="button" className="btn-secondary" onClick={() => setShowForm(false)}>Cancelar</button>
-                <button type="submit" className="btn-primary">Registrar Compra</button>
+                <button type="submit" className="btn-primary">{formMode === 'orden' ? 'Guardar' : 'Registrar Compra'}</button>
               </div>
             </form>
           </div>
