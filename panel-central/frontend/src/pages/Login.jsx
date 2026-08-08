@@ -125,7 +125,7 @@ export default function Login() {
         <FloatingShapes />
         <div className="auth-illustration-brand">
           <ShieldCheck size={18} />
-          <span>Panel <span className="brand-suffix">Central</span></span>
+          <span>QORIA <span className="brand-suffix">Central</span></span>
         </div>
         <LoginIllustration />
       </div>

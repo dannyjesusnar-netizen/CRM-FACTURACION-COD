@@ -80,7 +80,7 @@ export default function Layout() {
     <div className="app-shell">
       <header className="topbar">
         <div className="topbar-brand" onClick={() => navigate('/menu')}>
-          <span className="brand-mark">CRM</span>
+          <span className="brand-mark">QORIA</span>
           <span className="brand-suffix">Facturación</span>
         </div>
         <div className="topbar-company">

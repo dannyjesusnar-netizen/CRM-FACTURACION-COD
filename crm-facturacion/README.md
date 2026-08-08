@@ -1,4 +1,4 @@
-# CRM Facturación
+# QORIA
 
 Sistema de ventas / CRM inspirado en el flujo de RapiFac (menú principal con
 módulos, ventas con comprobantes electrónicos, dashboard y reportes), construido

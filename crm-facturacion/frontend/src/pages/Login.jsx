@@ -126,7 +126,7 @@ export default function Login() {
         <FloatingShapes />
         <div className="auth-illustration-brand">
           <Receipt size={18} />
-          <span>CRM <span className="brand-suffix">Facturación</span></span>
+          <span>QORIA <span className="brand-suffix">Facturación</span></span>
         </div>
         <LoginIllustration />
       </div>

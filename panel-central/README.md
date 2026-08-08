@@ -1,4 +1,4 @@
-# Panel Central
+# QORIA Central
 
 App de uso exclusivo del dueño del producto (no de las empresas que rentan
 el CRM), para aprobar y administrar a los clientes que se registran solos
