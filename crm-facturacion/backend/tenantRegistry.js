@@ -7,9 +7,9 @@ const { DATA_DIR } = require('./db');
 // (login → botón Registro). Es una base sqlite propia, separada de la de
 // cada empresa: solo guarda a qué archivo .db corresponde cada RUC, si esa
 // empresa ya fue aprobada, y su suscripción a la plataforma (costo mensual,
-// tarjeta tokenizada en Culqi, historial de cobros) — nunca datos de
+// tarjeta tokenizada en Izipay, historial de cobros) — nunca datos de
 // negocio de la empresa (eso vive aislado en su propio .db, ver db.js), y
-// nunca el número de tarjeta real (eso lo guarda Culqi, acá solo sus IDs).
+// nunca el número de tarjeta real (eso lo guarda Izipay, acá solo su token).
 const TENANTS_DIR = path.join(DATA_DIR, 'tenants');
 if (!fs.existsSync(TENANTS_DIR)) fs.mkdirSync(TENANTS_DIR, { recursive: true });
 
@@ -33,20 +33,19 @@ CREATE TABLE IF NOT EXISTS pagos_plataforma (
   ruc TEXT NOT NULL,
   monto REAL NOT NULL,
   estado TEXT NOT NULL, -- exitoso | fallido
-  culqi_cargo_id TEXT,
+  izipay_cargo_id TEXT,
   mensaje TEXT,
   created_at TEXT DEFAULT (datetime('now'))
 );
 `);
 
 // --- Migración: columnas de suscripción a la plataforma (costo que le
-// corresponde pagar a cada empresa, y su tarjeta tokenizada en Culqi) ---
+// corresponde pagar a cada empresa, y su tarjeta tokenizada en Izipay) ---
 const tenantColumns = registryDb.prepare("PRAGMA table_info(tenants)").all().map((c) => c.name);
 const TENANT_SUSCRIPCION_COLUMNS = [
   ['costo_mensual', 'REAL'], // en soles (S/); NULL = todavía sin asignar por el dueño de la plataforma
   ['fecha_inicio_suscripcion', 'TEXT'], // YYYY-MM-DD desde la que corre el cobro
-  ['culqi_customer_id', 'TEXT'],
-  ['culqi_card_id', 'TEXT'],
+  ['izipay_token', 'TEXT'], // paymentMethodToken guardado
   ['tarjeta_marca', 'TEXT'],
   ['tarjeta_ultimos4', 'TEXT'],
   ['ultimo_cobro_at', 'TEXT'],
@@ -58,6 +57,10 @@ for (const [col, def] of TENANT_SUSCRIPCION_COLUMNS) {
   if (!tenantColumns.includes(col)) {
     registryDb.exec(`ALTER TABLE tenants ADD COLUMN ${col} ${def}`);
   }
+}
+const pagosPlataformaColumns = registryDb.prepare("PRAGMA table_info(pagos_plataforma)").all().map((c) => c.name);
+if (!pagosPlataformaColumns.includes('izipay_cargo_id')) {
+  registryDb.exec('ALTER TABLE pagos_plataforma ADD COLUMN izipay_cargo_id TEXT');
 }
 
 function tenantDbPath(ruc) {
@@ -110,32 +113,32 @@ function setCosto(ruc, { costo_mensual, fecha_inicio_suscripcion }) {
   return findTenant(ruc);
 }
 
-function guardarTarjeta(ruc, { culqi_customer_id, culqi_card_id, tarjeta_marca, tarjeta_ultimos4 }) {
+function guardarTarjeta(ruc, { izipay_token, tarjeta_marca, tarjeta_ultimos4 }) {
   const tenant = findTenant(ruc);
   if (!tenant) return null;
   // Si todavía no tenía fecha de inicio (el dueño de la plataforma no la
   // asignó a mano), arranca desde que se guarda la primera tarjeta.
   const fecha = tenant.fecha_inicio_suscripcion || new Date().toISOString().slice(0, 10);
   registryDb.prepare(
-    `UPDATE tenants SET culqi_customer_id = ?, culqi_card_id = ?, tarjeta_marca = ?, tarjeta_ultimos4 = ?,
+    `UPDATE tenants SET izipay_token = ?, tarjeta_marca = ?, tarjeta_ultimos4 = ?,
      fecha_inicio_suscripcion = ?, suscripcion_estado = 'activa', proximo_cobro_at = COALESCE(proximo_cobro_at, ?)
      WHERE ruc = ?`
-  ).run(culqi_customer_id, culqi_card_id, tarjeta_marca, tarjeta_ultimos4, fecha, fecha, ruc);
+  ).run(izipay_token, tarjeta_marca, tarjeta_ultimos4, fecha, fecha, ruc);
   return findTenant(ruc);
 }
 
 function quitarTarjeta(ruc) {
   registryDb.prepare(
-    `UPDATE tenants SET culqi_customer_id = NULL, culqi_card_id = NULL, tarjeta_marca = NULL, tarjeta_ultimos4 = NULL,
+    `UPDATE tenants SET izipay_token = NULL, tarjeta_marca = NULL, tarjeta_ultimos4 = NULL,
      suscripcion_estado = 'sin_tarjeta' WHERE ruc = ?`
   ).run(ruc);
   return findTenant(ruc);
 }
 
-function registrarPago(ruc, { monto, estado, culqi_cargo_id, mensaje, proximo_cobro_at }) {
+function registrarPago(ruc, { monto, estado, izipay_cargo_id, mensaje, proximo_cobro_at }) {
   registryDb.prepare(
-    'INSERT INTO pagos_plataforma (ruc, monto, estado, culqi_cargo_id, mensaje) VALUES (?, ?, ?, ?, ?)'
-  ).run(ruc, monto, estado, culqi_cargo_id || null, mensaje || null);
+    'INSERT INTO pagos_plataforma (ruc, monto, estado, izipay_cargo_id, mensaje) VALUES (?, ?, ?, ?, ?)'
+  ).run(ruc, monto, estado, izipay_cargo_id || null, mensaje || null);
   registryDb.prepare(
     `UPDATE tenants SET ultimo_cobro_at = datetime('now'), proximo_cobro_at = ?,
      suscripcion_estado = ? WHERE ruc = ?`
@@ -153,7 +156,7 @@ function tenantsConCobroVencido() {
   const hoy = new Date().toISOString().slice(0, 10);
   return registryDb.prepare(
     `SELECT * FROM tenants
-     WHERE estado = 'aprobado' AND culqi_card_id IS NOT NULL AND costo_mensual IS NOT NULL
+     WHERE estado = 'aprobado' AND izipay_token IS NOT NULL AND costo_mensual IS NOT NULL
        AND proximo_cobro_at IS NOT NULL AND proximo_cobro_at <= ?`
   ).all(hoy);
 }

@@ -3,11 +3,11 @@
 // venció y con tarjeta guardada, y les cobra el costo mensual que les
 // asignó el dueño de la plataforma vía panel central.
 const tenantRegistry = require('../tenantRegistry');
-const culqi = require('./culqi');
+const izipay = require('./izipay');
 const db = require('../db');
 const { sumarUnMes } = require('./fechas');
 
-// Nombre + email de contacto para el cargo en Culqi: usa la cuenta
+// Nombre + email de contacto para el cargo en Izipay: usa la cuenta
 // Gerencia de esa empresa (primer usuario, sembrado al registrarse).
 function contactoDeEmpresa(tenant) {
   const tenantDb = db.openTenantDb(tenant.db_file);
@@ -17,9 +17,10 @@ function contactoDeEmpresa(tenant) {
 
 async function cobrarEmpresa(tenant) {
   const { email } = contactoDeEmpresa(tenant);
-  const resultado = await culqi.cobrar({
+  const resultado = await izipay.cobrar({
     monto: tenant.costo_mensual,
-    cardId: tenant.culqi_card_id,
+    paymentMethodToken: tenant.izipay_token,
+    orderId: `sub-plataforma-${tenant.ruc}-${Date.now()}`,
     email,
     descripcion: `Suscripción plataforma — ${tenant.razon_social} (RUC ${tenant.ruc})`,
   });
@@ -27,7 +28,7 @@ async function cobrarEmpresa(tenant) {
   tenantRegistry.registrarPago(tenant.ruc, {
     monto: tenant.costo_mensual,
     estado: resultado.exitoso ? 'exitoso' : 'fallido',
-    culqi_cargo_id: resultado.cargoId || null,
+    izipay_cargo_id: resultado.cargoId || null,
     mensaje: resultado.mensaje,
     proximo_cobro_at: proximoCobro,
   });

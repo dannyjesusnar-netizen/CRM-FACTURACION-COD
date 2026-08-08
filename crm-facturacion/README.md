@@ -334,7 +334,7 @@ plan gratuito limitado):
   **nunca se bloquea** por eso — es una verificación de mejor esfuerzo, no
   un requisito indispensable.
 
-## Suscripción a la plataforma: cobro recurrente con Culqi (`CULQI_SECRET_KEY`)
+## Suscripción a la plataforma: cobro recurrente con Izipay (`IZIPAY_USERNAME` / `IZIPAY_PASSWORD`)
 
 Cada empresa registrada (ver sección anterior) puede tener asignado un
 **costo mensual** que le corresponde pagar por usar la plataforma — esto es
@@ -346,51 +346,17 @@ independiente de lo que esa empresa les cobra a sus propios clientes.
   editable "Costo mensual (S/)" por fila.
 - **La empresa** ve ese costo, su fecha de inicio, el estado de su
   suscripción y su historial de cobros desde **Gerencia → Mis pagos**
-  (dentro del CRM), donde también agrega la tarjeta con la que se le va a
-  cobrar automáticamente cada mes.
+  (dentro del CRM), donde también toca **PAGAR** para agregar la tarjeta
+  con la que se le va a cobrar automáticamente cada mes.
 - El cobro es **automático**: un proceso interno revisa cada 6 horas si
   hay suscripciones vencidas y las cobra contra la tarjeta guardada,
   registrando el resultado (éxito o fallo) en el historial.
 
-La tarjeta se tokeniza en el navegador con **Culqi.js** (pasarela peruana)
-y el número real nunca pasa por este servidor — solo se guarda el ID que
-Culqi le asigna a esa tarjeta. Para activarlo, creá una cuenta de comercio
-en [culqi.com](https://culqi.com) y agregá estas variables de entorno:
-
-| Variable | Valor |
-| --- | --- |
-| `CULQI_SECRET_KEY` | tu llave secreta (`sk_test_...` para pruebas, `sk_live_...` en producción) |
-| `CULQI_PUBLIC_KEY` | tu llave pública (`pk_test_...` / `pk_live_...`) — esta sí se le manda al navegador, es segura de exponer |
-
-Sin estas variables configuradas, "Mis pagos" sigue mostrando el costo y la
-fecha de inicio con total normalidad, pero no se puede agregar una tarjeta
-ni se procesa ningún cobro — modo simulado, igual que el resto de
-integraciones externas de este sistema (SUNAT, verificación de RUC).
-
-⚠️ Esta integración sigue la documentación pública de Culqi pero no pudo
-probarse contra una cuenta real al escribirla (sin credenciales
-disponibles). Antes de usarla en producción, probala primero con tus
-llaves de prueba (`sk_test_`/`pk_test_`) y una tarjeta de prueba de Culqi,
-y confirmá que las respuestas coinciden con lo que espera
-`backend/utils/culqi.js` — ajustalo si algún campo cambió en su API.
-
-## Cobro recurrente a tus clientes con Izipay (`IZIPAY_USERNAME` / `IZIPAY_PASSWORD`)
-
-Esto es lo opuesto a la sección anterior: no es lo que vos le pagás a la
-plataforma, sino lo que **tus propios clientes te pagan a vos** cada mes
-(una cuota, una membresía, un servicio recurrente) — se configura desde
-**Personas → Suscripciones** dentro del CRM.
-
-Por cada cliente eliges el monto mensual y el día de cobro, y el cliente
-agrega su tarjeta una sola vez (nunca pasa por este servidor — se captura
-dentro del formulario embebido de Izipay). Desde ahí el cobro es
-**automático**: el mismo proceso interno que revisa la suscripción a la
-plataforma (cada 6 horas) también revisa las suscripciones de tus clientes
-y las cobra contra la tarjeta guardada, registrando el resultado en su
-historial.
-
-Para activarlo, creá una cuenta de comercio en
-[izipay.pe](https://www.izipay.pe) y agregá estas variables de entorno:
+La tarjeta se captura dentro del formulario embebido de **Izipay** (pasarela
+peruana) y el número real nunca pasa por este servidor — solo se guarda el
+token que Izipay le asigna a esa tarjeta. Para activarlo, creá una cuenta de
+comercio en [izipay.pe](https://www.izipay.pe) y agregá estas variables de
+entorno:
 
 | Variable | Valor |
 | --- | --- |
@@ -399,19 +365,18 @@ Para activarlo, creá una cuenta de comercio en
 | `IZIPAY_PUBLIC_KEY` | tu llave pública — esta sí se le manda al navegador, es segura de exponer |
 | `IZIPAY_HMAC_KEY` | opcional — llave HMAC-SHA-256 de tu cuenta, para validar la firma de la respuesta del formulario |
 
-Sin `IZIPAY_USERNAME`/`IZIPAY_PASSWORD`/`IZIPAY_PUBLIC_KEY` configuradas,
-"Suscripciones" sigue funcionando con total normalidad para crear/editar
-suscripciones (monto y día de cobro), pero no se puede agregar una tarjeta
+Sin estas variables configuradas, "Mis pagos" sigue mostrando el costo y la
+fecha de inicio con total normalidad, pero no se puede agregar una tarjeta
 ni se procesa ningún cobro — modo simulado, igual que el resto de
-integraciones externas de este sistema.
+integraciones externas de este sistema (SUNAT, verificación de RUC).
 
-⚠️ A diferencia de Culqi, esta integración **no pudo verificarse ni contra
-la documentación oficial de Izipay Perú ni contra una cuenta de prueba
-real** (quedaron fuera de alcance de red al escribirla). Antes de usarla en
-producción: creá una cuenta de comercio, conseguí tus credenciales de
-prueba, probá el flujo completo con una tarjeta de prueba, y confirmá que
-las respuestas coinciden con lo que espera `backend/utils/izipay.js` —
-ajustalo si algún nombre de campo cambió en su API.
+⚠️ Esta integración sigue la documentación pública de Izipay (host y
+endpoint de su API confirmados) pero no pudo probarse contra una cuenta
+real ni contra developers.izipay.pe (fuera de alcance de red al
+escribirla). Antes de usarla en producción, creá tu cuenta de comercio,
+probala primero con tus credenciales de prueba y una tarjeta de prueba, y
+confirmá que las respuestas coinciden con lo que espera
+`backend/utils/izipay.js` — ajustalo si algún campo cambió en su API.
 
 ## Estructura del proyecto
 

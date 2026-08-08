@@ -49,7 +49,6 @@ const ACCIONES_POR_MODULO = {
   clientes: [
     { key: 'crear_editar', label: 'Crear / editar clientes', grupo: 'Clientes' },
     { key: 'eliminar', label: 'Eliminar clientes', grupo: 'Clientes' },
-    { key: 'gestionar_suscripciones', label: 'Gestionar cobro recurrente (suscripciones)', grupo: 'Clientes' },
   ],
   caja: [
     { key: 'apertura', label: 'Apertura / saldo inicial', grupo: 'Caja' },
