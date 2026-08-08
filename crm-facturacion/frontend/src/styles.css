@@ -815,6 +815,12 @@ html.dark .btn-export { color: #04231e; }
 .reports-content { flex: 1; min-width: 0; padding: 24px 26px; }
 .reports-content .report-toolbar { margin-top: 0; }
 
+/* ---------- Series y correlativos: Ventas en dos columnas ---------- */
+.series-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 0 32px; align-items: start; }
+@media (max-width: 720px) {
+  .series-columns { grid-template-columns: 1fr; gap: 20px; }
+}
+
 /* ---------- Roles: fila de permiso + toggle ---------- */
 .role-permiso-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 4px; border-bottom: 1px solid var(--border); font-size: 13px; }
 .role-permiso-row:last-child { border-bottom: none; }
