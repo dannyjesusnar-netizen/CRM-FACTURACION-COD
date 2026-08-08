@@ -639,6 +639,8 @@ CREATE TABLE IF NOT EXISTS role_acciones (
     ['descuento_pct', 'REAL NOT NULL DEFAULT 0'],
     ['percepcion', 'REAL NOT NULL DEFAULT 0'],
     ['no_gravado', 'REAL NOT NULL DEFAULT 0'],
+    ['guia_serie', 'TEXT'],
+    ['guia_numero', 'TEXT'],
   ];
   for (const [col, def] of PURCHASE_NEW_COLUMNS) {
     if (!purchaseColumns.includes(col)) {

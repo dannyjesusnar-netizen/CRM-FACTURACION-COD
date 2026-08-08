@@ -69,6 +69,7 @@ router.post('/', requireAccion('compras', 'registrar_compra'), (req, res) => {
     supplier_id, items, fecha, forma_pago, observaciones,
     tipo_comprobante, serie, numero_doc, moneda, tipo_cambio,
     tipo_compra, tipo_operacion, descuento_pct, percepcion,
+    guia_serie, guia_numero,
   } = req.body || {};
 
   if (!supplier_id) return res.status(400).json({ error: 'Selecciona un proveedor.' });
@@ -84,6 +85,9 @@ router.post('/', requireAccion('compras', 'registrar_compra'), (req, res) => {
   if (!serie) return res.status(400).json({ error: 'La serie del documento es requerida.' });
   if (!numero_doc) return res.status(400).json({ error: 'El número del documento es requerido.' });
   if (!fecha) return res.status(400).json({ error: 'La fecha de emisión es requerida.' });
+  if ((guia_serie && !guia_numero) || (!guia_serie && guia_numero)) {
+    return res.status(400).json({ error: 'Completa la serie y el número de la guía de remisión, o deja ambos vacíos.' });
+  }
   if (!moneda || !MONEDAS.includes(moneda)) {
     return res.status(400).json({ error: 'Selecciona la moneda.' });
   }
@@ -150,9 +154,10 @@ router.post('/', requireAccion('compras', 'registrar_compra'), (req, res) => {
     const info = db.prepare(
       `INSERT INTO purchases (
          numero, supplier_id, created_by, fecha, forma_pago, subtotal, igv, total, estado, observaciones, sucursal_id,
-         tipo_comprobante, serie, numero_doc, moneda, tipo_cambio, tipo_compra, tipo_operacion, descuento_pct, percepcion, no_gravado
+         tipo_comprobante, serie, numero_doc, moneda, tipo_cambio, tipo_compra, tipo_operacion, descuento_pct, percepcion, no_gravado,
+         guia_serie, guia_numero
        )
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'registrada', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'registrada', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       numero,
       supplier_id,
@@ -173,7 +178,9 @@ router.post('/', requireAccion('compras', 'registrar_compra'), (req, res) => {
       tipo_operacion,
       descuentoPct,
       percepcionMonto,
-      noGravado
+      noGravado,
+      guia_serie || null,
+      guia_numero || null
     );
     const purchaseId = info.lastInsertRowid;
     const insertItem = db.prepare(

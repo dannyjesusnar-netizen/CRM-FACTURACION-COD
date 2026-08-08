@@ -91,6 +91,8 @@ export default function Compras() {
   const [tipoOperacion, setTipoOperacion] = useState('gravada_exportacion');
   const [descuentoPct, setDescuentoPct] = useState(0);
   const [percepcion, setPercepcion] = useState(0);
+  const [guiaSerie, setGuiaSerie] = useState('');
+  const [guiaNumero, setGuiaNumero] = useState('');
 
   function load(overrides = {}) {
     const params = {};
@@ -147,6 +149,8 @@ export default function Compras() {
     setTipoOperacion('gravada_exportacion');
     setDescuentoPct(0);
     setPercepcion(0);
+    setGuiaSerie('');
+    setGuiaNumero('');
     setError('');
     setShowForm(true);
   }
@@ -192,6 +196,10 @@ export default function Compras() {
     if (!docSerie || !docNumero) { setError('Ingresa la serie y el número del documento.'); return; }
     if (!fechaEmision) { setError('Ingresa la fecha de emisión.'); return; }
     if (moneda === 'USD' && Number(tipoCambio) <= 0) { setError('Ingresa un tipo de cambio válido.'); return; }
+    if (formMode === 'compra' && ((guiaSerie && !guiaNumero) || (!guiaSerie && guiaNumero))) {
+      setError('Completa la serie y el número de la guía de remisión, o deja ambos vacíos.');
+      return;
+    }
     if (items.length === 0 || items.some((it) => !it.product_id || !it.cantidad)) {
       setError('Completa todos los items (producto y cantidad).');
       return;
@@ -225,7 +233,13 @@ export default function Compras() {
         });
         toast.success(`${ordenDocumento} guardada correctamente.`);
       } else {
-        await api.post('/purchases', { ...payload, forma_pago: formaPago, tipo_comprobante: tipoComprobante });
+        await api.post('/purchases', {
+          ...payload,
+          forma_pago: formaPago,
+          tipo_comprobante: tipoComprobante,
+          guia_serie: guiaSerie || null,
+          guia_numero: guiaNumero || null,
+        });
         toast.success('Compra registrada correctamente.');
       }
       setShowForm(false);
@@ -279,6 +293,7 @@ export default function Compras() {
     key: `compra-${p.id}`, kind: 'compra', id: p.id, fecha: p.fecha,
     documento: DOCUMENTO_LABEL[p.tipo_comprobante] || (p.tipo_comprobante || '').toUpperCase(),
     serie: p.serie || '—', numeroDoc: p.numero_doc || String(p.numero).padStart(5, '0'),
+    guia: p.guia_serie && p.guia_numero ? `${p.guia_serie}-${p.guia_numero}` : '—',
     ruc: p.proveedor_ruc, nombre: p.proveedor_nombre, moneda: p.moneda || 'PEN',
     importe: round2(Number(p.subtotal || 0) + Number(p.igv || 0) + Number(p.no_gravado || 0)),
     tipoCambio: p.tipo_cambio || 1, total: p.total, sucursal: p.sucursal_nombre,
@@ -290,6 +305,7 @@ export default function Compras() {
     key: `orden-${o.id}`, kind: 'orden', id: o.id, fecha: o.fecha,
     documento: DOCUMENTO_LABEL[o.tipo_documento] || 'ORDEN DE COMPRA',
     serie: o.serie || '—', numeroDoc: o.numero_doc || String(o.numero).padStart(5, '0'),
+    guia: '—',
     ruc: o.proveedor_ruc, nombre: o.proveedor_nombre, moneda: o.moneda || 'PEN',
     importe: round2(Number(o.subtotal || 0) + Number(o.igv || 0) + Number(o.no_gravado || 0)),
     tipoCambio: o.tipo_cambio || 1, total: o.total, sucursal: o.sucursal_nombre,
@@ -354,6 +370,7 @@ export default function Compras() {
                 <th>Documento</th>
                 <th>Serie</th>
                 <th>Número</th>
+                <th>Guía</th>
                 <th>Nro Doc</th>
                 <th>Nombre o Razón Social</th>
                 <th>(M)</th>
@@ -372,6 +389,7 @@ export default function Compras() {
                   <td>{r.documento}</td>
                   <td>{r.serie}</td>
                   <td>{r.numeroDoc}</td>
+                  <td>{r.guia}</td>
                   <td>{r.ruc}</td>
                   <td>{r.nombre}</td>
                   <td>{r.moneda === 'USD' ? '$' : 'S/'}</td>
@@ -392,12 +410,12 @@ export default function Compras() {
                 </tr>
               ))}
               {registros.length === 0 && (
-                <tr><td colSpan={13} className="empty-row">No hay registros en el rango seleccionado.</td></tr>
+                <tr><td colSpan={14} className="empty-row">No hay registros en el rango seleccionado.</td></tr>
               )}
             </tbody>
             <tfoot>
               <tr className="totals-footer">
-                <td colSpan={6}>Cantidad: {registros.length}</td>
+                <td colSpan={7}>Cantidad: {registros.length}</td>
                 <td colSpan={7}>
                   Gran Total S/ <input readOnly value={sumaTotal.toFixed(2)} />
                 </td>
@@ -444,6 +462,16 @@ export default function Compras() {
                     <input required placeholder="Número" value={docNumero} onChange={(e) => setDocNumero(e.target.value)} />
                   </div>
                 </div>
+                {formMode === 'compra' && (
+                  <div>
+                    <label>Guía de remisión (opcional)</label>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <input placeholder="Serie" value={guiaSerie} onChange={(e) => setGuiaSerie(e.target.value)} style={{ width: 90 }} />
+                      <span>-</span>
+                      <input placeholder="Número" value={guiaNumero} onChange={(e) => setGuiaNumero(e.target.value)} />
+                    </div>
+                  </div>
+                )}
                 <div>
                   <label>Compra (destino de la operación)</label>
                   <select required value={tipoOperacion} onChange={(e) => setTipoOperacion(e.target.value)}>
