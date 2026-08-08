@@ -2,6 +2,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const db = require('../db');
 const tenantRegistry = require('../tenantRegistry');
+const { resolveTenantDb } = require('../utils/tenant');
 const { requirePlatformToken } = require('../middleware/platform');
 const { passwordError } = require('../utils/password');
 
@@ -18,7 +19,9 @@ router.get('/empresa', (req, res) => {
   const empresa = db.prepare(
     'SELECT razon_social, nombre_comercial, ruc, telefono FROM empresa_config WHERE id = 1'
   ).get();
-  res.json(empresa || null);
+  if (!empresa) return res.json(null);
+  const { n: sucursales_count } = db.prepare('SELECT COUNT(*) AS n FROM sucursales WHERE activo = 1').get();
+  res.json({ ...empresa, sucursales_count });
 });
 
 // GET /api/platform/users — TODAS las cuentas, no solo gerencia: una cuenta
@@ -67,8 +70,18 @@ router.get('/registros-pendientes', (req, res) => {
   res.json(tenantRegistry.listPendientes());
 });
 
+// Cada fila es una empresa auto-registrada en ESTA misma instancia, con su
+// propia base aislada (ver utils/tenant.js) — el número de sucursales se
+// lee de ahí mismo, sin llamadas de red, igual que hace panel-central para
+// las suyas (ver localTenants.js).
 router.get('/registros', (req, res) => {
-  res.json(tenantRegistry.listTodos());
+  res.json(tenantRegistry.listTodos().map((t) => {
+    const tenantDb = resolveTenantDb(t.ruc);
+    const sucursales_count = tenantDb
+      ? db.runWithDb(tenantDb, () => db.prepare('SELECT COUNT(*) AS n FROM sucursales WHERE activo = 1').get().n)
+      : null;
+    return { ...t, sucursales_count };
+  }));
 });
 
 router.put('/registros/:ruc/aprobar', (req, res) => {
@@ -81,6 +94,15 @@ router.put('/registros/:ruc/rechazar', (req, res) => {
   const tenant = tenantRegistry.findTenant(req.params.ruc);
   if (!tenant) return res.status(404).json({ error: 'Registro no encontrado.' });
   res.json(tenantRegistry.rechazarTenant(req.params.ruc));
+});
+
+// PUT /api/platform/registros/:ruc/activo { activo } — suspende o reactiva
+// el acceso de esta empresa (ver gating en routes/auth.js login), sin
+// tocar su estado de aprobación ni su historial de cobros.
+router.put('/registros/:ruc/activo', (req, res) => {
+  const tenant = tenantRegistry.findTenant(req.params.ruc);
+  if (!tenant) return res.status(404).json({ error: 'Registro no encontrado.' });
+  res.json(req.body?.activo ? tenantRegistry.activarTenant(req.params.ruc) : tenantRegistry.desactivarTenant(req.params.ruc));
 });
 
 // PUT /api/platform/registros/:ruc/costo { costo_mensual, fecha_inicio_suscripcion? }

@@ -40,6 +40,12 @@ router.put('/locales/:ruc/rechazar', (req, res) => {
   res.json(localTenants.rechazar(req.params.ruc));
 });
 
+// PUT /api/companies/locales/:ruc/activo { activo }
+router.put('/locales/:ruc/activo', (req, res) => {
+  if (!getLocalTenantOr404(req, res)) return;
+  res.json(req.body?.activo ? localTenants.activar(req.params.ruc) : localTenants.desactivar(req.params.ruc));
+});
+
 // PUT /api/companies/locales/:ruc/costo { costo_mensual, fecha_inicio_suscripcion? }
 router.put('/locales/:ruc/costo', (req, res) => {
   if (!getLocalTenantOr404(req, res)) return;
@@ -193,11 +199,20 @@ router.put('/:id/live/registros/:ruc/rechazar', (req, res) =>
   proxy(req, res, `/registros/${req.params.ruc}/rechazar`, { method: 'PUT', body: {} })
 );
 
-// PUT /api/companies/:id/live/registros/:ruc/costo { costo_mensual } — lo
-// que le corresponde pagar a esa empresa por mes de suscripción a la
+// PUT /api/companies/:id/live/registros/:ruc/costo { costo_mensual, fecha_inicio_suscripcion? }
+// Lo que le corresponde pagar a esa empresa por mes de suscripción a la
 // plataforma (ver "Mis pagos" del lado del CRM).
 router.put('/:id/live/registros/:ruc/costo', (req, res) =>
-  proxy(req, res, `/registros/${req.params.ruc}/costo`, { method: 'PUT', body: { costo_mensual: req.body?.costo_mensual } })
+  proxy(req, res, `/registros/${req.params.ruc}/costo`, {
+    method: 'PUT',
+    body: { costo_mensual: req.body?.costo_mensual, fecha_inicio_suscripcion: req.body?.fecha_inicio_suscripcion || null },
+  })
+);
+
+// PUT /api/companies/:id/live/registros/:ruc/activo { activo } — suspende
+// o reactiva el acceso de esa empresa sin tocar su historial.
+router.put('/:id/live/registros/:ruc/activo', (req, res) =>
+  proxy(req, res, `/registros/${req.params.ruc}/activo`, { method: 'PUT', body: { activo: !!req.body?.activo } })
 );
 
 // GET /api/companies/:id/live/registros/:ruc/pagos — historial de cobros.

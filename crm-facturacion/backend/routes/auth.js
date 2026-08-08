@@ -27,6 +27,12 @@ router.post('/login', (req, res) => {
   if (tenant && tenant.estado === 'rechazado') {
     return res.status(401).json({ error: 'Credenciales incorrectas.' });
   }
+  // Suspensión manual del dueño de la plataforma (ej. falta de pago) — a
+  // diferencia de "rechazado", puede reactivarse en cualquier momento desde
+  // panel-central sin perder la aprobación ni el historial.
+  if (tenant && tenant.estado === 'aprobado' && !tenant.activo) {
+    return res.status(403).json({ error: 'Tu empresa fue suspendida temporalmente. Contacta al soporte de la plataforma.' });
+  }
 
   const tenantDb = resolveTenantDb(ruc);
 

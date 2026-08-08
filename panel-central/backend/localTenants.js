@@ -37,21 +37,41 @@ function empresaOriginal() {
   if (!crmDb) return null;
   const config = crmDb.prepare('SELECT ruc, razon_social, nombre_comercial FROM empresa_config WHERE id = 1').get();
   if (!config || !config.ruc) return null;
+  const { n: sucursales_count } = crmDb.prepare('SELECT COUNT(*) AS n FROM sucursales WHERE activo = 1').get();
   return {
     ruc: config.ruc,
     razon_social: config.nombre_comercial || config.razon_social,
     estado: 'aprobado',
+    activo: 1,
     costo_mensual: null,
+    fecha_inicio_suscripcion: null,
     proximo_cobro_at: null,
     created_at: null,
+    ingreso_total: null,
+    sucursales_count,
     es_original: true,
   };
+}
+
+// Cuánto le corresponde a cada RUC ver en el conteo de sucursales/ingresos
+// requiere leer su propia base aislada (cross-db, ver listarMensajes más
+// abajo para la misma técnica) — se calcula por fila al listar, no es
+// costoso porque todo corre en el mismo proceso (sin red).
+function sucursalesCount(ruc) {
+  if (!resolveTenantDb || !crmDb) return null;
+  const tenantDb = resolveTenantDb(ruc);
+  if (!tenantDb) return null;
+  return crmDb.runWithDb(tenantDb, () => crmDb.prepare('SELECT COUNT(*) AS n FROM sucursales WHERE activo = 1').get().n);
 }
 
 function listarEmpresas() {
   if (!tenantRegistry) return [];
   const original = empresaOriginal();
-  const registradas = tenantRegistry.listTodos();
+  const registradas = tenantRegistry.listTodos().map((t) => ({
+    ...t,
+    ingreso_total: tenantRegistry.ingresoTotal(t.ruc),
+    sucursales_count: sucursalesCount(t.ruc),
+  }));
   return original ? [original, ...registradas] : registradas;
 }
 
@@ -69,6 +89,14 @@ function aprobar(ruc) {
 
 function rechazar(ruc) {
   return tenantRegistry.rechazarTenant(ruc);
+}
+
+function activar(ruc) {
+  return tenantRegistry.activarTenant(ruc);
+}
+
+function desactivar(ruc) {
+  return tenantRegistry.desactivarTenant(ruc);
 }
 
 function setCosto(ruc, datos) {
@@ -105,6 +133,6 @@ function marcarMensajeLeido(ruc, id) {
 }
 
 module.exports = {
-  disponible, listarEmpresas, encontrar, aprobar, rechazar, setCosto, listarPagos,
+  disponible, listarEmpresas, encontrar, aprobar, rechazar, activar, desactivar, setCosto, listarPagos,
   listarMensajes, marcarMensajeLeido,
 };
