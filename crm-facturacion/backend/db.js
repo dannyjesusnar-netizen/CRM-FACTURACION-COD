@@ -907,6 +907,13 @@ CREATE TABLE IF NOT EXISTS role_acciones (
       insertSiFalta.run(tipo, suc.id, siguienteSerieDisponible(tipo, existentes));
     }
   }
+  // Órdenes de compra/servicio se agregaron después — se siembran aparte
+  // (con INSERT OR IGNORE) para que las bases ya existentes también las reciban.
+  const insertSerieIgnore = db.prepare(
+    'INSERT OR IGNORE INTO series_config (tipo_documento, serie, siguiente_numero) VALUES (?, ?, 1)'
+  );
+  insertSerieIgnore.run('orden_compra', 'OC01');
+  insertSerieIgnore.run('orden_servicio', 'OS01');
 
   // Tipos de compra: se siembran con los mismos 5 que el formulario de
   // Compras venía usando hardcodeados, para no romper compras/órdenes ya
