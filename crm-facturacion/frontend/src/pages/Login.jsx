@@ -24,18 +24,21 @@ function LoginIllustration() {
         <rect x="-38" y="55" width="76" height="9" rx="4" fill="#c7c9f4" />
       </g>
 
-      {/* laptop, orbitando arriba */}
-      <g transform="translate(195 45)">
-        <rect x="-16" y="-14" width="32" height="22" rx="2" fill="#ffffff" stroke="#c7c9f4" strokeWidth="1.5" />
-        <rect x="-12" y="-10" width="24" height="14" rx="1.5" fill="#a5b4fc" />
-        <path d="M-20 8 L20 8 L24 14 L-24 14 Z" fill="#6366f1" />
-      </g>
-
-      {/* calculadora + signos, orbitando en movimiento continuo alrededor de
-          la computadora — cada uno gira en sentido contrario al grupo para
-          quedar siempre derecho (nunca de cabeza) mientras da la vuelta. */}
+      {/* laptop, calculadora, signos, celular (terminal) y camión con
+          persona, orbitando en movimiento continuo alrededor de la
+          computadora central — cada uno gira en sentido contrario al grupo
+          para quedar siempre derecho (nunca de cabeza) mientras da la vuelta. */}
       <g>
         <animateTransform attributeName="transform" type="rotate" from="0 195 150" to="360 195 150" dur="22s" repeatCount="indefinite" />
+
+        <g transform="translate(195 45)">
+          <g>
+            <animateTransform attributeName="transform" type="rotate" from="360 0 0" to="0 0 0" dur="22s" repeatCount="indefinite" />
+            <rect x="-16" y="-14" width="32" height="22" rx="2" fill="#ffffff" stroke="#c7c9f4" strokeWidth="1.5" />
+            <rect x="-12" y="-10" width="24" height="14" rx="1.5" fill="#a5b4fc" />
+            <path d="M-20 8 L20 8 L24 14 L-24 14 Z" fill="#6366f1" />
+          </g>
+        </g>
 
         <g transform="translate(297 85)">
           <g>
@@ -67,40 +70,49 @@ function LoginIllustration() {
             <text x="0" y="6" textAnchor="middle" fontSize="15" fontWeight="800" fill="#ffffff" fontFamily="Arial, sans-serif">S/</text>
           </g>
         </g>
-      </g>
 
-      {/* terminal pos */}
-      <g transform="translate(322 173)">
-        <rect x="-16" y="-27" width="12" height="8" rx="1.5" fill="#fbbf24" />
-        <rect x="-16" y="-20" width="32" height="40" rx="5" fill="#ffffff" stroke="#c7c9f4" strokeWidth="1.5" />
-        <rect x="-11" y="-15" width="22" height="12" rx="2" fill="#6366f1" />
-        <rect x="-11" y="0" width="6" height="6" rx="1" fill="#c7c9f4" />
-        <rect x="-2" y="0" width="6" height="6" rx="1" fill="#c7c9f4" />
-        <rect x="7" y="0" width="6" height="6" rx="1" fill="#c7c9f4" />
-        <rect x="-11" y="9" width="6" height="6" rx="1" fill="#c7c9f4" />
-        <rect x="-2" y="9" width="6" height="6" rx="1" fill="#c7c9f4" />
-        <rect x="7" y="9" width="6" height="6" rx="1" fill="#c7c9f4" />
-      </g>
+        {/* terminal / celular */}
+        <g transform="translate(322 173)">
+          <g>
+            <animateTransform attributeName="transform" type="rotate" from="360 0 0" to="0 0 0" dur="22s" repeatCount="indefinite" />
+            <rect x="-16" y="-27" width="12" height="8" rx="1.5" fill="#fbbf24" />
+            <rect x="-16" y="-20" width="32" height="40" rx="5" fill="#ffffff" stroke="#c7c9f4" strokeWidth="1.5" />
+            <rect x="-11" y="-15" width="22" height="12" rx="2" fill="#6366f1" />
+            <rect x="-11" y="0" width="6" height="6" rx="1" fill="#c7c9f4" />
+            <rect x="-2" y="0" width="6" height="6" rx="1" fill="#c7c9f4" />
+            <rect x="7" y="0" width="6" height="6" rx="1" fill="#c7c9f4" />
+            <rect x="-11" y="9" width="6" height="6" rx="1" fill="#c7c9f4" />
+            <rect x="-2" y="9" width="6" height="6" rx="1" fill="#c7c9f4" />
+            <rect x="7" y="9" width="6" height="6" rx="1" fill="#c7c9f4" />
+          </g>
+        </g>
 
-      {/* camion */}
-      <g transform="translate(251 245)">
-        <rect x="-24" y="-10" width="30" height="18" rx="2" fill="#6366f1" />
-        <path d="M6 -10 h14 l8 10 v8 h-22 z" fill="#a5b4fc" />
-        <rect x="10" y="-6" width="8" height="6" rx="1" fill="#eef0fd" />
-        <circle cx="-14" cy="10" r="5" fill="#334155" />
-        <circle cx="14" cy="10" r="5" fill="#334155" />
-        <circle cx="-14" cy="10" r="2" fill="#c7c9f4" />
-        <circle cx="14" cy="10" r="2" fill="#c7c9f4" />
-      </g>
+        {/* camion */}
+        <g transform="translate(251 245)">
+          <g>
+            <animateTransform attributeName="transform" type="rotate" from="360 0 0" to="0 0 0" dur="22s" repeatCount="indefinite" />
+            <rect x="-24" y="-10" width="30" height="18" rx="2" fill="#6366f1" />
+            <path d="M6 -10 h14 l8 10 v8 h-22 z" fill="#a5b4fc" />
+            <rect x="10" y="-6" width="8" height="6" rx="1" fill="#eef0fd" />
+            <circle cx="-14" cy="10" r="5" fill="#334155" />
+            <circle cx="14" cy="10" r="5" fill="#334155" />
+            <circle cx="-14" cy="10" r="2" fill="#c7c9f4" />
+            <circle cx="14" cy="10" r="2" fill="#c7c9f4" />
+          </g>
+        </g>
 
-      {/* personita trabajando */}
-      <g transform="translate(139 245) scale(0.42)">
-        <ellipse cx="0" cy="78" rx="30" ry="7" fill="#c7c9f4" opacity="0.5" />
-        <rect x="-15" y="24" width="10" height="46" rx="5" fill="#475569" />
-        <rect x="5" y="24" width="10" height="46" rx="5" fill="#334155" />
-        <path d="M-23 -20 Q0 -32 23 -20 L19 26 Q0 34 -19 26 Z" fill="#f59e0b" />
-        <circle cx="0" cy="-38" r="16" fill="#f4b183" />
-        <path d="M-16 -42 Q-14 -58 0 -58 Q16 -58 16 -42 Q7 -51 0 -49 Q-9 -51 -16 -42 Z" fill="#3f3f46" />
+        {/* personita trabajando */}
+        <g transform="translate(139 245) scale(0.42)">
+          <g>
+            <animateTransform attributeName="transform" type="rotate" from="360 0 0" to="0 0 0" dur="22s" repeatCount="indefinite" />
+            <ellipse cx="0" cy="78" rx="30" ry="7" fill="#c7c9f4" opacity="0.5" />
+            <rect x="-15" y="24" width="10" height="46" rx="5" fill="#475569" />
+            <rect x="5" y="24" width="10" height="46" rx="5" fill="#334155" />
+            <path d="M-23 -20 Q0 -32 23 -20 L19 26 Q0 34 -19 26 Z" fill="#f59e0b" />
+            <circle cx="0" cy="-38" r="16" fill="#f4b183" />
+            <path d="M-16 -42 Q-14 -58 0 -58 Q16 -58 16 -42 Q7 -51 0 -49 Q-9 -51 -16 -42 Z" fill="#3f3f46" />
+          </g>
+        </g>
       </g>
 
     </svg>
