@@ -9,7 +9,7 @@ import FloatingIcons from './FloatingIcons';
 import OdinWidget from './OdinWidget';
 import {
   TrendingUp, ShoppingCart, Bike, Wallet, Users, Calculator, ClipboardList, FileText,
-  Moon, Sun, Settings, ChevronDown, Phone, FileSignature, Lock, Video, BarChart3, LogOut, UsersRound,
+  Moon, Sun, Settings, ChevronDown, Phone, FileSignature, Lock, Video, BarChart3, LogOut,
   Building2, CreditCard,
 } from 'lucide-react';
 
@@ -108,9 +108,6 @@ export default function Layout() {
                   <Building2 size={15} className="dropdown-icon" /> Cambiar de sede
                 </div>
               )}
-              <div className="user-dropdown-item" onClick={() => toast.info('Próximamente podrás cambiar entre varias cuentas.')}>
-                <UsersRound size={15} className="dropdown-icon" /> Mostrar todas las cuentas
-              </div>
               <div className="user-dropdown-item" onClick={() => toast.info('Soporte: escríbenos y te ayudamos (próximamente).')}>
                 <Phone size={15} className="dropdown-icon" /> Soporte
               </div>
