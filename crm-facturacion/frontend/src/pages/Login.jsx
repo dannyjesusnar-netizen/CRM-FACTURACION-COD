@@ -7,7 +7,7 @@ import FloatingShapes from '../components/FloatingShapes';
 
 function LoginIllustration() {
   return (
-    <svg viewBox="0 0 400 340" width="88%" style={{ maxWidth: 380 }}>
+    <svg viewBox="0 0 400 340" width="98%" style={{ maxWidth: 480 }}>
       <ellipse cx="200" cy="300" rx="150" ry="16" fill="#d9dcf7" />
 
       {/* orbita punteada */}
@@ -31,10 +31,42 @@ function LoginIllustration() {
         <path d="M-20 8 L20 8 L24 14 L-24 14 Z" fill="#6366f1" />
       </g>
 
-      {/* signo dolar */}
-      <g transform="translate(297 85)">
-        <circle r="19" fill="#22c55e" />
-        <text x="0" y="7" textAnchor="middle" fontSize="20" fontWeight="800" fill="#ffffff" fontFamily="Arial, sans-serif">$</text>
+      {/* calculadora + signos, orbitando en movimiento continuo alrededor de
+          la computadora — cada uno gira en sentido contrario al grupo para
+          quedar siempre derecho (nunca de cabeza) mientras da la vuelta. */}
+      <g>
+        <animateTransform attributeName="transform" type="rotate" from="0 195 150" to="360 195 150" dur="22s" repeatCount="indefinite" />
+
+        <g transform="translate(297 85)">
+          <g>
+            <animateTransform attributeName="transform" type="rotate" from="360 0 0" to="0 0 0" dur="22s" repeatCount="indefinite" />
+            <circle r="19" fill="#22c55e" />
+            <text x="0" y="7" textAnchor="middle" fontSize="20" fontWeight="800" fill="#ffffff" fontFamily="Arial, sans-serif">$</text>
+          </g>
+        </g>
+
+        <g transform="translate(68 173)">
+          <g>
+            <animateTransform attributeName="transform" type="rotate" from="360 0 0" to="0 0 0" dur="22s" repeatCount="indefinite" />
+            <rect x="-16" y="-20" width="32" height="40" rx="4" fill="#334155" />
+            <rect x="-12" y="-16" width="24" height="10" rx="2" fill="#86efac" />
+            <rect x="-12" y="-2" width="6" height="6" rx="1" fill="#64748b" />
+            <rect x="-3" y="-2" width="6" height="6" rx="1" fill="#64748b" />
+            <rect x="6" y="-2" width="6" height="6" rx="1" fill="#64748b" />
+            <rect x="-12" y="7" width="6" height="6" rx="1" fill="#64748b" />
+            <rect x="-3" y="7" width="6" height="6" rx="1" fill="#64748b" />
+            <rect x="6" y="7" width="6" height="6" rx="1" fill="#64748b" />
+            <rect x="-12" y="16" width="24" height="6" rx="1" fill="#fbbf24" />
+          </g>
+        </g>
+
+        <g transform="translate(93 85)">
+          <g>
+            <animateTransform attributeName="transform" type="rotate" from="360 0 0" to="0 0 0" dur="22s" repeatCount="indefinite" />
+            <circle r="19" fill="#6366f1" />
+            <text x="0" y="6" textAnchor="middle" fontSize="15" fontWeight="800" fill="#ffffff" fontFamily="Arial, sans-serif">S/</text>
+          </g>
+        </g>
       </g>
 
       {/* terminal pos */}
@@ -71,24 +103,6 @@ function LoginIllustration() {
         <path d="M-16 -42 Q-14 -58 0 -58 Q16 -58 16 -42 Q7 -51 0 -49 Q-9 -51 -16 -42 Z" fill="#3f3f46" />
       </g>
 
-      {/* calculadora */}
-      <g transform="translate(68 173)">
-        <rect x="-16" y="-20" width="32" height="40" rx="4" fill="#334155" />
-        <rect x="-12" y="-16" width="24" height="10" rx="2" fill="#86efac" />
-        <rect x="-12" y="-2" width="6" height="6" rx="1" fill="#64748b" />
-        <rect x="-3" y="-2" width="6" height="6" rx="1" fill="#64748b" />
-        <rect x="6" y="-2" width="6" height="6" rx="1" fill="#64748b" />
-        <rect x="-12" y="7" width="6" height="6" rx="1" fill="#64748b" />
-        <rect x="-3" y="7" width="6" height="6" rx="1" fill="#64748b" />
-        <rect x="6" y="7" width="6" height="6" rx="1" fill="#64748b" />
-        <rect x="-12" y="16" width="24" height="6" rx="1" fill="#fbbf24" />
-      </g>
-
-      {/* signo soles */}
-      <g transform="translate(93 85)">
-        <circle r="19" fill="#6366f1" />
-        <text x="0" y="6" textAnchor="middle" fontSize="15" fontWeight="800" fill="#ffffff" fontFamily="Arial, sans-serif">S/</text>
-      </g>
     </svg>
   );
 }
