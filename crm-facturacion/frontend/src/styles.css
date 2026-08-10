@@ -894,6 +894,32 @@ html.dark .btn-export { color: #04231e; }
   background: var(--surface-hover); margin-bottom: 14px;
 }
 
+/* ---------- QR Estático ---------- */
+.qr-estatico-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+@media (max-width: 720px) {
+  .qr-estatico-grid { grid-template-columns: 1fr; }
+}
+.qr-print-section { margin-top: 8px; }
+.qr-print-poster {
+  max-width: 420px; margin: 0 auto; padding: 32px 24px; border-radius: 16px;
+  border: 1px solid var(--border); background: var(--surface); text-align: center;
+}
+.qr-print-poster h2 { margin: 8px 0 2px; font-size: 20px; }
+.qr-print-logo { max-width: 140px; max-height: 80px; margin: 0 auto 8px; display: block; }
+.qr-print-subtitulo { color: var(--ink-muted); font-size: 13px; margin: 0 0 20px; }
+.qr-print-codigos { display: flex; justify-content: center; gap: 24px; flex-wrap: wrap; }
+.qr-print-item { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.qr-print-item img { width: 160px; height: 160px; object-fit: contain; border: 1px solid var(--border); border-radius: 8px; padding: 6px; background: #fff; }
+.qr-print-item span { font-weight: 700; font-size: 14px; }
+.qr-print-ruc { margin-top: 20px; font-size: 11px; color: var(--ink-muted); }
+
+@media print {
+  .topbar, .subnav, .app-bg-decor, .odin-fab, .odin-panel, .no-print { display: none !important; }
+  .content, .content-wide, .content-body { padding: 0 !important; margin: 0 !important; max-width: none !important; }
+  .qr-print-poster { border: none; box-shadow: none; max-width: 100%; }
+  .qr-print-item img { border: 1px solid #ccc; }
+}
+
 /* ---------- Modo oscuro: ajustes puntuales sobre superficies con bordes/sombras ---------- */
 
 html.dark .toast-success,
