@@ -5,7 +5,7 @@ import FloatingShapes from '../components/FloatingShapes';
 import FloatingIcons from '../components/FloatingIcons';
 import {
   Receipt, Users, Package, LayoutDashboard, LineChart,
-  ShoppingCart, Wallet, Repeat, BookOpen, Briefcase, Clock, Settings,
+  ShoppingCart, Wallet, Repeat, BookOpen, Briefcase, Clock, Settings, QrCode,
 } from 'lucide-react';
 
 const MENU_SHAPES = [
@@ -27,6 +27,7 @@ const MENU_ICONS = [
 ];
 
 const ACTIVE_MODULES = [
+  { to: '/qr-estatico', label: 'QR Estático', Icon: QrCode, desc: 'Registra tu QR de Yape y Plin, e imprime tu cartel' },
   { to: '/ventas', label: 'Ventas', Icon: Receipt, desc: 'Emitir facturas, boletas y notas', modulo: 'ventas' },
   { to: '/compras', label: 'Compras', Icon: ShoppingCart, desc: 'Registrar compras a proveedores', modulo: 'compras' },
   { to: '/clientes', label: 'Clientes', Icon: Users, desc: 'Gestión de clientes', modulo: 'clientes' },

@@ -30,6 +30,7 @@ import Reports from './pages/Reports';
 import Configuracion from './pages/Configuracion';
 import CambiarContrasena from './pages/CambiarContrasena';
 import MisPagos from './pages/MisPagos';
+import QrEstatico from './pages/QrEstatico';
 import SeleccionarSede from './pages/SeleccionarSede';
 import RolForm from './pages/RolForm';
 
@@ -60,6 +61,7 @@ export default function App() {
             }
           >
             <Route path="/menu" element={<Menu />} />
+            <Route path="/qr-estatico" element={<QrEstatico />} />
             <Route path="/dashboard" element={<RequirePermiso modulo="dashboard"><Dashboard /></RequirePermiso>} />
             <Route path="/clientes" element={<RequirePermiso modulo="clientes"><Clients /></RequirePermiso>} />
             <Route path="/productos" element={<RequirePermiso modulo="inventario"><Products /></RequirePermiso>} />
