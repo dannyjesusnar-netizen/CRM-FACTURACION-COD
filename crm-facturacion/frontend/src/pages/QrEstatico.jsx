@@ -52,7 +52,7 @@ export default function QrEstatico() {
   const { empresa } = useAuth();
   const [metodos, setMetodos] = useState(emptyMetodos());
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(emptyMetodos());
+  const [saving, setSaving] = useState(false);
   const [linkForm, setLinkForm] = useState({ yape: '', plin: '' });
   const [savingLink, setSavingLink] = useState(emptyMetodos());
 
@@ -92,7 +92,12 @@ export default function QrEstatico() {
     api.get('/pagos-qr', { params: { fecha } }).then((res) => setHistorial(res.data));
   }
 
-  async function handleQrChange(codigo, e) {
+  // Yape y Plin son interoperables en Perú (mandato BCRP, 2023): el mismo QR
+  // se puede escanear desde cualquiera de las dos apps y el pago llega igual.
+  // Por eso se sube una sola imagen de QR, y se guarda ese mismo data URL en
+  // ambos métodos de pago (yape/plin) para no romper la pantalla de Cobrar,
+  // que ya busca el QR por código de medio.
+  async function handleQrUnico(e) {
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > 1.3 * 1024 * 1024) {
@@ -101,30 +106,36 @@ export default function QrEstatico() {
     }
     const reader = new FileReader();
     reader.onload = async () => {
-      setSaving((prev) => ({ ...prev, [codigo]: true }));
+      setSaving(true);
       try {
-        const existente = metodos[codigo];
-        if (existente) {
-          await api.put(`/metodos-pago/${existente.id}`, { ...existente, qr_data_url: reader.result });
-        } else {
-          await api.post('/metodos-pago', { ...DEFAULTS[codigo], qr_data_url: reader.result });
-        }
-        toast.success(`QR de ${DEFAULTS[codigo].nombre} guardado.`);
+        const dataUrl = reader.result;
+        await Promise.all(
+          ['yape', 'plin'].map((codigo) => {
+            const existente = metodos[codigo];
+            return existente
+              ? api.put(`/metodos-pago/${existente.id}`, { ...existente, qr_data_url: dataUrl })
+              : api.post('/metodos-pago', { ...DEFAULTS[codigo], qr_data_url: dataUrl });
+          })
+        );
+        toast.success('QR interoperable guardado.');
         load();
       } catch (err) {
         toast.error(err.response?.data?.error || 'No se pudo guardar el QR.');
       } finally {
-        setSaving((prev) => ({ ...prev, [codigo]: false }));
+        setSaving(false);
       }
     };
     reader.readAsDataURL(file);
   }
 
-  async function quitarQr(codigo) {
-    const existente = metodos[codigo];
-    if (!existente) return;
-    if (!window.confirm(`¿Quitar el QR de ${DEFAULTS[codigo].nombre}?`)) return;
-    await api.put(`/metodos-pago/${existente.id}`, { ...existente, qr_data_url: '' });
+  async function quitarQrUnico() {
+    if (!window.confirm('¿Quitar el QR interoperable?')) return;
+    await Promise.all(
+      ['yape', 'plin'].map((codigo) => {
+        const existente = metodos[codigo];
+        return existente ? api.put(`/metodos-pago/${existente.id}`, { ...existente, qr_data_url: '' }) : Promise.resolve();
+      })
+    );
     toast.success('QR eliminado.');
     load();
   }
@@ -210,7 +221,7 @@ export default function QrEstatico() {
   }
 
   const nombreEmpresa = empresa?.nombre_comercial || empresa?.razon_social || '';
-  const tieneAlgunQr = metodos.yape?.qr_data_url || metodos.plin?.qr_data_url;
+  const qrUnico = metodos.yape?.qr_data_url || metodos.plin?.qr_data_url || '';
 
   return (
     <div>
@@ -221,36 +232,40 @@ export default function QrEstatico() {
         QR ESTÁTICO
       </h1>
       <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -8 }} className="no-print">
-        Sube la foto de tu QR real de Yape y/o Plin (lo mismo que aparece en tu app, en "Mi código QR"), agrega tu
-        link de pago si tienes uno, y genera un cartel listo para imprimir y pegar en tu tienda. Estos mismos QR
-        también aparecen al cobrar una venta con Yape o Plin.
+        Sube la foto de tu QR real (el que aparece en tu app, en "Mi código QR" de Yape o de Plin). Como en Perú Yape y
+        Plin son interoperables, ese mismo QR ya lo puede escanear cualquiera de las dos apps — no necesitas subir dos.
+        Agrega tus links de pago si tienes, y genera un cartel listo para imprimir y pegar en tu tienda.
       </p>
 
       {!loading && (
         <>
-          <div className="qr-estatico-grid no-print">
+          <div className="panel no-print" style={{ maxWidth: 480 }}>
+            <h3 style={{ marginTop: 0 }}>🔗 QR interoperable (Yape y Plin)</h3>
+            <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+              <div style={{ width: 130, height: 130, border: '1px dashed var(--border)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', background: 'var(--surface)' }}>
+                {qrUnico ? (
+                  <img src={qrUnico} alt="QR interoperable" style={{ maxWidth: '100%', maxHeight: '100%' }} />
+                ) : (
+                  <span style={{ fontSize: 11, color: 'var(--ink-muted)', textAlign: 'center' }}>Sin QR</span>
+                )}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <label className="btn-secondary" style={{ width: 'auto', textAlign: 'center', cursor: 'pointer' }}>
+                  {saving ? 'Guardando...' : (qrUnico ? 'Cambiar QR' : 'Subir QR')}
+                  <input type="file" accept="image/png,image/jpeg" onChange={handleQrUnico} style={{ display: 'none' }} disabled={saving} />
+                </label>
+                {qrUnico && (
+                  <button type="button" className="btn-secondary" onClick={quitarQrUnico}>Quitar QR</button>
+                )}
+              </div>
+            </div>
+            <p style={{ fontSize: 11, color: 'var(--ink-muted)', marginTop: 10, marginBottom: 0 }}>
+              Un solo código: el cliente lo escanea con la app que tenga (Yape o Plin) y el pago te llega igual.
+            </p>
+
             {['yape', 'plin'].map((codigo) => (
-              <div key={codigo} className="panel">
-                <h3 style={{ marginTop: 0 }}>{DEFAULTS[codigo].icono} {metodos[codigo]?.nombre || DEFAULTS[codigo].nombre}</h3>
-                <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
-                  <div style={{ width: 130, height: 130, border: '1px dashed var(--border)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', background: 'var(--surface)' }}>
-                    {metodos[codigo]?.qr_data_url ? (
-                      <img src={metodos[codigo].qr_data_url} alt={`QR ${DEFAULTS[codigo].nombre}`} style={{ maxWidth: '100%', maxHeight: '100%' }} />
-                    ) : (
-                      <span style={{ fontSize: 11, color: 'var(--ink-muted)', textAlign: 'center' }}>Sin QR</span>
-                    )}
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    <label className="btn-secondary" style={{ width: 'auto', textAlign: 'center', cursor: 'pointer' }}>
-                      {saving[codigo] ? 'Guardando...' : (metodos[codigo]?.qr_data_url ? 'Cambiar QR' : 'Subir QR')}
-                      <input type="file" accept="image/png,image/jpeg" onChange={(e) => handleQrChange(codigo, e)} style={{ display: 'none' }} disabled={saving[codigo]} />
-                    </label>
-                    {metodos[codigo]?.qr_data_url && (
-                      <button type="button" className="btn-secondary" onClick={() => quitarQr(codigo)}>Quitar QR</button>
-                    )}
-                  </div>
-                </div>
-                <label style={{ marginTop: 14, display: 'block' }}>Link de pago (opcional)</label>
+              <div key={codigo}>
+                <label style={{ marginTop: 14, display: 'block' }}>{DEFAULTS[codigo].icono} Link de pago {DEFAULTS[codigo].nombre} (opcional)</label>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <input
                     type="url"
@@ -273,7 +288,7 @@ export default function QrEstatico() {
             </button>
           </div>
 
-          {tieneAlgunQr && (
+          {qrUnico && (
             <div className="qr-print-section">
               <div className="report-toolbar no-print">
                 <h3 style={{ margin: 0 }}>Cartel para imprimir</h3>
@@ -285,20 +300,12 @@ export default function QrEstatico() {
               <div className="qr-print-poster">
                 {empresa?.logo_data_url && <img src={empresa.logo_data_url} alt="Logo" className="qr-print-logo" />}
                 <h2>{nombreEmpresa}</h2>
-                <p className="qr-print-subtitulo">Escanea y paga con tu app</p>
+                <p className="qr-print-subtitulo">Escanea con Yape o Plin y paga al instante</p>
                 <div className="qr-print-codigos">
-                  {metodos.yape?.qr_data_url && (
-                    <div className="qr-print-item">
-                      <img src={metodos.yape.qr_data_url} alt="QR Yape" />
-                      <span>📲 Yape</span>
-                    </div>
-                  )}
-                  {metodos.plin?.qr_data_url && (
-                    <div className="qr-print-item">
-                      <img src={metodos.plin.qr_data_url} alt="QR Plin" />
-                      <span>📱 Plin</span>
-                    </div>
-                  )}
+                  <div className="qr-print-item">
+                    <img src={qrUnico} alt="QR interoperable Yape/Plin" />
+                    <span>📲 Yape · 📱 Plin</span>
+                  </div>
                 </div>
                 {empresa?.ruc && <p className="qr-print-ruc">RUC {empresa.ruc}</p>}
               </div>
