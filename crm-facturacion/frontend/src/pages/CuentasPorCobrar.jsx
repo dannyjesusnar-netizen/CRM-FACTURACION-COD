@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import api from '../api';
 import { useToast } from '../context/ToastContext';
+import MetodoPagoQr from '../components/MetodoPagoQr';
 
 function round2(n) {
   return Math.round((n + Number.EPSILON) * 100) / 100;
@@ -103,6 +104,9 @@ export default function CuentasPorCobrar() {
                   <option key={m.codigo} value={m.codigo}>{m.icono} {m.nombre}</option>
                 ))}
               </select>
+              <div style={{ marginTop: -8, marginBottom: 12 }}>
+                <MetodoPagoQr metodo={metodosPago.find((m) => m.codigo === medio)} monto={Number(monto || 0)} />
+              </div>
               <label>Observación (opcional)</label>
               <input value={observacion} onChange={(e) => setObservacion(e.target.value)} />
               {error && <div className="form-error">{error}</div>}

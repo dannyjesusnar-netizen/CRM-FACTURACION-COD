@@ -4,6 +4,7 @@ import api from '../api';
 import { useToast } from '../context/ToastContext';
 import ProductSearchBar from '../components/ProductSearchBar';
 import ClientPicker from '../components/ClientPicker';
+import MetodoPagoQr from '../components/MetodoPagoQr';
 
 const TITULOS = { factura: 'Factura', boleta: 'Boleta', cotizacion: 'Cotización' };
 
@@ -420,6 +421,7 @@ export default function RegistroVenta() {
                           <option key={m.codigo} value={m.codigo}>{m.icono} {m.nombre}</option>
                         ))}
                       </select>
+                      <MetodoPagoQr metodo={metodosPago.find((m) => m.codigo === medioAbono)} monto={Number(pago || 0)} />
                     </div>
                   )}
                   <div className="filter-field">
@@ -438,6 +440,7 @@ export default function RegistroVenta() {
                     <label>Vuelto</label>
                     <input readOnly value={computed.vuelto.toFixed(2)} />
                   </div>
+                  <MetodoPagoQr metodo={metodosPago.find((m) => m.codigo === cuenta)} monto={computed.total} />
                 </>
               )}
             </div>
@@ -468,6 +471,7 @@ export default function RegistroVenta() {
                   {pagosMixto.length > 2 && (
                     <button type="button" className="btn-link danger" onClick={() => removePagoMixto(idx)}>Quitar</button>
                   )}
+                  <MetodoPagoQr metodo={metodosPago.find((m) => m.codigo === p.medio)} monto={Number(p.monto || 0)} />
                 </div>
               ))}
               <button type="button" className="btn-secondary" onClick={addPagoMixto}>+ Agregar método</button>

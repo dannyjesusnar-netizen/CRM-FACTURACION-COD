@@ -190,6 +190,8 @@ CREATE TABLE IF NOT EXISTS metodos_pago (
   icono TEXT NOT NULL DEFAULT '💳',
   orden INTEGER NOT NULL DEFAULT 0,
   activo INTEGER NOT NULL DEFAULT 1,
+  qr_data_url TEXT,                          -- foto/captura del QR real (Yape, Plin, etc.), en base64
+  link_pago TEXT,                            -- URL de pago (yape.me, link de una pasarela, etc.)
   created_at TEXT DEFAULT (datetime('now'))
 );
 
@@ -809,6 +811,14 @@ CREATE TABLE IF NOT EXISTS role_acciones (
         addStock.run(20, proteina.id);
       }
     }
+  }
+
+  const metodoPagoColumns = db.prepare('PRAGMA table_info(metodos_pago)').all().map((c) => c.name);
+  if (!metodoPagoColumns.includes('qr_data_url')) {
+    db.exec('ALTER TABLE metodos_pago ADD COLUMN qr_data_url TEXT');
+  }
+  if (!metodoPagoColumns.includes('link_pago')) {
+    db.exec('ALTER TABLE metodos_pago ADD COLUMN link_pago TEXT');
   }
 
   // Sucursales: toda empresa arranca con al menos una sede principal. La

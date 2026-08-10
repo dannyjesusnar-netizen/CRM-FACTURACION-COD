@@ -33,7 +33,7 @@ const TIPOS_METODO_PAGO = [
 const ICONOS_SUGERIDOS = ['💵', '📲', '📱', '💳', '🏦', '🔗', '🔖', '💰', '🧾', '⭐'];
 
 function emptyMetodoForm() {
-  return { nombre: '', tipo: 'otro', color: '#0f4c81', icono: '💳' };
+  return { nombre: '', tipo: 'otro', color: '#0f4c81', icono: '💳', qr_data_url: '', link_pago: '' };
 }
 
 const DOC_LABELS = {
@@ -506,9 +506,21 @@ export default function Configuracion() {
 
   function openEditMetodo(m) {
     setEditingMetodoId(m.id);
-    setMetodoForm({ nombre: m.nombre, tipo: m.tipo, color: m.color, icono: m.icono });
+    setMetodoForm({ nombre: m.nombre, tipo: m.tipo, color: m.color, icono: m.icono, qr_data_url: m.qr_data_url || '', link_pago: m.link_pago || '' });
     setErrorMetodo('');
     setShowMetodoForm(true);
+  }
+
+  function handleMetodoQrChange(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 1.3 * 1024 * 1024) {
+      toast.error('La imagen es muy pesada. Usa una de menos de 1MB.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => setMetodoForm((prev) => ({ ...prev, qr_data_url: reader.result }));
+    reader.readAsDataURL(file);
   }
 
   async function handleSubmitMetodo(e) {
@@ -1044,6 +1056,9 @@ export default function Configuracion() {
                     <div className="metodo-pago-info">
                       <strong>{m.nombre}</strong>
                       <span className="metodo-pago-tipo">{TIPOS_METODO_PAGO.find((t) => t.value === m.tipo)?.label || m.tipo}</span>
+                      {(m.qr_data_url || m.link_pago) && (
+                        <span style={{ fontSize: 11, color: 'var(--good, #16a34a)' }}>✓ Tiene QR / link de pago</span>
+                      )}
                     </div>
                     <span className={'badge ' + (m.activo ? 'badge-good' : 'badge-critical')}>
                       {m.activo ? 'Activo' : 'Inactivo'}
@@ -1196,6 +1211,42 @@ export default function Configuracion() {
                 <div className="metodo-pago-icon" style={{ background: metodoForm.color }}>{metodoForm.icono}</div>
                 <strong>{metodoForm.nombre || 'Nombre del método'}</strong>
               </div>
+
+              <label style={{ marginTop: 16 }}>QR de pago (opcional)</label>
+              <p style={{ fontSize: 11, color: 'var(--ink-muted)', marginTop: -6 }}>
+                Sube una foto o captura de tu QR real de Yape, Plin, etc. Se va a mostrar al vendedor durante el
+                cobro para que el cliente lo escanee con su app y pague el monto — no queda enlazado a tu cuenta,
+                solo se muestra la imagen.
+              </p>
+              <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+                <div style={{ width: 90, height: 90, border: '1px dashed var(--border)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', background: 'var(--surface)' }}>
+                  {metodoForm.qr_data_url ? (
+                    <img src={metodoForm.qr_data_url} alt="QR" style={{ maxWidth: '100%', maxHeight: '100%' }} />
+                  ) : (
+                    <span style={{ fontSize: 10, color: 'var(--ink-muted)', textAlign: 'center' }}>Sin QR</span>
+                  )}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <label className="btn-secondary" style={{ width: 'auto', textAlign: 'center', cursor: 'pointer' }}>
+                    Subir QR
+                    <input type="file" accept="image/png,image/jpeg" onChange={handleMetodoQrChange} style={{ display: 'none' }} />
+                  </label>
+                  {metodoForm.qr_data_url && (
+                    <button type="button" className="btn-secondary" onClick={() => setMetodoForm({ ...metodoForm, qr_data_url: '' })}>
+                      Quitar QR
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <label style={{ marginTop: 16 }}>Link de pago (opcional)</label>
+              <input
+                type="url"
+                value={metodoForm.link_pago}
+                onChange={(e) => setMetodoForm({ ...metodoForm, link_pago: e.target.value })}
+                placeholder="https://yape.me/tu-negocio o el link de tu pasarela"
+              />
+
               {errorMetodo && <div className="form-error">{errorMetodo}</div>}
               <div className="modal-actions">
                 <button type="button" className="btn-secondary" onClick={() => setShowMetodoForm(false)}>Cancelar</button>
