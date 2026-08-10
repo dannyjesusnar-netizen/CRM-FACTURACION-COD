@@ -448,6 +448,21 @@ CREATE TABLE IF NOT EXISTS mensajes_soporte (
   leido INTEGER NOT NULL DEFAULT 0,
   created_at TEXT DEFAULT (datetime('now'))
 );
+
+-- Registro de pagos recibidos por Yape/Plin (pantalla "QR Estático") —
+-- control manual con foto de respaldo del comprobante. monto_detectado es
+-- lo que el OCR leyó de la foto (puede ser NULL si no detectó nada); monto
+-- es el valor final que confirma quien registra el pago, siempre editable.
+CREATE TABLE IF NOT EXISTS pagos_qr (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  medio TEXT NOT NULL,                       -- yape | plin
+  monto REAL NOT NULL,
+  monto_detectado REAL,
+  foto_data_url TEXT NOT NULL,
+  sucursal_id INTEGER REFERENCES sucursales(id),
+  created_by INTEGER REFERENCES users(id),
+  created_at TEXT DEFAULT (datetime('now'))
+);
 `);
 
   // --- Migracion: agregar columnas nuevas a bases de datos ya existentes ---

@@ -913,6 +913,22 @@ html.dark .btn-export { color: #04231e; }
 .qr-print-item span { font-weight: 700; font-size: 14px; }
 .qr-print-ruc { margin-top: 20px; font-size: 11px; color: var(--ink-muted); }
 
+.qr-registrar-pago-btn {
+  width: auto; display: inline-flex; align-items: center; gap: 10px;
+  padding: 16px 32px; font-size: 16px; font-weight: 800; letter-spacing: 0.02em;
+  border-radius: 14px; box-shadow: 0 12px 28px rgba(99, 102, 241, 0.35);
+}
+.qr-resumen-dia { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+@media (max-width: 720px) {
+  .qr-resumen-dia { grid-template-columns: 1fr 1fr; }
+}
+.qr-resumen-card {
+  padding: 14px 16px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface);
+  display: flex; flex-direction: column; gap: 4px;
+}
+.qr-resumen-card span { font-size: 11px; color: var(--ink-muted); text-transform: uppercase; letter-spacing: 0.03em; }
+.qr-resumen-card strong { font-size: 19px; }
+
 @media print {
   .topbar, .subnav, .app-bg-decor, .odin-fab, .odin-panel, .no-print { display: none !important; }
   .content, .content-wide, .content-body { padding: 0 !important; margin: 0 !important; max-width: none !important; }
