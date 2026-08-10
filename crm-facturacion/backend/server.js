@@ -30,6 +30,7 @@ const metodoPagoRoutes = require('./routes/metodosPago');
 const serieRoutes = require('./routes/series');
 const suscripcionRoutes = require('./routes/suscripcion');
 const mensajesSoporteRoutes = require('./routes/mensajesSoporte');
+const pagosQrRoutes = require('./routes/pagosQr');
 const { procesarCobrosVencidos } = require('./utils/facturacionPlataforma');
 const db = require('./db');
 const tenantRegistry = require('./tenantRegistry');
@@ -49,8 +50,8 @@ const PORT = process.env.PORT || 4000;
 
 app.use(cors());
 // Limite mayor al default (100kb) para permitir subir el logo de la empresa
-// como data URL en el mismo PUT /api/empresa.
-app.use(express.json({ limit: '2mb' }));
+// y las fotos de comprobantes de pago (QR estático) como data URL.
+app.use(express.json({ limit: '4mb' }));
 
 app.get('/api/health', (req, res) => res.json({ ok: true, service: 'crm-facturacion-backend' }));
 
@@ -80,6 +81,7 @@ app.use('/api/metodos-pago', metodoPagoRoutes);
 app.use('/api/series', serieRoutes);
 app.use('/api/suscripcion', suscripcionRoutes);
 app.use('/api/mensajes-soporte', mensajesSoporteRoutes);
+app.use('/api/pagos-qr', pagosQrRoutes);
 
 // panel-central: su API vive en /panel-api (no /api, para no chocar con la
 // de este CRM) y su login/base de datos son completamente independientes
