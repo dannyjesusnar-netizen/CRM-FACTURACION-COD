@@ -23,8 +23,22 @@ router.get('/', (req, res) => {
   res.json(db.prepare(sql).all());
 });
 
+// El QR es una foto/captura (base64) — se acepta hasta ~2MB de payload
+// codificado, suficiente para una imagen de QR comprimida.
+const QR_MAX_LEN = 2_000_000;
+
+function validarQrYLink(qr_data_url, link_pago) {
+  if (qr_data_url && (typeof qr_data_url !== 'string' || !qr_data_url.startsWith('data:image/') || qr_data_url.length > QR_MAX_LEN)) {
+    return 'El QR debe ser una imagen válida de menos de 1.5MB.';
+  }
+  if (link_pago && !/^https?:\/\//i.test(link_pago)) {
+    return 'El link de pago debe empezar con http:// o https://';
+  }
+  return null;
+}
+
 router.post('/', requireGerencia, (req, res) => {
-  const { nombre, tipo, color, icono } = req.body || {};
+  const { nombre, tipo, color, icono, qr_data_url, link_pago } = req.body || {};
   if (!nombre) return res.status(400).json({ error: 'nombre es requerido.' });
   if (tipo && !TIPOS_VALIDOS.includes(tipo)) {
     return res.status(400).json({ error: `tipo inválido. Use: ${TIPOS_VALIDOS.join(', ')}.` });
@@ -32,13 +46,16 @@ router.post('/', requireGerencia, (req, res) => {
   if (color && !/^#[0-9a-fA-F]{6}$/.test(color)) {
     return res.status(400).json({ error: 'color debe ser un hexadecimal (ej. #0f4c81).' });
   }
+  const errorQr = validarQrYLink(qr_data_url, link_pago);
+  if (errorQr) return res.status(400).json({ error: errorQr });
   const codigo = slugify(nombre);
   if (!codigo) return res.status(400).json({ error: 'nombre inválido.' });
   const maxOrden = db.prepare('SELECT COALESCE(MAX(orden), 0) AS m FROM metodos_pago').get().m;
   try {
     const info = db.prepare(
-      'INSERT INTO metodos_pago (codigo, nombre, tipo, color, icono, orden, activo) VALUES (?, ?, ?, ?, ?, ?, 1)'
-    ).run(codigo, nombre, tipo || 'otro', color || '#0f4c81', icono || '💳', maxOrden + 1);
+      `INSERT INTO metodos_pago (codigo, nombre, tipo, color, icono, orden, activo, qr_data_url, link_pago)
+       VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)`
+    ).run(codigo, nombre, tipo || 'otro', color || '#0f4c81', icono || '💳', maxOrden + 1, qr_data_url || null, link_pago || null);
     res.status(201).json(db.prepare('SELECT * FROM metodos_pago WHERE id = ?').get(info.lastInsertRowid));
   } catch (err) {
     res.status(409).json({ error: 'Ya existe un método de pago con ese nombre.' });
@@ -48,7 +65,7 @@ router.post('/', requireGerencia, (req, res) => {
 router.put('/:id', requireGerencia, (req, res) => {
   const existing = db.prepare('SELECT * FROM metodos_pago WHERE id = ?').get(req.params.id);
   if (!existing) return res.status(404).json({ error: 'Método de pago no encontrado.' });
-  const { nombre, tipo, color, icono } = req.body || {};
+  const { nombre, tipo, color, icono, qr_data_url, link_pago } = req.body || {};
   if (!nombre) return res.status(400).json({ error: 'nombre es requerido.' });
   if (tipo && !TIPOS_VALIDOS.includes(tipo)) {
     return res.status(400).json({ error: `tipo inválido. Use: ${TIPOS_VALIDOS.join(', ')}.` });
@@ -56,11 +73,15 @@ router.put('/:id', requireGerencia, (req, res) => {
   if (color && !/^#[0-9a-fA-F]{6}$/.test(color)) {
     return res.status(400).json({ error: 'color debe ser un hexadecimal (ej. #0f4c81).' });
   }
-  db.prepare('UPDATE metodos_pago SET nombre = ?, tipo = ?, color = ?, icono = ? WHERE id = ?').run(
+  const errorQr = validarQrYLink(qr_data_url, link_pago);
+  if (errorQr) return res.status(400).json({ error: errorQr });
+  db.prepare('UPDATE metodos_pago SET nombre = ?, tipo = ?, color = ?, icono = ?, qr_data_url = ?, link_pago = ? WHERE id = ?').run(
     nombre,
     tipo || existing.tipo,
     color || existing.color,
     icono || existing.icono,
+    qr_data_url === undefined ? existing.qr_data_url : (qr_data_url || null),
+    link_pago === undefined ? existing.link_pago : (link_pago || null),
     req.params.id
   );
   res.json(db.prepare('SELECT * FROM metodos_pago WHERE id = ?').get(req.params.id));
