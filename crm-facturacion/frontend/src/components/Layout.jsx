@@ -10,7 +10,7 @@ import OdinWidget from './OdinWidget';
 import {
   TrendingUp, ShoppingCart, Bike, Wallet, Users, Calculator, ClipboardList, FileText,
   Moon, Sun, Settings, ChevronDown, Phone, FileSignature, Lock, Video, BarChart3, LogOut,
-  Building2, CreditCard,
+  Building2, CreditCard, Sparkles,
 } from 'lucide-react';
 
 // Fondo decorativo compartido por toda la app (misma línea gráfica del
@@ -88,6 +88,11 @@ export default function Layout() {
         </div>
         <div className="topbar-actions">
           <SedeSwitcher />
+          {user?.role === 'gerencia' && (
+            <button type="button" className="topbar-planes-btn" onClick={() => navigate('/planes')}>
+              <Sparkles size={14} /> PLANES
+            </button>
+          )}
           <button
             type="button"
             className="icon-btn"

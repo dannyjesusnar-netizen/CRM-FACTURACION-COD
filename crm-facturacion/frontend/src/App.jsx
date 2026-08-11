@@ -9,6 +9,7 @@ import Login from './pages/Login';
 import RegistroEmpresa from './pages/RegistroEmpresa';
 import PoliticaPrivacidad from './pages/PoliticaPrivacidad';
 import TerminosServicio from './pages/TerminosServicio';
+import Planes from './pages/Planes';
 import Menu from './pages/Menu';
 import Dashboard from './pages/Dashboard';
 import Clients from './pages/Clients';
@@ -45,6 +46,7 @@ export default function App() {
           <Route path="/registro" element={<RegistroEmpresa />} />
           <Route path="/privacidad" element={<PoliticaPrivacidad />} />
           <Route path="/terminos" element={<TerminosServicio />} />
+          <Route path="/planes" element={<Planes />} />
           <Route
             path="/seleccionar-sede"
             element={
