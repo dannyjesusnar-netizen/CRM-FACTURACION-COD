@@ -26,3 +26,16 @@ services:
         value: /var/data
       - key: PANEL_JWT_SECRET
         generateValue: true
+      # Credenciales de Izipay para el cobro de la suscripción a la
+      # plataforma (Gerencia → Mis pagos). Sin valor en este archivo a
+      # propósito — se cargan a mano desde el dashboard de Render
+      # (Environment) para no dejar secretos en el repositorio. Ver
+      # crm-facturacion/README.md, sección "Suscripción a la plataforma".
+      - key: IZIPAY_USERNAME
+        sync: false
+      - key: IZIPAY_PASSWORD
+        sync: false
+      - key: IZIPAY_PUBLIC_KEY
+        sync: false
+      - key: IZIPAY_HMAC_KEY
+        sync: false
