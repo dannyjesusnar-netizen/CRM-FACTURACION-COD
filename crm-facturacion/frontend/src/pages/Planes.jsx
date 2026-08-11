@@ -21,7 +21,6 @@ const PLANES = [
       'Inventario',
       'Dashboard',
       'Vendedores',
-      'Creación de hasta 4 sedes',
       'Creación de hasta 8 vendedores',
       'Soporte todos los días',
     ],
