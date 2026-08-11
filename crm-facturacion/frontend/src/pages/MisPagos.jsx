@@ -22,9 +22,23 @@ function useIzipayScript(publicKey) {
   useEffect(() => {
     if (!publicKey) return;
     if (window.KR) { setListo(true); return; }
+
+    // El script solo trae la lógica del formulario — sin esta hoja de
+    // estilos oficial (mismo tema "classic" que usan los ejemplos propios
+    // de Izipay Perú) los campos se ven como HTML sin diseñar.
+    let link = document.querySelector('link[data-izipay-theme]');
+    if (!link) {
+      link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = 'https://static.micuentaweb.pe/static/js/krypton-client/V4.0/ext/classic-reset.min.css';
+      link.setAttribute('data-izipay-theme', 'true');
+      document.head.appendChild(link);
+    }
+
     const script = document.createElement('script');
     script.src = 'https://static.micuentaweb.pe/static/js/krypton-client/V4.0/stable/kr-payment-form.min.js';
     script.setAttribute('kr-public-key', publicKey);
+    script.setAttribute('kr-theme', 'classic');
     script.async = true;
     script.onload = () => setListo(true);
     document.body.appendChild(script);
