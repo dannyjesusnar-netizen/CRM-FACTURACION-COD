@@ -50,7 +50,7 @@ export default function Planes() {
   const navigate = useNavigate();
   const toast = useToast();
 
-  function handleSuscribirme() {
+  function handlePagar() {
     if (!user) {
       toast.info('Inicia sesión para suscribirte a un plan.');
       navigate('/login');
@@ -87,8 +87,8 @@ export default function Planes() {
                 <li key={f}><Check size={15} /> {f}</li>
               ))}
             </ul>
-            <button type="button" className="btn-primary plan-subscribe-btn" onClick={handleSuscribirme}>
-              SUSCRIBIRME
+            <button type="button" className="btn-primary plan-subscribe-btn" onClick={handlePagar}>
+              PAGAR
             </button>
           </div>
         ))}
