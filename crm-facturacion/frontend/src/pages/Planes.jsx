@@ -1,7 +1,9 @@
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Check, Receipt, Sparkles } from 'lucide-react';
+import { ArrowLeft, Check, MessageCircle, Receipt, Sparkles } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+
+const WHATSAPP_URL = `https://wa.me/51935158260?text=${encodeURIComponent('Hola Danny vengo de QORIA me gustaría adquirir un plan para controlar mi negocio.')}`;
 
 const PLANES = [
   {
@@ -90,6 +92,16 @@ export default function Planes() {
             </button>
           </div>
         ))}
+      </div>
+
+      <div className="planes-asesor">
+        <ul>
+          <li>Me gustaría personalizar mi sistema.</li>
+          <li>Me gustaría controlar varias sedes de mi negocio en un mismo sistema.</li>
+        </ul>
+        <a href={WHATSAPP_URL} target="_blank" rel="noreferrer" className="btn-primary planes-whatsapp-btn">
+          <MessageCircle size={18} /> Contactar con un asesor
+        </a>
       </div>
 
       <p className="login-hint">
