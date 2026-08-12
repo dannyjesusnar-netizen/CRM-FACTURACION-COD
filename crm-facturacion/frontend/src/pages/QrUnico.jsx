@@ -239,90 +239,6 @@ export default function QrUnico() {
 
       {!loading && (
         <>
-          <div className="qr-estatico-grid no-print">
-            {['yape', 'plin'].map((medio) => {
-              const guardado = !!(medios[medio]?.titular_nombre && medios[medio]?.titular_telefono);
-              if (guardado && !editando[medio]) {
-                return (
-                  <div key={medio} className="panel">
-                    <h3 style={{ marginTop: 0 }}>{DEFAULTS[medio].icono} {DEFAULTS[medio].nombre}</h3>
-                    <div className="qr-medio-guardado">
-                      <CheckCircle2 size={18} className="qr-medio-guardado-icon" />
-                      <span>{DEFAULTS[medio].nombre} guardado exitosamente</span>
-                    </div>
-                    <p style={{ fontSize: 13, color: 'var(--ink-muted)', margin: '10px 0 0' }}>
-                      {medios[medio].titular_nombre} · {medios[medio].titular_telefono}
-                    </p>
-                    <button
-                      type="button"
-                      className="btn-secondary"
-                      style={{ width: 'auto', marginTop: 14, display: 'inline-flex', alignItems: 'center', gap: 6 }}
-                      onClick={() => setEditando((prev) => ({ ...prev, [medio]: true }))}
-                    >
-                      <Pencil size={14} /> Editar
-                    </button>
-                  </div>
-                );
-              }
-              return (
-                <div key={medio} className="panel">
-                  <h3 style={{ marginTop: 0 }}>{DEFAULTS[medio].icono} {DEFAULTS[medio].nombre}</h3>
-                  <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
-                    <div style={{ width: 110, height: 110, border: '1px dashed var(--border)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', background: 'var(--surface)' }}>
-                      {medios[medio]?.qr_data_url ? (
-                        <img src={medios[medio].qr_data_url} alt={`QR ${DEFAULTS[medio].nombre}`} style={{ maxWidth: '100%', maxHeight: '100%' }} />
-                      ) : (
-                        <span style={{ fontSize: 11, color: 'var(--ink-muted)', textAlign: 'center' }}>Sin QR</span>
-                      )}
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      <label className="btn-secondary" style={{ width: 'auto', textAlign: 'center', cursor: 'pointer' }}>
-                        {saving[medio] ? 'Guardando...' : (medios[medio]?.qr_data_url ? 'Cambiar QR' : 'Subir QR')}
-                        <input type="file" accept="image/png,image/jpeg" onChange={(e) => handleQrChange(medio, e)} style={{ display: 'none' }} disabled={saving[medio]} />
-                      </label>
-                      {medios[medio]?.qr_data_url && (
-                        <button type="button" className="btn-secondary" onClick={() => quitarQr(medio)}>Quitar QR</button>
-                      )}
-                    </div>
-                  </div>
-
-                  <label style={{ marginTop: 14, display: 'block' }}>Nombre completo</label>
-                  <input
-                    type="text"
-                    value={form[medio].titular_nombre}
-                    onChange={(e) => setForm((prev) => ({ ...prev, [medio]: { ...prev[medio], titular_nombre: e.target.value } }))}
-                    placeholder="Nombre y apellido de quien recibe el pago"
-                  />
-
-                  <label style={{ marginTop: 10, display: 'block' }}>Teléfono</label>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <input
-                      type="tel"
-                      value={form[medio].titular_telefono}
-                      onChange={(e) => setForm((prev) => ({ ...prev, [medio]: { ...prev[medio], titular_telefono: e.target.value.replace(/\D/g, '') } }))}
-                      placeholder="987654321"
-                      style={{ flex: 1 }}
-                    />
-                    <button type="button" className="btn-secondary" style={{ width: 'auto' }} disabled={saving[medio]} onClick={() => guardarDatos(medio)}>
-                      {saving[medio] ? 'Guardando...' : 'Guardar'}
-                    </button>
-                  </div>
-
-                  {guardado && (
-                    <button
-                      type="button"
-                      className="btn-link"
-                      style={{ marginTop: 10 }}
-                      onClick={() => { setForm((prev) => ({ ...prev, [medio]: { titular_nombre: medios[medio].titular_nombre, titular_telefono: medios[medio].titular_telefono } })); setEditando((prev) => ({ ...prev, [medio]: false })); }}
-                    >
-                      Cancelar
-                    </button>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-
           <div className="report-toolbar no-print" style={{ justifyContent: 'center', gap: 16, marginBottom: 24, flexWrap: 'wrap' }}>
             <button type="button" className="btn-primary qr-generar-btn" onClick={generarQr} disabled={generando}>
               <QrCode size={20} /> {generando ? 'Generando...' : 'GENERAR QR'}
@@ -409,6 +325,96 @@ export default function QrUnico() {
               </tbody>
             </table>
           </div>
+
+          <div className="no-print" style={{ marginTop: 40 }}>
+            <h3 style={{ marginBottom: 4 }}>Datos de Yape y Plin</h3>
+            <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: 0, marginBottom: 16 }}>
+              Aquí puedes revisar o modificar el QR, nombre y teléfono que ven tus clientes al escanear tu QR Único.
+            </p>
+            <div className="qr-estatico-grid">
+              {['yape', 'plin'].map((medio) => {
+                const guardado = !!(medios[medio]?.titular_nombre && medios[medio]?.titular_telefono);
+                if (guardado && !editando[medio]) {
+                  return (
+                    <div key={medio} className="panel">
+                      <h3 style={{ marginTop: 0 }}>{DEFAULTS[medio].icono} {DEFAULTS[medio].nombre}</h3>
+                      <div className="qr-medio-guardado">
+                        <CheckCircle2 size={18} className="qr-medio-guardado-icon" />
+                        <span>{DEFAULTS[medio].nombre} guardado exitosamente</span>
+                      </div>
+                      <p style={{ fontSize: 13, color: 'var(--ink-muted)', margin: '10px 0 0' }}>
+                        {medios[medio].titular_nombre} · {medios[medio].titular_telefono}
+                      </p>
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        style={{ width: 'auto', marginTop: 14, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                        onClick={() => setEditando((prev) => ({ ...prev, [medio]: true }))}
+                      >
+                        <Pencil size={14} /> Editar
+                      </button>
+                    </div>
+                  );
+                }
+                return (
+                  <div key={medio} className="panel">
+                    <h3 style={{ marginTop: 0 }}>{DEFAULTS[medio].icono} {DEFAULTS[medio].nombre}</h3>
+                    <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+                      <div style={{ width: 110, height: 110, border: '1px dashed var(--border)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', background: 'var(--surface)' }}>
+                        {medios[medio]?.qr_data_url ? (
+                          <img src={medios[medio].qr_data_url} alt={`QR ${DEFAULTS[medio].nombre}`} style={{ maxWidth: '100%', maxHeight: '100%' }} />
+                        ) : (
+                          <span style={{ fontSize: 11, color: 'var(--ink-muted)', textAlign: 'center' }}>Sin QR</span>
+                        )}
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        <label className="btn-secondary" style={{ width: 'auto', textAlign: 'center', cursor: 'pointer' }}>
+                          {saving[medio] ? 'Guardando...' : (medios[medio]?.qr_data_url ? 'Cambiar QR' : 'Subir QR')}
+                          <input type="file" accept="image/png,image/jpeg" onChange={(e) => handleQrChange(medio, e)} style={{ display: 'none' }} disabled={saving[medio]} />
+                        </label>
+                        {medios[medio]?.qr_data_url && (
+                          <button type="button" className="btn-secondary" onClick={() => quitarQr(medio)}>Quitar QR</button>
+                        )}
+                      </div>
+                    </div>
+
+                    <label style={{ marginTop: 14, display: 'block' }}>Nombre completo</label>
+                    <input
+                      type="text"
+                      value={form[medio].titular_nombre}
+                      onChange={(e) => setForm((prev) => ({ ...prev, [medio]: { ...prev[medio], titular_nombre: e.target.value } }))}
+                      placeholder="Nombre y apellido de quien recibe el pago"
+                    />
+
+                    <label style={{ marginTop: 10, display: 'block' }}>Teléfono</label>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <input
+                        type="tel"
+                        value={form[medio].titular_telefono}
+                        onChange={(e) => setForm((prev) => ({ ...prev, [medio]: { ...prev[medio], titular_telefono: e.target.value.replace(/\D/g, '') } }))}
+                        placeholder="987654321"
+                        style={{ flex: 1 }}
+                      />
+                      <button type="button" className="btn-secondary" style={{ width: 'auto' }} disabled={saving[medio]} onClick={() => guardarDatos(medio)}>
+                        {saving[medio] ? 'Guardando...' : 'Guardar'}
+                      </button>
+                    </div>
+
+                    {guardado && (
+                      <button
+                        type="button"
+                        className="btn-link"
+                        style={{ marginTop: 10 }}
+                        onClick={() => { setForm((prev) => ({ ...prev, [medio]: { titular_nombre: medios[medio].titular_nombre, titular_telefono: medios[medio].titular_telefono } })); setEditando((prev) => ({ ...prev, [medio]: false })); }}
+                      >
+                        Cancelar
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         </>
       )}
 
@@ -428,8 +434,8 @@ export default function QrUnico() {
                   tengas guardada.
                 </p>
               )}
-              <label className="btn-secondary" style={{ width: 'auto', textAlign: 'center', cursor: 'pointer', display: 'inline-block' }}>
-                {fotoPago ? 'Cambiar foto' : 'Tomar / subir foto'}
+              <label className="btn-primary qr-foto-btn">
+                <Camera size={20} /> {fotoPago ? 'Cambiar foto' : 'Tomar / subir foto'}
                 <input type="file" accept="image/*" capture="environment" onChange={handleFotoPago} style={{ display: 'none' }} />
               </label>
               {analizando && <p style={{ fontSize: 12, color: 'var(--ink-muted)' }}>Analizando comprobante…</p>}
