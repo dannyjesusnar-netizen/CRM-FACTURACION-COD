@@ -910,7 +910,7 @@ html.dark .btn-export { color: #04231e; }
   background: var(--surface-hover); margin-bottom: 14px;
 }
 
-/* ---------- QR Estático ---------- */
+/* ---------- QR Único ---------- */
 .qr-estatico-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
 @media (max-width: 720px) {
   .qr-estatico-grid { grid-template-columns: 1fr; }
@@ -929,11 +929,13 @@ html.dark .btn-export { color: #04231e; }
 .qr-print-item span { font-weight: 700; font-size: 14px; }
 .qr-print-ruc { margin-top: 20px; font-size: 11px; color: var(--ink-muted); }
 
-.qr-registrar-pago-btn {
+.qr-registrar-pago-btn, .qr-generar-btn {
   width: auto; display: inline-flex; align-items: center; gap: 10px;
   padding: 16px 32px; font-size: 16px; font-weight: 800; letter-spacing: 0.02em;
   border-radius: 14px; box-shadow: 0 12px 28px rgba(99, 102, 241, 0.35);
 }
+.qr-generar-btn { background: #16a34a; box-shadow: 0 12px 28px rgba(22, 163, 74, 0.35); }
+.qr-generar-btn:hover { background: #15803d; }
 .qr-resumen-dia { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
 @media (max-width: 720px) {
   .qr-resumen-dia { grid-template-columns: 1fr 1fr; }
@@ -944,13 +946,6 @@ html.dark .btn-export { color: #04231e; }
 }
 .qr-resumen-card span { font-size: 11px; color: var(--ink-muted); text-transform: uppercase; letter-spacing: 0.03em; }
 .qr-resumen-card strong { font-size: 19px; }
-
-.qr-verificacion-ok, .qr-verificacion-warn {
-  margin: 0; padding: 10px 14px; border-radius: 10px; font-size: 12.5px; font-weight: 600;
-}
-.qr-verificacion-ok { background: rgba(22, 163, 74, 0.12); color: var(--good); }
-.qr-verificacion-warn { background: rgba(234, 88, 12, 0.12); color: #b45309; }
-html.dark .qr-verificacion-warn { color: #fdba74; }
 
 @media print {
   .topbar, .subnav, .app-bg-decor, .odin-fab, .odin-panel, .no-print { display: none !important; }
@@ -1014,6 +1009,51 @@ html.dark .qr-verificacion-warn { color: #fdba74; }
   transition: transform 0.15s ease, box-shadow 0.18s ease;
 }
 .planes-whatsapp-btn:hover { transform: translateY(-1px); box-shadow: 0 14px 30px rgba(37, 211, 102, 0.45); }
+
+/* ---------- Página pública de pago (QR Único → /pago/:ruc) ---------- */
+.pago-publico-page {
+  min-height: 100%; display: flex; align-items: center; justify-content: center; padding: 24px 16px;
+  background:
+    radial-gradient(420px 320px at 15% 15%, rgba(147, 197, 253, 0.4), transparent 70%),
+    radial-gradient(380px 300px at 85% 10%, rgba(129, 140, 248, 0.22), transparent 70%),
+    #f6f7fd;
+}
+html.dark .pago-publico-page { background: #0f1117; }
+.pago-publico-card {
+  width: 100%; max-width: 400px; background: var(--surface); border-radius: 20px; padding: 32px 26px;
+  box-shadow: var(--shadow-xl); text-align: center; animation: fadeUp 0.35s var(--ease-out);
+}
+.pago-publico-logo { max-width: 120px; max-height: 70px; margin: 0 auto 12px; display: block; }
+.pago-publico-eyebrow { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-muted); margin: 0 0 4px; }
+.pago-publico-card h1 { font-size: 21px; font-weight: 800; margin: 0 0 20px; }
+.pago-publico-hint { font-size: 13px; color: var(--ink-muted); margin: 0 0 16px; }
+.pago-publico-opciones { display: flex; flex-direction: column; gap: 12px; }
+.pago-publico-opcion {
+  display: flex; align-items: center; gap: 12px; padding: 16px 18px; border-radius: 14px;
+  border: 2px solid var(--border); background: var(--surface-hover); font-size: 16px; font-weight: 700;
+  cursor: pointer; transition: border-color 0.15s ease, transform 0.15s ease;
+}
+.pago-publico-opcion:hover { border-color: var(--medio-color, var(--brand-blue)); transform: translateY(-1px); }
+.pago-publico-opcion-icono { font-size: 24px; }
+.pago-publico-volver {
+  display: inline-flex; align-items: center; gap: 4px; background: none; border: none; cursor: pointer;
+  color: var(--ink-muted); font-size: 12.5px; font-weight: 600; padding: 0; margin-bottom: 14px;
+}
+.pago-publico-volver:hover { color: var(--ink); }
+.pago-publico-detalle-header { display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 14px; }
+.pago-publico-detalle-header h2 { font-size: 19px; margin: 0; color: var(--medio-color); }
+.pago-publico-qr-img { width: 150px; height: 150px; object-fit: contain; border: 1px solid var(--border); border-radius: 10px; padding: 6px; background: #fff; margin: 0 auto 16px; display: block; }
+.pago-publico-dato {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 10px; padding: 10px 0;
+  border-bottom: 1px solid var(--border); text-align: left;
+}
+.pago-publico-dato span { font-size: 11px; color: var(--ink-muted); text-transform: uppercase; letter-spacing: 0.03em; }
+.pago-publico-dato strong { font-size: 15px; }
+.pago-publico-copiar-btn { width: 100%; margin-top: 16px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.pago-publico-instrucciones {
+  display: flex; align-items: flex-start; gap: 8px; margin-top: 18px; font-size: 12px; color: var(--ink-muted);
+  text-align: left; line-height: 1.5;
+}
 
 /* ---------- Modo oscuro: ajustes puntuales sobre superficies con bordes/sombras ---------- */
 

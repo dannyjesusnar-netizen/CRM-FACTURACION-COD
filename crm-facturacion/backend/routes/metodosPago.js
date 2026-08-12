@@ -1,7 +1,6 @@
 const express = require('express');
 const db = require('../db');
 const { requireAuth, requireGerencia } = require('../middleware/auth');
-const { decodificarQr } = require('../utils/qrDecoder');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -22,19 +21,6 @@ router.get('/', (req, res) => {
     ? 'SELECT * FROM metodos_pago ORDER BY orden ASC, id ASC'
     : 'SELECT * FROM metodos_pago WHERE activo = 1 ORDER BY orden ASC, id ASC';
   res.json(db.prepare(sql).all());
-});
-
-// Lee el contenido real codificado dentro de una foto de QR (no la imagen,
-// el texto/dato que representa) — así se puede confirmar si dos fotos de QR
-// (Yape y Plin) son en verdad el mismo código interoperable, en vez de
-// asumirlo solo porque el usuario subió dos imágenes distintas.
-router.post('/decodificar-qr', async (req, res) => {
-  const { qr_data_url } = req.body || {};
-  if (typeof qr_data_url !== 'string' || !qr_data_url.startsWith('data:image/')) {
-    return res.status(400).json({ error: 'qr_data_url debe ser una imagen válida.' });
-  }
-  const texto = await decodificarQr(qr_data_url);
-  res.json({ texto });
 });
 
 // El QR es una foto/captura (base64) — se acepta hasta ~2MB de payload

@@ -31,6 +31,8 @@ const serieRoutes = require('./routes/series');
 const suscripcionRoutes = require('./routes/suscripcion');
 const mensajesSoporteRoutes = require('./routes/mensajesSoporte');
 const pagosQrRoutes = require('./routes/pagosQr');
+const qrUnicoRoutes = require('./routes/qrUnico');
+const pagoPublicoRoutes = require('./routes/pagoPublico');
 const { procesarCobrosVencidos } = require('./utils/facturacionPlataforma');
 const db = require('./db');
 const tenantRegistry = require('./tenantRegistry');
@@ -82,6 +84,10 @@ app.use('/api/series', serieRoutes);
 app.use('/api/suscripcion', suscripcionRoutes);
 app.use('/api/mensajes-soporte', mensajesSoporteRoutes);
 app.use('/api/pagos-qr', pagosQrRoutes);
+app.use('/api/qr-unico', qrUnicoRoutes);
+// Pública (sin sesión) — la escanea el cliente del comercio desde el QR
+// impreso, ver routes/pagoPublico.js.
+app.use('/api/pago-publico', pagoPublicoRoutes);
 
 // panel-central: su API vive en /panel-api (no /api, para no chocar con la
 // de este CRM) y su login/base de datos son completamente independientes

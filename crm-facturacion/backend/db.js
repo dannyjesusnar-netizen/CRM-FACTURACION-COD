@@ -449,7 +449,7 @@ CREATE TABLE IF NOT EXISTS mensajes_soporte (
   created_at TEXT DEFAULT (datetime('now'))
 );
 
--- Registro de pagos recibidos por Yape/Plin (pantalla "QR Estático") —
+-- Registro de pagos recibidos por Yape/Plin (pantalla "QR Único") —
 -- control manual con foto de respaldo del comprobante. monto_detectado es
 -- lo que el OCR leyó de la foto (puede ser NULL si no detectó nada); monto
 -- es el valor final que confirma quien registra el pago, siempre editable.
@@ -462,6 +462,21 @@ CREATE TABLE IF NOT EXISTS pagos_qr (
   sucursal_id INTEGER REFERENCES sucursales(id),
   created_by INTEGER REFERENCES users(id),
   created_at TEXT DEFAULT (datetime('now'))
+);
+
+-- Datos propios de la pantalla "QR Único" (Menú → QR Único) — totalmente
+-- separados de metodos_pago (que es lo que se usa al Cobrar una venta en
+-- Ventas). Un QR único genérico (generado con la librería qrcode, ver
+-- routes/qrUnico.js) apunta a /pago/:ruc, una página pública donde el
+-- cliente elige Yape o Plin y ve estos datos para pagar desde su app.
+CREATE TABLE IF NOT EXISTS qr_unico_medios (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  medio TEXT NOT NULL UNIQUE,                -- yape | plin
+  qr_data_url TEXT,                          -- foto del QR real de esa app (opcional)
+  titular_nombre TEXT,
+  titular_telefono TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
 );
 `);
 
@@ -834,6 +849,14 @@ CREATE TABLE IF NOT EXISTS role_acciones (
   }
   if (!metodoPagoColumns.includes('link_pago')) {
     db.exec('ALTER TABLE metodos_pago ADD COLUMN link_pago TEXT');
+  }
+
+  const pagoQrColumns = db.prepare('PRAGMA table_info(pagos_qr)').all().map((c) => c.name);
+  if (!pagoQrColumns.includes('comentario')) {
+    db.exec('ALTER TABLE pagos_qr ADD COLUMN comentario TEXT');
+  }
+  if (!pagoQrColumns.includes('hora_detectada')) {
+    db.exec('ALTER TABLE pagos_qr ADD COLUMN hora_detectada TEXT');
   }
 
   // Sucursales: toda empresa arranca con al menos una sede principal. La
