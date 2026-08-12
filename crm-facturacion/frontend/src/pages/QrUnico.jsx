@@ -105,24 +105,18 @@ export default function QrUnico() {
   async function handleQrChange(medio, e) {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 1.3 * 1024 * 1024) {
-      toast.error('La imagen es muy pesada. Usa una de menos de 1MB.');
-      return;
+    setSaving((prev) => ({ ...prev, [medio]: true }));
+    try {
+      const comprimida = await comprimirImagen(file);
+      await api.put(`/qr-unico/medios/${medio}`, { qr_data_url: comprimida });
+      toast.success(`QR de ${DEFAULTS[medio].nombre} guardado.`);
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'No se pudo guardar el QR. Intenta con otra foto.');
+    } finally {
+      setSaving((prev) => ({ ...prev, [medio]: false }));
+      e.target.value = '';
     }
-    const reader = new FileReader();
-    reader.onload = async () => {
-      setSaving((prev) => ({ ...prev, [medio]: true }));
-      try {
-        await api.put(`/qr-unico/medios/${medio}`, { qr_data_url: reader.result });
-        toast.success(`QR de ${DEFAULTS[medio].nombre} guardado.`);
-        load();
-      } catch (err) {
-        toast.error(err.response?.data?.error || 'No se pudo guardar el QR.');
-      } finally {
-        setSaving((prev) => ({ ...prev, [medio]: false }));
-      }
-    };
-    reader.readAsDataURL(file);
   }
 
   async function quitarQr(medio) {
