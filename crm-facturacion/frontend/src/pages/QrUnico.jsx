@@ -1,21 +1,17 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Printer, Camera, Trash2 } from 'lucide-react';
+import { ArrowLeft, Printer, Camera, QrCode, Trash2 } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 
-// Yape y Plin ya existen como métodos de pago sembrados por defecto (ver
-// db.js) con codigo 'yape' / 'plin' — codigo es inmutable aunque Gerencia
-// renombre el método, así que es un enlace estable. Si alguna vez los
-// borraron, esta pantalla los vuelve a crear sola al subir un QR.
 const DEFAULTS = {
-  yape: { nombre: 'Yape', tipo: 'billetera', color: '#7c3aed', icono: '📲' },
-  plin: { nombre: 'Plin', tipo: 'billetera', color: '#00bcd4', icono: '📱' },
+  yape: { nombre: 'Yape', icono: '📲' },
+  plin: { nombre: 'Plin', icono: '📱' },
 };
 
-function emptyMetodos() {
-  return { yape: null, plin: null };
+function emptyMedios() {
+  return { yape: { medio: 'yape' }, plin: { medio: 'plin' } };
 }
 
 function todayStr() {
@@ -23,8 +19,7 @@ function todayStr() {
 }
 
 // Redimensiona/comprime la foto en el navegador antes de subirla — una foto
-// de cámara sin comprimir puede pesar varios MB, esto la deja liviana sin
-// perder legibilidad del texto del comprobante.
+// de cámara sin comprimir puede pesar varios MB.
 function comprimirImagen(file, maxWidth = 1000, calidad = 0.75) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -46,19 +41,21 @@ function comprimirImagen(file, maxWidth = 1000, calidad = 0.75) {
   });
 }
 
-export default function QrEstatico() {
+export default function QrUnico() {
   const navigate = useNavigate();
   const toast = useToast();
   const { empresa } = useAuth();
-  const [metodos, setMetodos] = useState(emptyMetodos());
+  const [medios, setMedios] = useState(emptyMedios());
+  const [form, setForm] = useState({
+    yape: { titular_nombre: '', titular_telefono: '' },
+    plin: { titular_nombre: '', titular_telefono: '' },
+  });
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(emptyMetodos());
-  const [linkForm, setLinkForm] = useState({ yape: '', plin: '' });
-  const [savingLink, setSavingLink] = useState(emptyMetodos());
+  const [saving, setSaving] = useState({ yape: false, plin: false });
 
-  // --- Verificación de interoperabilidad (lee el contenido real de cada QR) ---
-  const [qrTexto, setQrTexto] = useState({ yape: undefined, plin: undefined });
-  const [verificando, setVerificando] = useState(false);
+  // --- QR Único generado ---
+  const [qrUnico, setQrUnico] = useState(null); // { url, qr_data_url }
+  const [generando, setGenerando] = useState(false);
 
   // --- Registrar pago ---
   const [showRegistro, setShowRegistro] = useState(false);
@@ -67,6 +64,8 @@ export default function QrEstatico() {
   const [medioPago, setMedioPago] = useState('yape');
   const [montoPago, setMontoPago] = useState('');
   const [montoDetectado, setMontoDetectado] = useState(null);
+  const [horaDetectada, setHoraDetectada] = useState(null);
+  const [comentarioPago, setComentarioPago] = useState('');
   const [guardandoPago, setGuardandoPago] = useState(false);
 
   // --- Historial del día ---
@@ -83,13 +82,14 @@ export default function QrEstatico() {
   }, [fechaHistorial]);
 
   function load() {
-    api.get('/metodos-pago', { params: { todos: 1 } }).then((res) => {
-      const yape = res.data.find((m) => m.codigo === 'yape') || null;
-      const plin = res.data.find((m) => m.codigo === 'plin') || null;
-      setMetodos({ yape, plin });
-      setLinkForm({ yape: yape?.link_pago || '', plin: plin?.link_pago || '' });
+    api.get('/qr-unico/medios').then((res) => {
+      const porMedio = Object.fromEntries(res.data.map((m) => [m.medio, m]));
+      setMedios({ ...emptyMedios(), ...porMedio });
+      setForm({
+        yape: { titular_nombre: porMedio.yape?.titular_nombre || '', titular_telefono: porMedio.yape?.titular_telefono || '' },
+        plin: { titular_nombre: porMedio.plin?.titular_nombre || '', titular_telefono: porMedio.plin?.titular_telefono || '' },
+      });
       setLoading(false);
-      verificarInteroperabilidad(yape?.qr_data_url, plin?.qr_data_url);
     });
   }
 
@@ -97,31 +97,7 @@ export default function QrEstatico() {
     api.get('/pagos-qr', { params: { fecha } }).then((res) => setHistorial(res.data));
   }
 
-  // No podemos "fabricar" un QR de pago nuevo: el código codifica datos de
-  // enrutamiento que solo emite el banco/la app. Lo que sí podemos hacer es
-  // leer el contenido real dentro de cada foto (con un decodificador de QR)
-  // y comparar — si Yape y Plin son en verdad interoperables, ambas fotos
-  // deben decodificar exactamente el mismo texto.
-  async function verificarInteroperabilidad(yapeQr, plinQr) {
-    if (!yapeQr || !plinQr) {
-      setQrTexto({ yape: undefined, plin: undefined });
-      return;
-    }
-    setVerificando(true);
-    try {
-      const [ry, rp] = await Promise.all([
-        api.post('/metodos-pago/decodificar-qr', { qr_data_url: yapeQr }),
-        api.post('/metodos-pago/decodificar-qr', { qr_data_url: plinQr }),
-      ]);
-      setQrTexto({ yape: ry.data.texto, plin: rp.data.texto });
-    } catch (err) {
-      setQrTexto({ yape: null, plin: null });
-    } finally {
-      setVerificando(false);
-    }
-  }
-
-  async function handleQrChange(codigo, e) {
+  async function handleQrChange(medio, e) {
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > 1.3 * 1024 * 1024) {
@@ -130,49 +106,52 @@ export default function QrEstatico() {
     }
     const reader = new FileReader();
     reader.onload = async () => {
-      setSaving((prev) => ({ ...prev, [codigo]: true }));
+      setSaving((prev) => ({ ...prev, [medio]: true }));
       try {
-        const existente = metodos[codigo];
-        if (existente) {
-          await api.put(`/metodos-pago/${existente.id}`, { ...existente, qr_data_url: reader.result });
-        } else {
-          await api.post('/metodos-pago', { ...DEFAULTS[codigo], qr_data_url: reader.result });
-        }
-        toast.success(`QR de ${DEFAULTS[codigo].nombre} guardado.`);
+        await api.put(`/qr-unico/medios/${medio}`, { qr_data_url: reader.result });
+        toast.success(`QR de ${DEFAULTS[medio].nombre} guardado.`);
         load();
       } catch (err) {
         toast.error(err.response?.data?.error || 'No se pudo guardar el QR.');
       } finally {
-        setSaving((prev) => ({ ...prev, [codigo]: false }));
+        setSaving((prev) => ({ ...prev, [medio]: false }));
       }
     };
     reader.readAsDataURL(file);
   }
 
-  async function quitarQr(codigo) {
-    const existente = metodos[codigo];
-    if (!existente) return;
-    if (!window.confirm(`¿Quitar el QR de ${DEFAULTS[codigo].nombre}?`)) return;
-    await api.put(`/metodos-pago/${existente.id}`, { ...existente, qr_data_url: '' });
+  async function quitarQr(medio) {
+    if (!window.confirm(`¿Quitar el QR de ${DEFAULTS[medio].nombre}?`)) return;
+    await api.put(`/qr-unico/medios/${medio}`, { qr_data_url: '' });
     toast.success('QR eliminado.');
     load();
   }
 
-  async function guardarLink(codigo) {
-    setSavingLink((prev) => ({ ...prev, [codigo]: true }));
+  async function guardarDatos(medio) {
+    setSaving((prev) => ({ ...prev, [medio]: true }));
     try {
-      const existente = metodos[codigo];
-      if (existente) {
-        await api.put(`/metodos-pago/${existente.id}`, { ...existente, link_pago: linkForm[codigo] });
-      } else {
-        await api.post('/metodos-pago', { ...DEFAULTS[codigo], link_pago: linkForm[codigo] });
-      }
-      toast.success(`Link de ${DEFAULTS[codigo].nombre} guardado.`);
+      await api.put(`/qr-unico/medios/${medio}`, {
+        titular_nombre: form[medio].titular_nombre,
+        titular_telefono: form[medio].titular_telefono,
+      });
+      toast.success(`Datos de ${DEFAULTS[medio].nombre} guardados.`);
       load();
     } catch (err) {
-      toast.error(err.response?.data?.error || 'No se pudo guardar el link.');
+      toast.error(err.response?.data?.error || 'No se pudieron guardar los datos.');
     } finally {
-      setSavingLink((prev) => ({ ...prev, [codigo]: false }));
+      setSaving((prev) => ({ ...prev, [medio]: false }));
+    }
+  }
+
+  async function generarQr() {
+    setGenerando(true);
+    try {
+      const res = await api.get('/qr-unico/generar');
+      setQrUnico(res.data);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'No se pudo generar el QR.');
+    } finally {
+      setGenerando(false);
     }
   }
 
@@ -181,6 +160,8 @@ export default function QrEstatico() {
     setMedioPago('yape');
     setMontoPago('');
     setMontoDetectado(null);
+    setHoraDetectada(null);
+    setComentarioPago('');
     setShowRegistro(true);
   }
 
@@ -193,6 +174,7 @@ export default function QrEstatico() {
       setAnalizando(true);
       const res = await api.post('/pagos-qr/detectar-monto', { foto_data_url: comprimida });
       setMontoDetectado(res.data.monto_detectado);
+      setHoraDetectada(res.data.hora_detectada);
       if (res.data.monto_detectado != null) setMontoPago(String(res.data.monto_detectado));
       if (res.data.medio_detectado) setMedioPago(res.data.medio_detectado);
       if (res.data.monto_detectado == null) {
@@ -215,6 +197,8 @@ export default function QrEstatico() {
         medio: medioPago,
         monto: Number(montoPago),
         monto_detectado: montoDetectado,
+        hora_detectada: horaDetectada,
+        comentario: comentarioPago || null,
         foto_data_url: fotoPago,
       });
       toast.success('Pago registrado.');
@@ -239,13 +223,6 @@ export default function QrEstatico() {
   }
 
   const nombreEmpresa = empresa?.nombre_comercial || empresa?.razon_social || '';
-  const yapeQr = metodos.yape?.qr_data_url || '';
-  const plinQr = metodos.plin?.qr_data_url || '';
-  const tieneAlgunQr = yapeQr || plinQr;
-  const ambosSubidos = yapeQr && plinQr;
-  const coincideInteroperable = ambosSubidos && qrTexto.yape && qrTexto.plin && qrTexto.yape === qrTexto.plin;
-  const difierenLosCodigos = ambosSubidos && !verificando && qrTexto.yape && qrTexto.plin && qrTexto.yape !== qrTexto.plin;
-  const noSeLeyoAlguno = ambosSubidos && !verificando && !difierenLosCodigos && (qrTexto.yape == null || qrTexto.plin == null);
 
   return (
     <div>
@@ -253,79 +230,74 @@ export default function QrEstatico() {
         <button className="icon-link" title="Volver al menú" onClick={() => navigate('/menu')} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}>
           <ArrowLeft size={20} />
         </button>
-        QR ESTÁTICO
+        QR ÚNICO
       </h1>
       <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -8 }} className="no-print">
-        Sube la foto de tu QR real de Yape y de Plin (lo mismo que aparece en cada app, en "Mi código QR"). El sistema
-        lee el contenido de ambos códigos y, si son el mismo QR interoperable (como suele pasar en Perú desde 2023),
-        te lo confirma y los imprime como uno solo. Agrega tu link de pago si tienes, y genera un cartel para tu tienda.
+        Registra el QR, nombre y teléfono de tu cuenta de Yape y de Plin. Con eso genera tu QR Único: un solo código
+        para imprimir y pegar en tu tienda — al escanearlo, el cliente elige Yape o Plin y ve los datos para pagarte
+        desde su propia app.
       </p>
 
       {!loading && (
         <>
           <div className="qr-estatico-grid no-print">
-            {['yape', 'plin'].map((codigo) => (
-              <div key={codigo} className="panel">
-                <h3 style={{ marginTop: 0 }}>{DEFAULTS[codigo].icono} {metodos[codigo]?.nombre || DEFAULTS[codigo].nombre}</h3>
+            {['yape', 'plin'].map((medio) => (
+              <div key={medio} className="panel">
+                <h3 style={{ marginTop: 0 }}>{DEFAULTS[medio].icono} {DEFAULTS[medio].nombre}</h3>
                 <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
-                  <div style={{ width: 130, height: 130, border: '1px dashed var(--border)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', background: 'var(--surface)' }}>
-                    {metodos[codigo]?.qr_data_url ? (
-                      <img src={metodos[codigo].qr_data_url} alt={`QR ${DEFAULTS[codigo].nombre}`} style={{ maxWidth: '100%', maxHeight: '100%' }} />
+                  <div style={{ width: 110, height: 110, border: '1px dashed var(--border)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', background: 'var(--surface)' }}>
+                    {medios[medio]?.qr_data_url ? (
+                      <img src={medios[medio].qr_data_url} alt={`QR ${DEFAULTS[medio].nombre}`} style={{ maxWidth: '100%', maxHeight: '100%' }} />
                     ) : (
                       <span style={{ fontSize: 11, color: 'var(--ink-muted)', textAlign: 'center' }}>Sin QR</span>
                     )}
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     <label className="btn-secondary" style={{ width: 'auto', textAlign: 'center', cursor: 'pointer' }}>
-                      {saving[codigo] ? 'Guardando...' : (metodos[codigo]?.qr_data_url ? 'Cambiar QR' : 'Subir QR')}
-                      <input type="file" accept="image/png,image/jpeg" onChange={(e) => handleQrChange(codigo, e)} style={{ display: 'none' }} disabled={saving[codigo]} />
+                      {saving[medio] ? 'Guardando...' : (medios[medio]?.qr_data_url ? 'Cambiar QR' : 'Subir QR')}
+                      <input type="file" accept="image/png,image/jpeg" onChange={(e) => handleQrChange(medio, e)} style={{ display: 'none' }} disabled={saving[medio]} />
                     </label>
-                    {metodos[codigo]?.qr_data_url && (
-                      <button type="button" className="btn-secondary" onClick={() => quitarQr(codigo)}>Quitar QR</button>
+                    {medios[medio]?.qr_data_url && (
+                      <button type="button" className="btn-secondary" onClick={() => quitarQr(medio)}>Quitar QR</button>
                     )}
                   </div>
                 </div>
-                <label style={{ marginTop: 14, display: 'block' }}>Link de pago (opcional)</label>
+
+                <label style={{ marginTop: 14, display: 'block' }}>Nombre completo</label>
+                <input
+                  type="text"
+                  value={form[medio].titular_nombre}
+                  onChange={(e) => setForm((prev) => ({ ...prev, [medio]: { ...prev[medio], titular_nombre: e.target.value } }))}
+                  placeholder="Nombre y apellido de quien recibe el pago"
+                />
+
+                <label style={{ marginTop: 10, display: 'block' }}>Teléfono</label>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <input
-                    type="url"
-                    value={linkForm[codigo]}
-                    onChange={(e) => setLinkForm((prev) => ({ ...prev, [codigo]: e.target.value }))}
-                    placeholder={`https://${codigo}.me/tu-negocio`}
+                    type="tel"
+                    value={form[medio].titular_telefono}
+                    onChange={(e) => setForm((prev) => ({ ...prev, [medio]: { ...prev[medio], titular_telefono: e.target.value.replace(/\D/g, '') } }))}
+                    placeholder="987654321"
                     style={{ flex: 1 }}
                   />
-                  <button type="button" className="btn-secondary" style={{ width: 'auto' }} disabled={savingLink[codigo]} onClick={() => guardarLink(codigo)}>
-                    {savingLink[codigo] ? 'Guardando...' : 'Guardar'}
+                  <button type="button" className="btn-secondary" style={{ width: 'auto' }} disabled={saving[medio]} onClick={() => guardarDatos(medio)}>
+                    {saving[medio] ? 'Guardando...' : 'Guardar'}
                   </button>
                 </div>
               </div>
             ))}
           </div>
 
-          {ambosSubidos && (
-            <div className="no-print" style={{ marginBottom: 20 }}>
-              {verificando && (
-                <p style={{ fontSize: 12, color: 'var(--ink-muted)' }}>Verificando si ambos códigos son el mismo QR interoperable…</p>
-              )}
-              {!verificando && coincideInteroperable && (
-                <p className="qr-verificacion-ok">✅ Confirmado: el QR de Yape y el de Plin son exactamente el mismo código interoperable. Se imprimirán como uno solo.</p>
-              )}
-              {!verificando && difierenLosCodigos && (
-                <p className="qr-verificacion-warn">⚠️ Estos dos códigos no son iguales — no se puede confirmar que sean interoperables. Se imprimirán por separado, cada uno con su app.</p>
-              )}
-              {!verificando && noSeLeyoAlguno && (
-                <p className="qr-verificacion-warn">⚠️ No pudimos leer el contenido de una de las fotos (verifica que esté nítida y completa). Se imprimirán por separado.</p>
-              )}
-            </div>
-          )}
-
-          <div className="report-toolbar no-print" style={{ justifyContent: 'center', marginBottom: 24 }}>
+          <div className="report-toolbar no-print" style={{ justifyContent: 'center', gap: 16, marginBottom: 24, flexWrap: 'wrap' }}>
+            <button type="button" className="btn-primary qr-generar-btn" onClick={generarQr} disabled={generando}>
+              <QrCode size={20} /> {generando ? 'Generando...' : 'GENERAR QR'}
+            </button>
             <button type="button" className="btn-primary qr-registrar-pago-btn" onClick={abrirRegistroPago}>
               <Camera size={20} /> REGISTRAR PAGO
             </button>
           </div>
 
-          {tieneAlgunQr && (
+          {qrUnico && (
             <div className="qr-print-section">
               <div className="report-toolbar no-print">
                 <h3 style={{ margin: 0 }}>Cartel para imprimir</h3>
@@ -337,35 +309,13 @@ export default function QrEstatico() {
               <div className="qr-print-poster">
                 {empresa?.logo_data_url && <img src={empresa.logo_data_url} alt="Logo" className="qr-print-logo" />}
                 <h2>{nombreEmpresa}</h2>
-                {coincideInteroperable ? (
-                  <>
-                    <p className="qr-print-subtitulo">Escanea con Yape o Plin y paga al instante</p>
-                    <div className="qr-print-codigos">
-                      <div className="qr-print-item">
-                        <img src={yapeQr} alt="QR interoperable Yape/Plin" />
-                        <span>📲 Yape · 📱 Plin</span>
-                      </div>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <p className="qr-print-subtitulo">Escanea y paga con tu app</p>
-                    <div className="qr-print-codigos">
-                      {yapeQr && (
-                        <div className="qr-print-item">
-                          <img src={yapeQr} alt="QR Yape" />
-                          <span>📲 Yape</span>
-                        </div>
-                      )}
-                      {plinQr && (
-                        <div className="qr-print-item">
-                          <img src={plinQr} alt="QR Plin" />
-                          <span>📱 Plin</span>
-                        </div>
-                      )}
-                    </div>
-                  </>
-                )}
+                <p className="qr-print-subtitulo">Escanea y elige cómo pagar</p>
+                <div className="qr-print-codigos">
+                  <div className="qr-print-item">
+                    <img src={qrUnico.qr_data_url} alt="QR Único" />
+                    <span>📲 Yape · 📱 Plin</span>
+                  </div>
+                </div>
                 {empresa?.ruc && <p className="qr-print-ruc">RUC {empresa.ruc}</p>}
               </div>
             </div>
@@ -398,7 +348,7 @@ export default function QrEstatico() {
 
             <table className="data-table">
               <thead>
-                <tr><th>Hora</th><th>Medio</th><th>Monto</th><th>Registrado por</th><th>Comprobante</th><th></th></tr>
+                <tr><th>Hora</th><th>Medio</th><th>Monto</th><th>Registrado por</th><th>Comentario</th><th>Comprobante</th><th></th></tr>
               </thead>
               <tbody>
                 {historial.pagos.map((p) => (
@@ -407,6 +357,7 @@ export default function QrEstatico() {
                     <td>{DEFAULTS[p.medio]?.icono} {DEFAULTS[p.medio]?.nombre || p.medio}</td>
                     <td>S/ {p.monto.toFixed(2)}</td>
                     <td>{p.usuario_nombre || '—'}</td>
+                    <td style={{ fontSize: 12, color: 'var(--ink-muted)', maxWidth: 220 }}>{p.comentario || '—'}</td>
                     <td>
                       <a href={p.foto_data_url} target="_blank" rel="noreferrer" className="btn-link">Ver foto</a>
                     </td>
@@ -418,7 +369,7 @@ export default function QrEstatico() {
                   </tr>
                 ))}
                 {historial.pagos.length === 0 && (
-                  <tr><td colSpan={6} className="empty-row">No hay pagos registrados en esta fecha.</td></tr>
+                  <tr><td colSpan={7} className="empty-row">No hay pagos registrados en esta fecha.</td></tr>
                 )}
               </tbody>
             </table>
@@ -438,8 +389,8 @@ export default function QrEstatico() {
                 </div>
               ) : (
                 <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -6 }}>
-                  Toma una foto de la pantalla de tu celular (o del celular del cliente) con el comprobante de pago,
-                  o sube una que ya tengas guardada.
+                  Toma una foto de la pantalla del celular del cliente con el comprobante de pago, o sube una que ya
+                  tengas guardada.
                 </p>
               )}
               <label className="btn-secondary" style={{ width: 'auto', textAlign: 'center', cursor: 'pointer', display: 'inline-block' }}>
@@ -467,6 +418,19 @@ export default function QrEstatico() {
                       No pudimos leer el monto de la foto — ingrésalo tú.
                     </p>
                   )}
+                  {horaDetectada && (
+                    <p style={{ fontSize: 11, color: 'var(--ink-muted)', marginTop: -6 }}>
+                      Hora detectada en el comprobante: {horaDetectada}
+                    </p>
+                  )}
+
+                  <label style={{ marginTop: 4 }}>Comentario (opcional)</label>
+                  <input
+                    type="text"
+                    value={comentarioPago}
+                    onChange={(e) => setComentarioPago(e.target.value)}
+                    placeholder="Ej. nombre del cliente, número de mesa, etc."
+                  />
                 </>
               )}
 

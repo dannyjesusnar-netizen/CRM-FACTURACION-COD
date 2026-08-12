@@ -50,7 +50,7 @@ router.get('/', (req, res) => {
 });
 
 router.post('/', (req, res) => {
-  const { medio, monto, monto_detectado, foto_data_url } = req.body || {};
+  const { medio, monto, monto_detectado, foto_data_url, hora_detectada, comentario } = req.body || {};
   if (!MEDIOS_VALIDOS.includes(medio)) {
     return res.status(400).json({ error: 'medio inválido. Use yape o plin.' });
   }
@@ -61,9 +61,12 @@ router.post('/', (req, res) => {
     return res.status(400).json({ error: 'Debes adjuntar la foto del comprobante.' });
   }
   const info = db.prepare(
-    `INSERT INTO pagos_qr (medio, monto, monto_detectado, foto_data_url, sucursal_id, created_by)
-     VALUES (?, ?, ?, ?, ?, ?)`
-  ).run(medio, Number(monto), monto_detectado != null ? Number(monto_detectado) : null, foto_data_url, req.sucursalId, req.user.id);
+    `INSERT INTO pagos_qr (medio, monto, monto_detectado, foto_data_url, hora_detectada, comentario, sucursal_id, created_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    medio, Number(monto), monto_detectado != null ? Number(monto_detectado) : null, foto_data_url,
+    hora_detectada || null, comentario || null, req.sucursalId, req.user.id
+  );
   res.status(201).json(db.prepare('SELECT * FROM pagos_qr WHERE id = ?').get(info.lastInsertRowid));
 });
 

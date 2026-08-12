@@ -27,7 +27,7 @@ const MENU_ICONS = [
 ];
 
 const ACTIVE_MODULES = [
-  { to: '/qr-estatico', label: 'QR Estático', Icon: QrCode, desc: 'Registra tu QR de Yape y Plin, e imprime tu cartel' },
+  { to: '/qr-unico', label: 'QR Único', Icon: QrCode, desc: 'Genera un QR único con tu Yape y Plin, e imprime tu cartel' },
   { to: '/ventas', label: 'Ventas', Icon: Receipt, desc: 'Emitir facturas, boletas y notas', modulo: 'ventas' },
   { to: '/compras', label: 'Compras', Icon: ShoppingCart, desc: 'Registrar compras a proveedores', modulo: 'compras' },
   { to: '/clientes', label: 'Clientes', Icon: Users, desc: 'Gestión de clientes', modulo: 'clientes' },
