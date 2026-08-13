@@ -47,6 +47,8 @@ export default function Movements() {
   const [productId, setProductId] = useState('');
   const [cantidad, setCantidad] = useState('');
   const [motivo, setMotivo] = useState('');
+  const [codigoLote, setCodigoLote] = useState('');
+  const [fechaVencimiento, setFechaVencimiento] = useState('');
   const [error, setError] = useState('');
 
   const [showConteo, setShowConteo] = useState(false);
@@ -101,6 +103,8 @@ export default function Movements() {
     setProductId('');
     setCantidad('');
     setMotivo('');
+    setCodigoLote('');
+    setFechaVencimiento('');
     setError('');
     setShowForm(true);
   }
@@ -113,8 +117,14 @@ export default function Movements() {
       return;
     }
     try {
-      await api.post('/movements', { product_id: Number(productId), cantidad: Number(cantidad), motivo });
-      toast.success('Ajuste de stock registrado.');
+      await api.post('/movements', {
+        product_id: Number(productId),
+        cantidad: Number(cantidad),
+        motivo,
+        codigo_lote: esIngreso ? codigoLote : undefined,
+        fecha_vencimiento: esIngreso ? (fechaVencimiento || undefined) : undefined,
+      });
+      toast.success(esIngreso && codigoLote ? 'Stock y lote registrados.' : 'Ajuste de stock registrado.');
       setShowForm(false);
       load();
     } catch (err) {
@@ -192,6 +202,7 @@ export default function Movements() {
   }
 
   const productoConteo = products.find((p) => String(p.id) === String(conteoProductId));
+  const esIngreso = Number(cantidad) > 0;
 
   return (
     <div>
@@ -298,6 +309,17 @@ export default function Movements() {
               <input required type="number" step="1" value={cantidad} onChange={(e) => setCantidad(e.target.value)} placeholder="Ej: 10 ó -5" />
               <label>Motivo</label>
               <input value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Ej: Conteo físico, mercadería dañada..." />
+              {esIngreso && (
+                <>
+                  <label>N.º de lote (opcional)</label>
+                  <input value={codigoLote} onChange={(e) => setCodigoLote(e.target.value)} placeholder="Ej: L-2026-08" />
+                  <label>Fecha de vencimiento (opcional)</label>
+                  <input type="date" value={fechaVencimiento} onChange={(e) => setFechaVencimiento(e.target.value)} disabled={!codigoLote} />
+                  <p className="caja-row-auto" style={{ marginTop: -4 }}>
+                    Si ingresas un N.º de lote, este ingreso también quedará registrado en Lotes y Series.
+                  </p>
+                </>
+              )}
               {error && <div className="form-error">{error}</div>}
               <div className="modal-actions">
                 <button type="button" className="btn-secondary" onClick={() => setShowForm(false)}>Cancelar</button>
