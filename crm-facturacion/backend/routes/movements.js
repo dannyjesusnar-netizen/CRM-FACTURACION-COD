@@ -3,6 +3,7 @@ const db = require('../db');
 const { requireAuth, resolveSucursal } = require('../middleware/auth');
 const { round2, ajustarStockSucursal, getStockSucursal, setStockSucursal } = require('../utils/stock');
 const { requirePermiso, requireAccion } = require('../utils/permisos');
+const { analizarEtiqueta } = require('../utils/ocrEtiqueta');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -230,6 +231,28 @@ router.post('/importar-lotes', requireAccion('inventario', 'ajustes'), (req, res
   })();
 
   res.json({ aplicados, errores });
+});
+
+function esDataUrlImagen(s) {
+  return typeof s === 'string' && s.startsWith('data:image/');
+}
+
+// POST /api/movements/analizar-etiqueta { foto_data_url } -> intenta leer el
+// N.º de lote y la fecha de vencimiento desde la foto de la etiqueta de un
+// producto (pantalla "Cargar Stock por Fotos"). Cualquiera de los dos puede
+// salir null si el OCR no encontró nada — es solo una sugerencia, el usuario
+// siempre revisa y puede corregir antes de agregar la fila.
+router.post('/analizar-etiqueta', requireAccion('inventario', 'ajustes'), async (req, res) => {
+  const { foto_data_url } = req.body || {};
+  if (!esDataUrlImagen(foto_data_url)) {
+    return res.status(400).json({ error: 'foto_data_url debe ser una imagen válida.' });
+  }
+  try {
+    const resultado = await analizarEtiqueta(foto_data_url);
+    res.json(resultado);
+  } catch (err) {
+    res.status(500).json({ error: 'No se pudo analizar la foto. Completa el lote y vencimiento manualmente.' });
+  }
 });
 
 module.exports = router;
