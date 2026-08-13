@@ -10,8 +10,9 @@ import OdinWidget from './OdinWidget';
 import {
   TrendingUp, ShoppingCart, Bike, Wallet, Users, Calculator, ClipboardList, FileText,
   Moon, Sun, Settings, ChevronDown, Phone, FileSignature, Lock, Video, BarChart3, LogOut,
-  Building2, CreditCard, Sparkles,
+  Building2, CreditCard, Sparkles, Smartphone,
 } from 'lucide-react';
+import { canInstallPwa, isIosDevice, isRunningStandalone, promptPwaInstall, subscribePwaInstall } from '../utils/pwaInstall';
 
 // Fondo decorativo compartido por toda la app (misma línea gráfica del
 // login/menú): formas simples + iconos de negocio, flotando muy tenue
@@ -54,6 +55,8 @@ export default function Layout() {
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
+  const [pwaReady, setPwaReady] = useState(canInstallPwa());
+  const [showInstalarModal, setShowInstalarModal] = useState(false);
 
   useEffect(() => {
     function onClickOutside(e) {
@@ -62,6 +65,18 @@ export default function Layout() {
     document.addEventListener('mousedown', onClickOutside);
     return () => document.removeEventListener('mousedown', onClickOutside);
   }, []);
+
+  useEffect(() => subscribePwaInstall(() => setPwaReady(canInstallPwa())), []);
+
+  async function handleInstalarApp() {
+    setMenuOpen(false);
+    if (pwaReady) {
+      const choice = await promptPwaInstall();
+      if (choice?.outcome === 'accepted') toast.success('¡Listo! QORIA quedó en tu pantalla de inicio.');
+      return;
+    }
+    setShowInstalarModal(true);
+  }
 
   function handleLogout() {
     logout();
@@ -122,6 +137,11 @@ export default function Layout() {
               <div className="user-dropdown-item" onClick={() => navigate('/cambiar-contrasena')}>
                 <Lock size={15} className="dropdown-icon" /> Cambiar contraseña
               </div>
+              {user?.role !== 'gerencia' && !isRunningStandalone() && (
+                <div className="user-dropdown-item" onClick={handleInstalarApp}>
+                  <Smartphone size={15} className="dropdown-icon" /> Instalar app en tu celular
+                </div>
+              )}
               {user?.role === 'gerencia' && (
                 <div className="user-dropdown-item" onClick={() => navigate('/mis-pagos')}>
                   <CreditCard size={15} className="dropdown-icon" /> Mis pagos
@@ -173,6 +193,33 @@ export default function Layout() {
       </main>
 
       <OdinWidget />
+
+      {showInstalarModal && (
+        <div className="modal-overlay" onClick={() => setShowInstalarModal(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h2>Instalar QORIA en tu celular</h2>
+            {isIosDevice() ? (
+              <ol style={{ paddingLeft: 20, fontSize: 14, lineHeight: 1.7 }}>
+                <li>Abre esta página en Safari (no en Chrome).</li>
+                <li>Toca el botón <strong>Compartir</strong> (el cuadrado con la flecha hacia arriba).</li>
+                <li>Elige <strong>"Agregar a pantalla de inicio"</strong> y confirma.</li>
+              </ol>
+            ) : (
+              <ol style={{ paddingLeft: 20, fontSize: 14, lineHeight: 1.7 }}>
+                <li>Toca el menú de tu navegador (los tres puntos ⋮).</li>
+                <li>Elige <strong>"Agregar a pantalla de inicio"</strong> o <strong>"Instalar app"</strong>.</li>
+                <li>Confirma para que quede el ícono de QORIA en tu celular.</li>
+              </ol>
+            )}
+            <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: 4 }}>
+              Así podrás abrir QORIA como una app, sin escribir la dirección cada vez.
+            </p>
+            <div className="modal-actions">
+              <button type="button" className="btn-primary" style={{ width: 'auto' }} onClick={() => setShowInstalarModal(false)}>Entendido</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
