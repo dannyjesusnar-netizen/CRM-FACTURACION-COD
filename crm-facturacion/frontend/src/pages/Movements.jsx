@@ -28,6 +28,29 @@ function parseCsv(text) {
   return rows;
 }
 
+function parseCsvLotes(text) {
+  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  if (lines.length === 0) return [];
+  const rows = [];
+  let start = 0;
+  // saltar encabezado si la primera fila no parece numérica en la 2da columna
+  const firstCols = lines[0].split(',');
+  if (firstCols.length >= 2 && Number.isNaN(Number(firstCols[1]))) start = 1;
+  for (let i = start; i < lines.length; i += 1) {
+    const cols = lines[i].split(',').map((c) => c.trim().replace(/^"|"$/g, ''));
+    if (cols.length >= 2 && cols[0]) {
+      rows.push({
+        codigo: cols[0],
+        cantidad: cols[1],
+        codigo_lote: cols[2] || '',
+        fecha_vencimiento: cols[3] || '',
+        motivo: cols[4] || '',
+      });
+    }
+  }
+  return rows;
+}
+
 function todayStr() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -62,6 +85,12 @@ export default function Movements() {
   const [importFileName, setImportFileName] = useState('');
   const [importResult, setImportResult] = useState(null);
   const [errorImportar, setErrorImportar] = useState('');
+
+  const [showImportarLotes, setShowImportarLotes] = useState(false);
+  const [importLotesRows, setImportLotesRows] = useState([]);
+  const [importLotesFileName, setImportLotesFileName] = useState('');
+  const [importLotesResult, setImportLotesResult] = useState(null);
+  const [errorImportarLotes, setErrorImportarLotes] = useState('');
 
   function load() {
     const params = {};
@@ -201,6 +230,44 @@ export default function Movements() {
     }
   }
 
+  function openImportarLotes() {
+    setImportLotesRows([]);
+    setImportLotesFileName('');
+    setImportLotesResult(null);
+    setErrorImportarLotes('');
+    setShowImportarLotes(true);
+  }
+
+  function handleFileChangeLotes(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImportLotesFileName(file.name);
+    setImportLotesResult(null);
+    setErrorImportarLotes('');
+    const reader = new FileReader();
+    reader.onload = () => {
+      const rows = parseCsvLotes(String(reader.result || ''));
+      setImportLotesRows(rows);
+      if (rows.length === 0) setErrorImportarLotes('No se encontraron filas válidas en el archivo (formato esperado: codigo,cantidad,codigo_lote,fecha_vencimiento,motivo).');
+    };
+    reader.readAsText(file);
+  }
+
+  async function handleImportarLotesSubmit(e) {
+    e.preventDefault();
+    setErrorImportarLotes('');
+    if (importLotesRows.length === 0) { setErrorImportarLotes('Selecciona un archivo CSV con al menos una fila.'); return; }
+    try {
+      const res = await api.post('/movements/importar-lotes', { rows: importLotesRows });
+      setImportLotesResult(res.data);
+      if (res.data.aplicados.length > 0) toast.success(`${res.data.aplicados.length} ingreso(s) de stock registrados.`);
+      if (res.data.errores.length > 0) toast.error(`${res.data.errores.length} fila(s) con errores. Revisa el detalle.`);
+      load();
+    } catch (err) {
+      setErrorImportarLotes(err.response?.data?.error || 'No se pudo importar el archivo.');
+    }
+  }
+
   const productoConteo = products.find((p) => String(p.id) === String(conteoProductId));
   const esIngreso = Number(cantidad) > 0;
 
@@ -220,6 +287,7 @@ export default function Movements() {
           <button className="ventas-action-btn" onClick={openForm}>Registrar Movimiento</button>
           <button className="ventas-action-btn" onClick={openConteo}>Inventario Físico</button>
           <button className="ventas-action-btn" onClick={openImportar}>Importar Stock Real</button>
+          <button className="ventas-action-btn" onClick={openImportarLotes}>Cargar Stock + Lotes (CSV)</button>
         </div>
         <div className="filter-field">
           <label>Mostrar por</label>
@@ -382,6 +450,40 @@ export default function Movements() {
               {errorImportar && <div className="form-error">{errorImportar}</div>}
               <div className="modal-actions">
                 <button type="button" className="btn-secondary" onClick={() => setShowImportar(false)}>Cerrar</button>
+                <button type="submit" className="btn-primary">Importar</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showImportarLotes && (
+        <div className="modal-overlay" onClick={() => setShowImportarLotes(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h2>Cargar stock + lotes (CSV)</h2>
+            <form onSubmit={handleImportarLotesSubmit}>
+              <label>Archivo CSV (columnas: código, cantidad, N.º de lote, fecha de vencimiento, motivo)</label>
+              <p className="caja-row-auto" style={{ marginTop: -6 }}>
+                El N.º de lote, la fecha de vencimiento (AAAA-MM-DD) y el motivo son opcionales — puedes dejarlos
+                vacíos en la fila. Cada fila suma esa cantidad al stock (ingreso); no sirve para dar de baja stock.
+              </p>
+              <input required type="file" accept=".csv,text/csv" onChange={handleFileChangeLotes} />
+              {importLotesFileName && (
+                <p className="caja-row-auto">{importLotesFileName} — {importLotesRows.length} fila(s) detectadas.</p>
+              )}
+              {importLotesResult && (
+                <div style={{ marginTop: 10 }}>
+                  <p><strong>{importLotesResult.aplicados.length}</strong> aplicados, <strong>{importLotesResult.errores.length}</strong> con error.</p>
+                  {importLotesResult.errores.length > 0 && (
+                    <ul style={{ fontSize: 12, color: 'var(--critical)', maxHeight: 120, overflowY: 'auto' }}>
+                      {importLotesResult.errores.map((e, i) => <li key={i}>{e.codigo}: {e.error}</li>)}
+                    </ul>
+                  )}
+                </div>
+              )}
+              {errorImportarLotes && <div className="form-error">{errorImportarLotes}</div>}
+              <div className="modal-actions">
+                <button type="button" className="btn-secondary" onClick={() => setShowImportarLotes(false)}>Cerrar</button>
                 <button type="submit" className="btn-primary">Importar</button>
               </div>
             </form>
