@@ -46,9 +46,11 @@ router.get('/', (req, res) => {
   res.json(rows);
 });
 
-// POST /api/movements  { product_id, cantidad, motivo }  -- ajuste manual (+ ingreso / - salida)
+// POST /api/movements  { product_id, cantidad, motivo, codigo_lote?, fecha_vencimiento? }  -- ajuste manual (+ ingreso / - salida)
+// Si es un ingreso (cantidad > 0) y viene codigo_lote, se crea el lote junto con el
+// movimiento en la misma transacción (mismo patrón que POST /api/lotes).
 router.post('/', requireAccion('inventario', 'ajustes'), (req, res) => {
-  const { product_id, cantidad, motivo } = req.body || {};
+  const { product_id, cantidad, motivo, codigo_lote, fecha_vencimiento } = req.body || {};
   if (!product_id || !cantidad) {
     return res.status(400).json({ error: 'product_id y cantidad son requeridos.' });
   }
@@ -62,14 +64,31 @@ router.post('/', requireAccion('inventario', 'ajustes'), (req, res) => {
   if (cant < 0 && Math.abs(cant) > getStockSucursal(product_id, req.sucursalId)) {
     return res.status(409).json({ error: `Stock insuficiente en esta sede (disponible: ${getStockSucursal(product_id, req.sucursalId)}).` });
   }
+  const codigoLote = cant > 0 ? (codigo_lote || '').toString().trim() : '';
+  if (codigo_lote && cant <= 0) {
+    return res.status(400).json({ error: 'El lote solo puede registrarse en un ingreso (cantidad positiva).' });
+  }
+
   const insertAll = db.transaction(() => {
     db.prepare('UPDATE products SET stock = stock + ? WHERE id = ?').run(cant, product_id);
     const updated = db.prepare('SELECT stock FROM products WHERE id = ?').get(product_id);
     ajustarStockSucursal(product_id, req.sucursalId, cant);
-    db.prepare(
-      `INSERT INTO stock_movements (product_id, tipo, cantidad, stock_resultante, motivo, created_by, sucursal_id)
-       VALUES (?, 'ajuste', ?, ?, ?, ?, ?)`
-    ).run(product_id, cant, updated.stock, motivo || null, req.user?.id || null, req.sucursalId);
+
+    if (codigoLote) {
+      const loteInfo = db.prepare(
+        `INSERT INTO lotes (product_id, codigo_lote, tipo, fecha_vencimiento, cantidad_inicial, cantidad_actual, created_by)
+         VALUES (?, ?, 'lote', ?, ?, ?, ?)`
+      ).run(product_id, codigoLote, fecha_vencimiento || null, cant, cant, req.user?.id || null);
+      db.prepare(
+        `INSERT INTO stock_movements (product_id, lote_id, tipo, cantidad, stock_resultante, motivo, referencia, created_by, sucursal_id)
+         VALUES (?, ?, 'ingreso_lote', ?, ?, ?, ?, ?, ?)`
+      ).run(product_id, loteInfo.lastInsertRowid, cant, updated.stock, motivo || null, codigoLote, req.user?.id || null, req.sucursalId);
+    } else {
+      db.prepare(
+        `INSERT INTO stock_movements (product_id, tipo, cantidad, stock_resultante, motivo, created_by, sucursal_id)
+         VALUES (?, 'ajuste', ?, ?, ?, ?, ?)`
+      ).run(product_id, cant, updated.stock, motivo || null, req.user?.id || null, req.sucursalId);
+    }
     return updated.stock;
   });
 
