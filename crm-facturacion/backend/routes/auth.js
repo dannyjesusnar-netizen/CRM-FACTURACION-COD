@@ -86,6 +86,9 @@ function loginConRuc(req, res, ruc, dni, password) {
     if (!user.activo) {
       return res.status(403).json({ error: 'Esta cuenta está desactivada. Contacta a un administrador.' });
     }
+    if (!user.puede_iniciar_sesion) {
+      return res.status(403).json({ error: 'Este perfil es un registro operativo (Trainer/Supervisor) sin acceso al sistema.' });
+    }
     emitirToken(res, user, tenant ? ruc : null);
   });
 }
@@ -117,7 +120,7 @@ function loginSoloConDni(req, res, dni, password) {
 
     const encontrado = db.runWithDb(tenantDb, () => {
       const user = db.prepare('SELECT * FROM users WHERE dni = ?').get(dni);
-      if (!user || !bcrypt.compareSync(password, user.password_hash)) return null;
+      if (!user || !user.puede_iniciar_sesion || !bcrypt.compareSync(password, user.password_hash)) return null;
       return user;
     });
     if (encontrado) coincidencias.push({ tenant, ruc, user: encontrado });
