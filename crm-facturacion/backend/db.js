@@ -694,6 +694,15 @@ CREATE TABLE IF NOT EXISTS metas_venta_sede (
   if (!invoiceColumns.includes('sucursal_id')) {
     db.exec('ALTER TABLE invoices ADD COLUMN sucursal_id INTEGER REFERENCES sucursales(id)');
   }
+  // atribuido_a: el vendedor que registra la venta puede elegir que la
+  // venta cuente para un entrenador en vez de para él mismo, en el Ranking
+  // del Tablero de Ventas (ver routes/tablero.js). NULL = se atribuye a
+  // created_by (el vendedor), como siempre — created_by sigue siendo quien
+  // realmente registró el comprobante (auditoría/caja), esto es solo para
+  // el ranking de ventas.
+  if (!invoiceColumns.includes('atribuido_a')) {
+    db.exec('ALTER TABLE invoices ADD COLUMN atribuido_a INTEGER REFERENCES users(id)');
+  }
   const purchaseColumns = db.prepare("PRAGMA table_info(purchases)").all().map((c) => c.name);
   if (!purchaseColumns.includes('sucursal_id')) {
     db.exec('ALTER TABLE purchases ADD COLUMN sucursal_id INTEGER REFERENCES sucursales(id)');
