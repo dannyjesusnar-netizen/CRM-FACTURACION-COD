@@ -571,6 +571,7 @@ CREATE TABLE IF NOT EXISTS qr_unico_medios (
     ['favorito', "INTEGER DEFAULT 0"],
     ['precio_compra', "REAL"],
     ['palabras_clave', "TEXT"],
+    ['proveedor_id', "INTEGER REFERENCES suppliers(id)"],
   ];
   for (const [col, def] of PRODUCT_NEW_COLUMNS) {
     if (!productColumns.includes(col)) {

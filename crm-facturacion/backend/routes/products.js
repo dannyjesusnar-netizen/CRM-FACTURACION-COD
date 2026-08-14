@@ -17,14 +17,18 @@ function conStockDeSede(row, sucursalId) {
   return { ...row, stock_total: row.stock, stock: getStockSucursal(row.id, sucursalId) };
 }
 
-// proveedor_nombre: proveedor de la compra más reciente registrada para ese
-// producto (no es un campo propio del producto, se deriva del historial de Compras).
-const PROVEEDOR_SUBQUERY = `(
-  SELECT s.nombre FROM purchase_items pi
-  JOIN purchases pu ON pu.id = pi.purchase_id
-  JOIN suppliers s ON s.id = pu.supplier_id
-  WHERE pi.product_id = p.id AND pu.estado = 'registrada'
-  ORDER BY pu.fecha DESC, pu.id DESC LIMIT 1
+// proveedor_nombre: el proveedor asignado directamente al producto
+// (products.proveedor_id) si lo tiene; si no, se deriva del proveedor de la
+// compra más reciente registrada para ese producto (historial de Compras).
+const PROVEEDOR_SUBQUERY = `COALESCE(
+  (SELECT s.nombre FROM suppliers s WHERE s.id = p.proveedor_id),
+  (
+    SELECT s.nombre FROM purchase_items pi
+    JOIN purchases pu ON pu.id = pi.purchase_id
+    JOIN suppliers s ON s.id = pu.supplier_id
+    WHERE pi.product_id = p.id AND pu.estado = 'registrada'
+    ORDER BY pu.fecha DESC, pu.id DESC LIMIT 1
+  )
 ) AS proveedor_nombre`;
 
 router.get('/', (req, res) => {
@@ -68,7 +72,7 @@ router.post('/', requireAccion('inventario', 'productos'), (req, res) => {
   const {
     codigo, codigo_barras, nombre, descripcion, categoria, unidad,
     afectacion_igv, control, tipo_inventario, tipo_clasificacion, subtipo_clasificacion,
-    peso, favorito, precio_compra, precio_unitario, stock, stock_minimo, palabras_clave,
+    peso, favorito, precio_compra, precio_unitario, stock, stock_minimo, palabras_clave, proveedor_id,
   } = req.body || {};
   if (!codigo || !nombre || precio_unitario === undefined) {
     return res.status(400).json({ error: 'codigo, nombre y precio_unitario son requeridos.' });
@@ -79,8 +83,8 @@ router.post('/', requireAccion('inventario', 'productos'), (req, res) => {
       `INSERT INTO products (
          codigo, codigo_barras, nombre, descripcion, tipo, categoria, unidad,
          afectacion_igv, control, tipo_inventario, tipo_clasificacion, subtipo_clasificacion,
-         peso, favorito, precio_compra, precio_unitario, stock, stock_minimo, palabras_clave
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         peso, favorito, precio_compra, precio_unitario, stock, stock_minimo, palabras_clave, proveedor_id
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       codigo,
       codigo_barras || null,
@@ -100,7 +104,8 @@ router.post('/', requireAccion('inventario', 'productos'), (req, res) => {
       Number(precio_unitario),
       tipo === 'servicio' ? null : Number(stock || 0),
       tipo === 'servicio' ? null : Number(stock_minimo || 0),
-      palabras_clave || null
+      palabras_clave || null,
+      proveedor_id === undefined || proveedor_id === '' ? null : Number(proveedor_id)
     );
     const newId = info.lastInsertRowid;
     // El "Stock inicial" del formulario es el stock en la sede donde se está
@@ -182,7 +187,7 @@ router.put('/:id', requireAccion('inventario', 'productos'), (req, res) => {
   const {
     codigo, codigo_barras, nombre, descripcion, categoria, unidad,
     afectacion_igv, control, tipo_inventario, tipo_clasificacion, subtipo_clasificacion,
-    peso, favorito, precio_compra, precio_unitario, stock, stock_minimo, palabras_clave, activo,
+    peso, favorito, precio_compra, precio_unitario, stock, stock_minimo, palabras_clave, activo, proveedor_id,
   } = req.body || {};
   const unidadFinal = unidad ?? existing.unidad;
   const tipo = tipoDesdeUnidad(unidadFinal);
@@ -200,7 +205,7 @@ router.put('/:id', requireAccion('inventario', 'productos'), (req, res) => {
   db.prepare(
     `UPDATE products SET codigo = ?, codigo_barras = ?, nombre = ?, descripcion = ?, tipo = ?, categoria = ?, unidad = ?,
      afectacion_igv = ?, control = ?, tipo_inventario = ?, tipo_clasificacion = ?, subtipo_clasificacion = ?,
-     peso = ?, favorito = ?, precio_compra = ?, precio_unitario = ?, stock = ?, stock_minimo = ?, palabras_clave = ?, activo = ?
+     peso = ?, favorito = ?, precio_compra = ?, precio_unitario = ?, stock = ?, stock_minimo = ?, palabras_clave = ?, activo = ?, proveedor_id = ?
      WHERE id = ?`
   ).run(
     codigo ?? existing.codigo,
@@ -223,6 +228,7 @@ router.put('/:id', requireAccion('inventario', 'productos'), (req, res) => {
     tipo === 'servicio' ? null : (stock_minimo !== undefined ? Number(stock_minimo) : existing.stock_minimo),
     palabras_clave ?? existing.palabras_clave,
     activo !== undefined ? Number(activo) : existing.activo,
+    proveedor_id === undefined ? existing.proveedor_id : (proveedor_id === '' ? null : Number(proveedor_id)),
     req.params.id
   );
   if (tipo !== 'servicio' && stock !== undefined) {
