@@ -132,7 +132,8 @@ router.get('/siguiente-numero', (req, res) => {
 router.get('/entrenadores', (req, res) => {
   const entrenadores = db.prepare(
     `SELECT id, full_name, categoria_staff FROM users
-     WHERE activo = 1 AND categoria_staff IN ('trainer', 'supervisor') AND sucursal_id = ?
+     WHERE activo = 1 AND categoria_staff IN ('trainer', 'supervisor')
+       AND (sucursal_id IS NULL OR sucursal_id = ?)
      ORDER BY full_name ASC`
   ).all(req.sucursalId);
   res.json(entrenadores);
@@ -263,7 +264,8 @@ router.post('/', async (req, res) => {
   let atribuidoA = null;
   if (atribuido_a_id) {
     const entrenador = db.prepare(
-      `SELECT id FROM users WHERE id = ? AND activo = 1 AND categoria_staff IN ('trainer', 'supervisor') AND sucursal_id = ?`
+      `SELECT id FROM users WHERE id = ? AND activo = 1 AND categoria_staff IN ('trainer', 'supervisor')
+       AND (sucursal_id IS NULL OR sucursal_id = ?)`
     ).get(atribuido_a_id, req.sucursalId);
     if (!entrenador) {
       return res.status(400).json({ error: 'La persona seleccionada no existe o no pertenece a esta sede.' });
@@ -724,7 +726,8 @@ router.put('/:id/atribuido-a', requireGerenciaOSupervisor, (req, res) => {
   let atribuidoA = null;
   if (atribuido_a_id) {
     const entrenador = db.prepare(
-      `SELECT id FROM users WHERE id = ? AND activo = 1 AND categoria_staff IN ('trainer', 'supervisor') AND sucursal_id = ?`
+      `SELECT id FROM users WHERE id = ? AND activo = 1 AND categoria_staff IN ('trainer', 'supervisor')
+       AND (sucursal_id IS NULL OR sucursal_id = ?)`
     ).get(atribuido_a_id, invoice.sucursal_id);
     if (!entrenador) {
       return res.status(400).json({ error: 'La persona seleccionada no existe o no pertenece a esta sede.' });
