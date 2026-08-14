@@ -123,25 +123,37 @@ export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const toast = useToast();
-  const [ruc, setRuc] = useState('');
   const [dni, setDni] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  // Solo se llena si el mismo DNI+contraseña son válidos en más de una
+  // empresa (una persona que trabaja en varias) — el backend lo detecta y
+  // devuelve la lista para elegir; el RUC nunca se le pide de entrada.
+  const [empresasParaElegir, setEmpresasParaElegir] = useState(null);
 
-  async function handleSubmit(e) {
-    e.preventDefault();
+  async function intentarIngresar(rucElegido) {
     setError('');
     setLoading(true);
     try {
-      await login(ruc, dni, password);
+      await login(rucElegido || undefined, dni, password);
       navigate('/menu');
     } catch (err) {
-      setError(err.response?.data?.error || 'No se pudo iniciar sesión.');
+      if (err.response?.status === 409 && err.response?.data?.ambiguo) {
+        setEmpresasParaElegir(err.response.data.empresas || []);
+      } else {
+        setError(err.response?.data?.error || 'No se pudo iniciar sesión.');
+      }
     } finally {
       setLoading(false);
     }
+  }
+
+  function handleSubmit(e) {
+    e.preventDefault();
+    setEmpresasParaElegir(null);
+    intentarIngresar();
   }
 
   return (
@@ -164,32 +176,51 @@ export default function Login() {
         <div className="auth-form-card">
           <h1 className="auth-form-title">Ingresar</h1>
           <p className="auth-form-subtitle">Bienvenido de nuevo — ingresa tus datos para continuar.</p>
-          <form onSubmit={handleSubmit}>
-            <div className="auth-field">
-              <label>RUC</label>
-              <input value={ruc} onChange={(e) => setRuc(e.target.value)} maxLength={11} autoFocus />
-            </div>
-            <div className="auth-field">
-              <label>DNI</label>
-              <input value={dni} onChange={(e) => setDni(e.target.value)} maxLength={8} />
-            </div>
-            <div className="auth-field auth-field-password">
-              <label>Contraseña</label>
-              <input type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} />
-              <button type="button" onClick={() => setShowPassword((v) => !v)} tabIndex={-1} aria-label="Mostrar contraseña">
-                {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
+          {empresasParaElegir ? (
+            <div className="auth-empresas-elegir">
+              <p className="auth-form-subtitle" style={{ marginTop: 0 }}>
+                Tu DNI está registrado en más de una empresa. Elige con cuál quieres ingresar:
+              </p>
+              {empresasParaElegir.map((e) => (
+                <button
+                  key={e.ruc}
+                  type="button"
+                  className="auth-empresa-btn"
+                  disabled={loading}
+                  onClick={() => intentarIngresar(e.ruc)}
+                >
+                  {e.nombre} <span className="auth-empresa-ruc">RUC {e.ruc}</span>
+                </button>
+              ))}
+              {error && <div className="form-error">{error}</div>}
+              <button type="button" className="btn-link" style={{ marginTop: 10 }} onClick={() => setEmpresasParaElegir(null)}>
+                Volver
               </button>
             </div>
-            <div className="auth-forgot">
-              <button type="button" onClick={() => toast.info('Escríbenos a soporte para restablecer tu contraseña.')}>
-                ¿Olvidaste tu contraseña?
+          ) : (
+            <form onSubmit={handleSubmit}>
+              <div className="auth-field">
+                <label>DNI</label>
+                <input value={dni} onChange={(e) => setDni(e.target.value)} maxLength={8} autoFocus />
+              </div>
+              <div className="auth-field auth-field-password">
+                <label>Contraseña</label>
+                <input type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} />
+                <button type="button" onClick={() => setShowPassword((v) => !v)} tabIndex={-1} aria-label="Mostrar contraseña">
+                  {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
+                </button>
+              </div>
+              <div className="auth-forgot">
+                <button type="button" onClick={() => toast.info('Escríbenos a soporte para restablecer tu contraseña.')}>
+                  ¿Olvidaste tu contraseña?
+                </button>
+              </div>
+              {error && <div className="form-error">{error}</div>}
+              <button type="submit" className="auth-submit" disabled={loading}>
+                {loading ? 'Ingresando...' : 'Ingresar'}
               </button>
-            </div>
-            {error && <div className="form-error">{error}</div>}
-            <button type="submit" className="auth-submit" disabled={loading}>
-              {loading ? 'Ingresando...' : 'Ingresar'}
-            </button>
-          </form>
+            </form>
+          )}
           <p className="auth-form-footer">
             ¿Tu empresa todavía no tiene cuenta? <Link to="/registro">Regístrala aquí</Link>
           </p>

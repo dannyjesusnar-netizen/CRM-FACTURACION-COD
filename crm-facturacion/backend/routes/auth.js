@@ -11,12 +11,40 @@ const { permisosDeUsuario } = require('../utils/permisos');
 
 const router = express.Router();
 
+function emitirToken(res, user, ruc) {
+  const token = jwt.sign(
+    { id: user.id, username: user.username, full_name: user.full_name, role: user.role, ruc },
+    JWT_SECRET,
+    { expiresIn: '12h' }
+  );
+  const sucursalFija = user.sucursal_id
+    ? db.prepare('SELECT id, nombre FROM sucursales WHERE id = ?').get(user.sucursal_id)
+    : null;
+  res.json({
+    token,
+    user: {
+      id: user.id, username: user.username, full_name: user.full_name, role: user.role, dni: user.dni,
+      sucursal_id: sucursalFija?.id || null, sucursal_nombre: sucursalFija?.nombre || null,
+      custom_role_id: user.custom_role_id || null,
+      permisos: permisosDeUsuario(user),
+    }
+  });
+}
+
 router.post('/login', (req, res) => {
   const { ruc, dni, password } = req.body || {};
-  if (!ruc || !dni || !password) {
-    return res.status(400).json({ error: 'RUC, DNI y contraseña son requeridos.' });
+  if (!dni || !password) {
+    return res.status(400).json({ error: 'DNI y contraseña son requeridos.' });
   }
+  if (ruc) return loginConRuc(req, res, ruc, dni, password);
+  return loginSoloConDni(req, res, dni, password);
+});
 
+// Login clásico (RUC ya conocido): identifica una única empresa candidata
+// directamente. Hoy el frontend lo usa solo para desambiguar cuando el mismo
+// DNI+contraseña son válidos en más de una empresa (ver loginSoloConDni) —
+// se mantiene igual que siempre para no cambiar ese comportamiento.
+function loginConRuc(req, res, ruc, dni, password) {
   // Si el RUC corresponde a una empresa que se registró desde "Registrar mi
   // empresa" (ver POST /register), su acceso depende de que ya haya sido
   // aprobada — antes de eso ni siquiera llegamos a validar el DNI/contraseña.
@@ -57,25 +85,71 @@ router.post('/login', (req, res) => {
     if (!user.activo) {
       return res.status(403).json({ error: 'Esta cuenta está desactivada. Contacta a un administrador.' });
     }
-    const token = jwt.sign(
-      { id: user.id, username: user.username, full_name: user.full_name, role: user.role, ruc: tenant ? ruc : null },
-      JWT_SECRET,
-      { expiresIn: '12h' }
-    );
-    const sucursalFija = user.sucursal_id
-      ? db.prepare('SELECT id, nombre FROM sucursales WHERE id = ?').get(user.sucursal_id)
-      : null;
-    res.json({
-      token,
-      user: {
-        id: user.id, username: user.username, full_name: user.full_name, role: user.role, dni: user.dni,
-        sucursal_id: sucursalFija?.id || null, sucursal_nombre: sucursalFija?.nombre || null,
-        custom_role_id: user.custom_role_id || null,
-        permisos: permisosDeUsuario(user),
-      }
-    });
+    emitirToken(res, user, tenant ? ruc : null);
   });
-});
+}
+
+// Login simplificado: la persona solo escribe su DNI y su contraseña, sin
+// necesitar saber el RUC de su empresa. Como cada empresa vive en su propia
+// base de datos aislada, hay que recorrer las empresas conocidas buscando en
+// cuál existe ese DNI con esa contraseña — las conexiones quedan en caché
+// (ver db.js openTenantDb) así que a partir del segundo intento es rápido.
+function loginSoloConDni(req, res, dni, password) {
+  const tenants = tenantRegistry.listTodos();
+  // Antes de que la instalación base de este despliegue se registre a sí
+  // misma (tenantRegistry.adoptarInstanciaBase, corre al arrancar el
+  // servidor), sus usuarios todavía no aparecen en el registro — se agrega
+  // como candidato aparte para no dejarlos sin poder entrar en ese primer
+  // momento.
+  const candidatos = tenants.some((t) => t.es_instalacion_base) ? tenants : [...tenants, null];
+
+  const coincidencias = [];
+  for (const tenant of candidatos) {
+    const ruc = tenant ? tenant.ruc : null;
+    // pendiente/rechazado: resolveTenantDb no los abre (solo entrega bases de
+    // empresas aprobadas), pero igual buscamos ahí para poder devolver el
+    // mensaje específico si de verdad hay una coincidencia de credenciales.
+    const tenantDb = (tenant && tenant.estado !== 'aprobado')
+      ? db.openTenantDb(tenant.db_file)
+      : resolveTenantDb(ruc);
+    if (!tenantDb) continue;
+
+    const encontrado = db.runWithDb(tenantDb, () => {
+      const user = db.prepare('SELECT * FROM users WHERE dni = ?').get(dni);
+      if (!user || !bcrypt.compareSync(password, user.password_hash)) return null;
+      return user;
+    });
+    if (encontrado) coincidencias.push({ tenant, ruc, user: encontrado });
+  }
+
+  if (coincidencias.length === 0) {
+    return res.status(401).json({ error: 'DNI o contraseña incorrectos.' });
+  }
+  if (coincidencias.length > 1) {
+    // Mismo DNI+contraseña válidos en más de una empresa (una persona puede
+    // trabajar en varias) — no hay forma de saber cuál sin preguntar.
+    return res.status(409).json({
+      ambiguo: true,
+      error: 'Tu DNI está registrado en más de una empresa. Elige con cuál quieres ingresar.',
+      empresas: coincidencias.map((c) => ({ ruc: c.ruc, nombre: c.tenant?.razon_social || 'Empresa' })),
+    });
+  }
+
+  const { tenant, ruc, user } = coincidencias[0];
+  if (tenant && tenant.estado === 'pendiente') {
+    return res.status(403).json({ error: 'Tu empresa está registrada pero aún no fue aprobada. Te avisaremos apenas esté activa.' });
+  }
+  if (tenant && tenant.estado === 'rechazado') {
+    return res.status(401).json({ error: 'DNI o contraseña incorrectos.' });
+  }
+  if (tenant && tenant.estado === 'aprobado' && !tenant.activo) {
+    return res.status(403).json({ error: 'Tu empresa fue suspendida temporalmente. Contacta al soporte de la plataforma.' });
+  }
+  if (!user.activo) {
+    return res.status(403).json({ error: 'Esta cuenta está desactivada. Contacta a un administrador.' });
+  }
+  db.runWithDb(resolveTenantDb(ruc), () => emitirToken(res, user, tenant ? ruc : null));
+}
 
 // POST /api/auth/register — alta de una empresa nueva en este mismo
 // despliegue, sin necesitar un servidor aparte. Crea su base de datos propia

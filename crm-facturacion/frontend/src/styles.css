@@ -381,6 +381,16 @@ html.dark .content {
 .auth-form-footer a { color: #6366f1; font-weight: 600; text-decoration: none; }
 .auth-form-footer a:hover { text-decoration: underline; }
 
+.auth-empresas-elegir { display: flex; flex-direction: column; }
+.auth-empresa-btn {
+  width: 100%; text-align: left; background: #fff; border: 1.5px solid #e2e3f5; border-radius: 12px;
+  padding: 14px 16px; margin-bottom: 10px; font-weight: 700; font-size: 14px; color: #1e1b3a;
+  cursor: pointer; transition: border-color 0.15s ease, background 0.15s ease;
+}
+.auth-empresa-btn:hover { border-color: #6366f1; background: #f5f5ff; }
+.auth-empresa-btn:disabled { opacity: 0.6; cursor: default; }
+.auth-empresa-ruc { display: block; margin-top: 2px; font-weight: 500; font-size: 12px; color: #8b8ea3; }
+
 @media (max-width: 860px) {
   .auth-illustration { display: none; }
 }
