@@ -4,7 +4,7 @@ const { requireAuth, resolveSucursal } = require('../middleware/auth');
 const { buildInvoicePdf } = require('../utils/pdf');
 const { consumirStock, incrementarStock, ajustarStockSucursal, StockInsuficienteError } = require('../utils/stock');
 const { emitirComprobante, estaConfigurado } = require('../utils/facturacionElectronica');
-const { requirePermiso, requireAccion, requireAlgunPermiso, tieneAccion, tienePermiso } = require('../utils/permisos');
+const { requirePermiso, requireAccion, requireAlgunPermiso, tieneAccion, tienePermiso, requireGerenciaOSupervisor } = require('../utils/permisos');
 const { siguienteNumero } = require('../utils/series');
 
 const router = express.Router();
@@ -152,10 +152,11 @@ router.get('/', (req, res) => {
   const { tipo, estado, client_id, from, to, q } = req.query;
   let sql = `
     SELECT i.*, c.nombre AS cliente_nombre, c.numero_documento AS cliente_documento,
-           u.full_name AS vendedor_nombre
+           u.full_name AS vendedor_nombre, au.full_name AS atribuido_nombre
     FROM invoices i
     JOIN clients c ON c.id = i.client_id
     LEFT JOIN users u ON u.id = i.created_by
+    LEFT JOIN users au ON au.id = i.atribuido_a
     WHERE i.sucursal_id = ?
   `;
   const params = [req.sucursalId];
@@ -620,6 +621,37 @@ router.post('/:id/anular', requireAccion('ventas', 'anular_comprobante'), (req, 
   }
 
   const updated = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id);
+  res.json(updated);
+});
+
+// PUT /api/invoices/:id/atribuido-a { atribuido_a_id } — Gerencia o un
+// Supervisor puede corregir, después de emitida, a nombre de quién cuenta
+// la venta en el Tablero de Ventas (ver el mismo criterio en POST /,
+// donde el propio vendedor lo elige al emitir). atribuido_a_id vacío
+// revierte la venta al vendedor que la registró (created_by).
+router.put('/:id/atribuido-a', requireGerenciaOSupervisor, (req, res) => {
+  const invoice = db.prepare('SELECT * FROM invoices WHERE id = ? AND sucursal_id = ?').get(req.params.id, req.sucursalId);
+  if (!invoice) return res.status(404).json({ error: 'Comprobante no encontrado.' });
+  if (invoice.estado === 'anulado') {
+    return res.status(400).json({ error: 'No se puede reatribuir un comprobante anulado.' });
+  }
+  const { atribuido_a_id } = req.body || {};
+  let atribuidoA = null;
+  if (atribuido_a_id) {
+    const entrenador = db.prepare(
+      'SELECT id FROM users WHERE id = ? AND activo = 1 AND categoria_staff = ? AND sucursal_id = ?'
+    ).get(atribuido_a_id, 'trainer', invoice.sucursal_id);
+    if (!entrenador) {
+      return res.status(400).json({ error: 'El entrenador seleccionado no existe o no pertenece a esta sede.' });
+    }
+    atribuidoA = entrenador.id;
+  }
+  db.prepare('UPDATE invoices SET atribuido_a = ? WHERE id = ?').run(atribuidoA, req.params.id);
+  const updated = db.prepare(
+    `SELECT i.*, u.full_name AS vendedor_nombre, au.full_name AS atribuido_nombre
+     FROM invoices i LEFT JOIN users u ON u.id = i.created_by LEFT JOIN users au ON au.id = i.atribuido_a
+     WHERE i.id = ?`
+  ).get(req.params.id);
   res.json(updated);
 });
 

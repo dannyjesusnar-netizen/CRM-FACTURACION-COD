@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api';
 import { useToast } from '../context/ToastContext';
+import { useAuth } from '../context/AuthContext';
 
 const TIPO_LABEL = { factura: 'Factura', boleta: 'Boleta', nota_credito: 'Nota de crédito' };
 
@@ -29,8 +30,11 @@ function todayStr() {
 export default function Invoices() {
   const toast = useToast();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const puedeReatribuir = !!user?.puede_ver_tablero;
   const [invoices, setInvoices] = useState([]);
   const [metodosPago, setMetodosPago] = useState([]);
+  const [entrenadores, setEntrenadores] = useState([]);
 
   // filtros de busqueda (panel tipo RapiFac)
   const [q, setQ] = useState('');
@@ -50,6 +54,10 @@ export default function Invoices() {
   useEffect(() => {
     load();
     api.get('/metodos-pago', { params: { todos: 1 } }).then((res) => setMetodosPago(res.data));
+    if (puedeReatribuir) {
+      api.get('/invoices/entrenadores').then((res) => setEntrenadores(res.data)).catch(() => {});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function formaPagoLabel(codigo) {
@@ -88,6 +96,16 @@ export default function Invoices() {
     a.remove();
     URL.revokeObjectURL(url);
     toast.success('Archivo CSV exportado.');
+  }
+
+  async function handleReatribuir(id, atribuidoAId) {
+    try {
+      const res = await api.put(`/invoices/${id}/atribuido-a`, { atribuido_a_id: atribuidoAId || null });
+      setInvoices((rows) => rows.map((r) => (r.id === id ? { ...r, atribuido_a: res.data.atribuido_a, atribuido_nombre: res.data.atribuido_nombre } : r)));
+      toast.success('Venta reatribuida.');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'No se pudo reatribuir la venta.');
+    }
   }
 
   async function handleAnular(id) {
@@ -157,6 +175,7 @@ export default function Invoices() {
                 <th>Comprobante</th>
                 <th>Nro Doc</th>
                 <th>Nombre o Razón Social</th>
+                <th>Atribuido a</th>
                 <th style={{ textAlign: 'right' }}>Importe</th>
                 <th style={{ textAlign: 'right' }}>Total</th>
                 <th>Forma de pago</th>
@@ -178,6 +197,22 @@ export default function Invoices() {
                   <td>{TIPO_LABEL[inv.tipo_comprobante] || inv.tipo_comprobante}</td>
                   <td>{inv.cliente_documento}</td>
                   <td>{inv.cliente_nombre}</td>
+                  <td>
+                    {puedeReatribuir && entrenadores.length > 0 && inv.estado !== 'anulado' ? (
+                      <select
+                        value={inv.atribuido_a || ''}
+                        onChange={(e) => handleReatribuir(inv.id, e.target.value)}
+                        title="Cambiar a nombre de quién cuenta esta venta"
+                      >
+                        <option value="">{inv.vendedor_nombre || 'Vendedor'}</option>
+                        {entrenadores.map((e) => (
+                          <option key={e.id} value={e.id}>{e.full_name} (Trainer)</option>
+                        ))}
+                      </select>
+                    ) : (
+                      inv.atribuido_nombre || inv.vendedor_nombre || '—'
+                    )}
+                  </td>
                   <td style={{ textAlign: 'right' }}>S/ {Number(inv.subtotal).toFixed(2)}</td>
                   <td style={{ textAlign: 'right' }}>S/ {Number(inv.total).toFixed(2)}</td>
                   <td>{formaPagoLabel(inv.forma_pago)}</td>
@@ -225,12 +260,12 @@ export default function Invoices() {
                 </tr>
               ))}
               {invoices.length === 0 && (
-                <tr><td colSpan={15} className="empty-row">No hay comprobantes en el rango seleccionado.</td></tr>
+                <tr><td colSpan={16} className="empty-row">No hay comprobantes en el rango seleccionado.</td></tr>
               )}
             </tbody>
             <tfoot>
               <tr className="totals-footer">
-                <td colSpan={7}>Cantidad: {vigentes.length}</td>
+                <td colSpan={8}>Cantidad: {vigentes.length}</td>
                 <td colSpan={2}>
                   Suma S/ <input readOnly value={sumaSoles.toFixed(2)} />
                 </td>
