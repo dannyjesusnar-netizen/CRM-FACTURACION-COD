@@ -141,10 +141,15 @@ export default function Configuracion() {
   const [errorForm, setErrorForm] = useState('');
 
   // --- Metas de venta (Tablero de Ventas) ---
+  // Gerencia asigna un monto "pool" por sede y categoría (Vendedores /
+  // Trainers) cada mes; el backend lo reparte en partes iguales entre los
+  // empleados activos de esa categoría en esa sede (no hay meta individual
+  // manual). filasMetas: [{ sucursal_id, sede_nombre, categoria_staff,
+  // cantidad_empleados, monto_meta }] — una fila por sede x categoría.
   const hoy = new Date();
   const [metasAnio, setMetasAnio] = useState(hoy.getFullYear());
   const [metasMes, setMetasMes] = useState(hoy.getMonth() + 1);
-  const [metas, setMetas] = useState({});
+  const [filasMetas, setFilasMetas] = useState([]);
   const [metasGuardando, setMetasGuardando] = useState(null);
 
   // --- Sucursales ---
@@ -223,21 +228,21 @@ export default function Configuracion() {
   }
 
   function loadMetas() {
-    api.get('/metas-venta', { params: { anio: metasAnio, mes: metasMes } }).then((res) => {
-      const mapa = {};
-      res.data.forEach((m) => { mapa[m.user_id] = m.monto_meta; });
-      setMetas(mapa);
-    });
+    api.get('/metas-venta', { params: { anio: metasAnio, mes: metasMes } }).then((res) => setFilasMetas(res.data));
   }
 
   useEffect(() => {
     if (seccion === 'metas') loadMetas();
   }, [seccion, metasAnio, metasMes]);
 
-  async function guardarMeta(userId, montoMeta) {
-    setMetasGuardando(userId);
+  async function guardarMetaPool(sucursalId, categoriaStaff, montoMeta) {
+    const key = `${sucursalId}:${categoriaStaff}`;
+    setMetasGuardando(key);
     try {
-      await api.put('/metas-venta', { user_id: userId, anio: metasAnio, mes: metasMes, monto_meta: montoMeta });
+      await api.put('/metas-venta', { sucursal_id: sucursalId, categoria_staff: categoriaStaff, anio: metasAnio, mes: metasMes, monto_meta: montoMeta });
+      setFilasMetas((filas) => filas.map((f) => (
+        f.sucursal_id === sucursalId && f.categoria_staff === categoriaStaff ? { ...f, monto_meta: montoMeta } : f
+      )));
     } catch (err) {
       toast.error(err.response?.data?.error || 'No se pudo guardar la meta.');
     } finally {
@@ -1102,8 +1107,9 @@ export default function Configuracion() {
                 <h3 style={{ margin: 0 }}>Metas de venta</h3>
               </div>
               <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -8 }}>
-                Asigna la meta mensual (S/) de cada empleado — alimenta el Ranking Trainers/Vendedores
-                y el Resumen de sedes del Dashboard.
+                Asigna una meta mensual (S/) por sede para Vendedores y para Trainers — el sistema la
+                reparte en partes iguales entre los empleados activos de esa categoría en esa sede.
+                Alimenta el Ranking Trainers/Vendedores y el Resumen de sedes del Dashboard.
               </p>
               <div className="filter-panel">
                 <div className="filter-field">
@@ -1121,30 +1127,48 @@ export default function Configuracion() {
               </div>
               <table className="data-table">
                 <thead>
-                  <tr><th>Empleado</th><th>Categoría</th><th>Sede</th><th style={{ textAlign: 'right' }}>Meta mensual (S/)</th></tr>
+                  <tr>
+                    <th>Sede</th><th>Categoría</th><th style={{ textAlign: 'right' }}>Empleados activos</th>
+                    <th style={{ textAlign: 'right' }}>Meta total del pool (S/)</th>
+                    <th style={{ textAlign: 'right' }}>Meta individual aprox.</th>
+                  </tr>
                 </thead>
                 <tbody>
-                  {usuarios.filter((u) => u.activo).map((u) => (
-                    <tr key={u.id}>
-                      <td>{u.nombres || u.full_name}</td>
-                      <td>{CATEGORIA_STAFF_LABEL[u.categoria_staff] || 'Vendedor'}</td>
-                      <td>{u.sucursal_nombre || 'Todas las sedes'}</td>
-                      <td style={{ textAlign: 'right' }}>
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          style={{ width: 130, textAlign: 'right' }}
-                          disabled={metasGuardando === u.id}
-                          value={metas[u.id] ?? ''}
-                          onChange={(e) => setMetas({ ...metas, [u.id]: e.target.value })}
-                          onBlur={(e) => guardarMeta(u.id, Number(e.target.value) || 0)}
-                        />
-                      </td>
-                    </tr>
-                  ))}
-                  {usuarios.filter((u) => u.activo).length === 0 && (
-                    <tr><td colSpan={4} className="empty-row">No hay empleados activos.</td></tr>
+                  {filasMetas.map((f) => {
+                    const key = `${f.sucursal_id}:${f.categoria_staff}`;
+                    const individual = f.cantidad_empleados > 0 ? f.monto_meta / f.cantidad_empleados : 0;
+                    return (
+                      <tr key={key}>
+                        <td>{f.sede_nombre}</td>
+                        <td>{CATEGORIA_STAFF_LABEL[f.categoria_staff] || f.categoria_staff}</td>
+                        <td style={{ textAlign: 'right' }}>{f.cantidad_empleados}</td>
+                        <td style={{ textAlign: 'right' }}>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            style={{ width: 130, textAlign: 'right' }}
+                            disabled={metasGuardando === key}
+                            value={f.monto_meta ?? ''}
+                            onChange={(e) => {
+                              const valor = e.target.value;
+                              setFilasMetas((filas) => filas.map((fila) => (
+                                fila.sucursal_id === f.sucursal_id && fila.categoria_staff === f.categoria_staff
+                                  ? { ...fila, monto_meta: valor === '' ? '' : Number(valor) }
+                                  : fila
+                              )));
+                            }}
+                            onBlur={(e) => guardarMetaPool(f.sucursal_id, f.categoria_staff, Number(e.target.value) || 0)}
+                          />
+                        </td>
+                        <td style={{ textAlign: 'right', color: 'var(--ink-muted)' }}>
+                          {f.cantidad_empleados > 0 ? `S/ ${individual.toFixed(2)}` : '—'}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {filasMetas.length === 0 && (
+                    <tr><td colSpan={5} className="empty-row">No hay sedes activas.</td></tr>
                   )}
                 </tbody>
               </table>

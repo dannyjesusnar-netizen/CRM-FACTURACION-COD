@@ -11,8 +11,10 @@ import {
   Legend,
   Filler,
 } from 'chart.js';
+import { Circle, Triangle, Diamond } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Tooltip, Legend, Filler);
 
@@ -36,15 +38,46 @@ const MESES = [
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
 ];
 
+// Símbolo + color según el % de cumplimiento de meta, igual al criterio de
+// Power BI: rombo rojo (<80%), triángulo ámbar (80%–99.99%), círculo verde
+// (100% en adelante).
 function pctBadge(pct) {
   if (pct === null || pct === undefined) return <span className="badge badge-neutral">—</span>;
-  const clase = pct >= 100 ? 'badge-good' : pct >= 70 ? 'badge-warning' : 'badge-critical';
-  return <span className={'badge ' + clase}>{Number(pct).toFixed(2)}%</span>;
+  const valor = Number(pct);
+  if (valor >= 100) {
+    return <span className="pct-symbol pct-good"><Circle size={12} fill="currentColor" strokeWidth={0} />{valor.toFixed(2)}%</span>;
+  }
+  if (valor >= 80) {
+    return <span className="pct-symbol pct-warning"><Triangle size={12} fill="currentColor" strokeWidth={0} />{valor.toFixed(2)}%</span>;
+  }
+  return <span className="pct-symbol pct-critical"><Diamond size={12} fill="currentColor" strokeWidth={0} />{valor.toFixed(2)}%</span>;
+}
+
+// Franja de color centrada en la parte superior de cada panel del Tablero
+// de Ventas — el color lo elige Gerencia (empresa.color_tablero_ventas).
+function PanelHeader({ children, color }) {
+  return (
+    <div className="panel-banda" style={{ background: color }}>
+      <h3>{children}</h3>
+    </div>
+  );
 }
 
 export default function Dashboard() {
-  const { user } = useAuth();
+  const { user, empresa, setEmpresa } = useAuth();
+  const toast = useToast();
   const puedeVerTablero = !!user?.puede_ver_tablero;
+  const colorTablero = empresa?.color_tablero_ventas || '#16a34a';
+
+  async function guardarColorTablero(nuevoColor) {
+    if (!empresa) return;
+    try {
+      const res = await api.put('/empresa', { ...empresa, color_tablero_ventas: nuevoColor });
+      setEmpresa(res.data);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'No se pudo guardar el color.');
+    }
+  }
   // Hoja 1 = Tablero de Ventas (solo Gerencia/Supervisor), Hoja 2 = el
   // resumen general que ya existía. Quien no puede ver el Tablero solo
   // tiene la Hoja 2, sin selector.
@@ -268,6 +301,18 @@ export default function Dashboard() {
                   ))}
                 </select>
               </div>
+              {user?.role === 'gerencia' && (
+                <div className="filter-field">
+                  <label>Color del tablero</label>
+                  <input
+                    type="color"
+                    value={colorTablero}
+                    onChange={(e) => guardarColorTablero(e.target.value)}
+                    className="color-picker-btn"
+                    title="Cambiar el color de la franja superior de cada panel"
+                  />
+                </div>
+              )}
             </div>
           </div>
 
@@ -276,7 +321,7 @@ export default function Dashboard() {
           ) : (
             <>
               <div className="panel">
-                <h3>Ranking Trainers</h3>
+                <PanelHeader color={colorTablero}>Ranking Trainers</PanelHeader>
                 <table className="data-table">
                   <thead>
                     <tr><th>Trainer</th><th>Sede</th><th>Turno</th><th style={{ textAlign: 'right' }}>Venta</th><th style={{ textAlign: 'right' }}>Meta</th><th>%</th></tr>
@@ -300,7 +345,7 @@ export default function Dashboard() {
               </div>
 
               <div className="panel">
-                <h3>Ranking Vendedores</h3>
+                <PanelHeader color={colorTablero}>Ranking Vendedores</PanelHeader>
                 <table className="data-table">
                   <thead>
                     <tr><th>Vendedor</th><th>Sede</th><th style={{ textAlign: 'right' }}>Venta</th><th style={{ textAlign: 'right' }}>Meta</th><th>%</th></tr>
@@ -324,7 +369,7 @@ export default function Dashboard() {
 
               <div className="chart-grid">
                 <div className="panel">
-                  <h3>Total por Marca</h3>
+                  <PanelHeader color={colorTablero}>Total por Marca</PanelHeader>
                   <table className="data-table">
                     <thead>
                       <tr><th>Marca</th><th style={{ textAlign: 'right' }}>Cantidad</th><th style={{ textAlign: 'right' }}>Venta</th><th style={{ textAlign: 'right' }}>% Venta</th></tr>
@@ -345,7 +390,7 @@ export default function Dashboard() {
                   </table>
                 </div>
                 <div className="panel">
-                  <h3>Total por Producto</h3>
+                  <PanelHeader color={colorTablero}>Total por Producto</PanelHeader>
                   <table className="data-table">
                     <thead>
                       <tr><th>Categoría</th><th style={{ textAlign: 'right' }}>Cantidad</th><th style={{ textAlign: 'right' }}>Venta</th><th style={{ textAlign: 'right' }}>% Venta</th></tr>
@@ -369,7 +414,7 @@ export default function Dashboard() {
 
               <div className="chart-grid">
                 <div className="panel">
-                  <h3>Resumen Sedes</h3>
+                  <PanelHeader color={colorTablero}>Resumen Sedes</PanelHeader>
                   <table className="data-table">
                     <thead>
                       <tr><th>Sede</th><th style={{ textAlign: 'right' }}>Venta</th><th style={{ textAlign: 'right' }}>Meta</th><th>% Meta</th></tr>
@@ -400,8 +445,8 @@ export default function Dashboard() {
                   </table>
                 </div>
                 <div className="stat-card" style={{ alignSelf: 'start' }}>
-                  <div className="stat-label">Ventas Totales</div>
-                  <div className="stat-value">{money(resumenSedes.ventas_totales)}</div>
+                  <div className="stat-card-banda" style={{ background: colorTablero }}>Ventas Totales</div>
+                  <div className="stat-value" style={{ textAlign: 'center' }}>{money(resumenSedes.ventas_totales)}</div>
                   <div className="stat-sub">
                     {MESES[tableroMes - 1]} {tableroAnio} — {tableroSedeId
                       ? (sucursalesTablero.find((s) => String(s.id) === String(tableroSedeId))?.nombre || 'sede seleccionada')

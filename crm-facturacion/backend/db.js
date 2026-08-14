@@ -639,18 +639,24 @@ CREATE TABLE IF NOT EXISTS role_acciones (
     }
   }
 
-  // Metas de venta: asignadas a mano por Gerencia, una por empleado/mes.
-  // Alimenta el Ranking Trainers/Vendedores y el Resumen Sedes del Tablero
-  // de Ventas (routes/tablero.js).
+  // Metas de venta: Gerencia asigna un monto "pool" por sede y categoría de
+  // personal (vendedor/trainer) cada mes — no una meta individual por
+  // persona. Ese monto se reparte en partes iguales entre los empleados
+  // activos de esa categoría en esa sede al calcular el Tablero de Ventas
+  // (ver routes/tablero.js). Reemplaza la tabla metas_venta (meta por
+  // empleado) de la primera versión del Tablero — nunca llegó a tener datos
+  // reales, así que se elimina en vez de migrarla.
+  db.exec('DROP TABLE IF EXISTS metas_venta');
   db.exec(`
-CREATE TABLE IF NOT EXISTS metas_venta (
+CREATE TABLE IF NOT EXISTS metas_venta_sede (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  user_id INTEGER NOT NULL REFERENCES users(id),
+  sucursal_id INTEGER NOT NULL REFERENCES sucursales(id),
+  categoria_staff TEXT NOT NULL,
   anio INTEGER NOT NULL,
   mes INTEGER NOT NULL,
   monto_meta REAL NOT NULL DEFAULT 0,
   created_at TEXT DEFAULT (datetime('now')),
-  UNIQUE(user_id, anio, mes)
+  UNIQUE(sucursal_id, categoria_staff, anio, mes)
 );
 `);
 
@@ -672,6 +678,10 @@ CREATE TABLE IF NOT EXISTS metas_venta (
     ['tamano_pdf', "TEXT NOT NULL DEFAULT 'A4'"],
     ['terminos_condiciones_pdf', 'TEXT'],
     ['igv_rate', 'REAL NOT NULL DEFAULT 0.18'],
+    // Color de la franja superior de cada panel del Tablero de Ventas
+    // (Dashboard → Hoja 1), independiente de color_acento (que es el color
+    // de marca usado en los PDF de comprobantes).
+    ['color_tablero_ventas', "TEXT DEFAULT '#16a34a'"],
   ];
   for (const [col, def] of EMPRESA_NEW_COLUMNS) {
     if (!empresaColumns.includes(col)) {
