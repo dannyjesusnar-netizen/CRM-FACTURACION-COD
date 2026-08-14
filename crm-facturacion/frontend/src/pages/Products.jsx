@@ -25,8 +25,12 @@ const EMPTY_FORM = {
   codigo: '', codigo_barras: '', nombre: '', descripcion: '', categoria: 'General',
   unidad: 'NIU', afectacion_igv: 'gravado', control: 'ninguno', tipo_inventario: 'MERCADERIAS',
   tipo_clasificacion: 'Otros', subtipo_clasificacion: 'Otros', peso: '', favorito: false,
-  precio_compra: '', precio_unitario: '', stock: '', stock_minimo: '', palabras_clave: '',
+  precio_compra: '', precio_unitario: '', stock: '', stock_minimo: '', palabras_clave: '', proveedor_id: '',
 };
+
+function emptySupplier() {
+  return { ruc: '', nombre: '', direccion: '', telefono: '', email: '' };
+}
 
 const UNIDADES = [
   { value: 'NIU', label: 'UNIDAD' },
@@ -87,6 +91,10 @@ export default function Products() {
   const [cargaResult, setCargaResult] = useState(null);
   const [errorCarga, setErrorCarga] = useState('');
 
+  const [suppliers, setSuppliers] = useState([]);
+  const [showSupplierForm, setShowSupplierForm] = useState(false);
+  const [newSupplier, setNewSupplier] = useState(emptySupplier());
+
   function load() {
     const params = {};
     if (q) params.q = q;
@@ -94,8 +102,13 @@ export default function Products() {
     api.get('/products', { params }).then((res) => setProducts(res.data));
   }
 
+  function loadSuppliers() {
+    return api.get('/suppliers').then((res) => setSuppliers(res.data));
+  }
+
   useEffect(() => { load(); }, []);
   useEffect(() => { api.get('/products/categorias').then((res) => setCategorias(res.data)); }, []);
+  useEffect(() => { loadSuppliers(); }, []);
 
   function handleSearch(e) {
     e.preventDefault();
@@ -143,6 +156,7 @@ export default function Products() {
       stock: p.stock ?? '',
       stock_minimo: p.stock_minimo ?? '',
       palabras_clave: p.palabras_clave || '',
+      proveedor_id: p.proveedor_id ?? '',
     });
     setEditingId(p.id);
     setError('');
@@ -193,6 +207,21 @@ export default function Products() {
       loadEquivalencias(editingId);
     } catch (err) {
       toast.error(err.response?.data?.error || 'No se pudo eliminar la equivalencia.');
+    }
+  }
+
+  async function handleNewSupplier(e) {
+    e.preventDefault();
+    if (!newSupplier.nombre) { toast.error('El nombre del proveedor es requerido.'); return; }
+    try {
+      const res = await api.post('/suppliers', newSupplier);
+      await loadSuppliers();
+      setForm((f) => ({ ...f, proveedor_id: res.data.id }));
+      setNewSupplier(emptySupplier());
+      setShowSupplierForm(false);
+      toast.success('Proveedor creado.');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'No se pudo crear el proveedor.');
     }
   }
 
@@ -482,6 +511,17 @@ export default function Products() {
                 </div>
               </div>
 
+              <label>Proveedor</label>
+              <select value={form.proveedor_id} onChange={(e) => setForm({ ...form, proveedor_id: e.target.value })}>
+                <option value="">Sin proveedor</option>
+                {suppliers.map((s) => (
+                  <option key={s.id} value={s.id}>{s.nombre}{s.ruc ? ` (${s.ruc})` : ''}</option>
+                ))}
+              </select>
+              <button type="button" className="btn-link" style={{ marginTop: 4 }} onClick={() => setShowSupplierForm(true)}>
+                + Nuevo proveedor
+              </button>
+
               <label>Producto</label>
               <input required value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} />
 
@@ -562,6 +602,30 @@ export default function Products() {
                 <button type="button" className="btn-secondary" onClick={handleAddEquivalencia}>+ Agregar Equivalencia</button>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {showSupplierForm && (
+        <div className="modal-overlay" onClick={() => setShowSupplierForm(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h2>Nuevo proveedor</h2>
+            <form onSubmit={handleNewSupplier}>
+              <label>Nombre / Razón social</label>
+              <input required value={newSupplier.nombre} onChange={(e) => setNewSupplier((s) => ({ ...s, nombre: e.target.value }))} />
+              <label>RUC</label>
+              <input value={newSupplier.ruc} onChange={(e) => setNewSupplier((s) => ({ ...s, ruc: e.target.value }))} />
+              <label>Dirección</label>
+              <input value={newSupplier.direccion} onChange={(e) => setNewSupplier((s) => ({ ...s, direccion: e.target.value }))} />
+              <label>Teléfono</label>
+              <input value={newSupplier.telefono} onChange={(e) => setNewSupplier((s) => ({ ...s, telefono: e.target.value }))} />
+              <label>Email</label>
+              <input value={newSupplier.email} onChange={(e) => setNewSupplier((s) => ({ ...s, email: e.target.value }))} />
+              <div className="modal-actions">
+                <button type="button" className="btn-secondary" onClick={() => setShowSupplierForm(false)}>Cancelar</button>
+                <button type="submit" className="btn-primary">Crear proveedor</button>
+              </div>
+            </form>
           </div>
         </div>
       )}
