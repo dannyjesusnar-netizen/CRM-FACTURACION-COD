@@ -49,31 +49,6 @@ function parseCsvOperativos(text) {
   return rows;
 }
 
-function emptyOperativoForm() {
-  return { nombres: '', apellidos: '', dni: '', categoria_staff: 'trainer', sucursal_id: '', turno: '' };
-}
-
-// Carga masiva de Entrenadores/Supervisores operativos: sin username ni
-// password (no se crea usuario real, ver comentario en users.js) ni "nivel"
-// (siempre quedan sin acceso al sistema) — solo lo mínimo para el ranking.
-const CARGA_MASIVA_OPERATIVOS_COLUMNAS = ['dni', 'nombres', 'apellidos', 'categoria_staff', 'sede', 'turno'];
-
-function parseCsvOperativos(text) {
-  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-  if (lines.length === 0) return [];
-  let start = 0;
-  if (/dni/i.test(lines[0]) && /nombres/i.test(lines[0])) start = 1;
-  const rows = [];
-  for (let i = start; i < lines.length; i += 1) {
-    const cols = lines[i].split(',').map((c) => c.trim().replace(/^"|"$/g, ''));
-    if (!cols[0]) continue;
-    const row = {};
-    CARGA_MASIVA_OPERATIVOS_COLUMNAS.forEach((key, idx) => { row[key] = cols[idx] ?? ''; });
-    rows.push(row);
-  }
-  return rows;
-}
-
 // Los tres únicos niveles que se pueden asignar a un empleado desde este
 // formulario (reemplaza el antiguo par Nivel + Rol personalizado libre).
 // Administrador = Gerencia (acceso total, sin rol personalizado). Supervisor
@@ -189,21 +164,6 @@ export default function Configuracion() {
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyUserForm());
   const [errorForm, setErrorForm] = useState('');
-
-  // --- Entrenadores y Supervisores operativos (registro sin usuario) ---
-  // Solo alimentan el Tablero de Ventas (ranking + "Atribuir venta a") — no
-  // inician sesión ni facturan, así que no llevan usuario/contraseña.
-  const [operativos, setOperativos] = useState([]);
-  const [qOperativos, setQOperativos] = useState('');
-  const [showOperativoForm, setShowOperativoForm] = useState(false);
-  const [editingOperativoId, setEditingOperativoId] = useState(null);
-  const [operativoForm, setOperativoForm] = useState(emptyOperativoForm());
-  const [errorOperativoForm, setErrorOperativoForm] = useState('');
-  const [showCargaMasivaOperativos, setShowCargaMasivaOperativos] = useState(false);
-  const [cargaOperativosFileName, setCargaOperativosFileName] = useState('');
-  const [cargaOperativosRows, setCargaOperativosRows] = useState([]);
-  const [cargaOperativosResult, setCargaOperativosResult] = useState(null);
-  const [errorCargaOperativos, setErrorCargaOperativos] = useState('');
 
   // --- Entrenadores y Supervisores operativos (registro sin usuario) ---
   // Solo alimentan el Tablero de Ventas (ranking + "Atribuir venta a") — no
@@ -1723,47 +1683,6 @@ export default function Configuracion() {
               <div className="modal-actions">
                 <button type="button" className="btn-secondary" onClick={() => setShowOperativoForm(false)}>Cancelar</button>
                 <button type="submit" className="btn-primary">{editingOperativoId ? 'Guardar cambios' : 'Guardar registro'}</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {showCargaMasivaOperativos && (
-        <div className="modal-overlay" onClick={() => setShowCargaMasivaOperativos(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h2>Carga masiva de Entrenadores/Supervisores operativos</h2>
-            <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -6 }}>
-              Sube un CSV con columnas: dni, nombres, apellidos, categoria_staff, sede, turno. "categoria_staff" es
-              trainer o supervisor. Si el DNI ya existe como registro operativo, lo actualiza; si no, lo crea.
-              Ninguno de estos registros tiene usuario ni contraseña — no pueden iniciar sesión.
-            </p>
-            <button type="button" className="btn-link" onClick={descargarPlantillaCargaMasivaOperativos} style={{ marginBottom: 10 }}>
-              Descargar plantilla de ejemplo
-            </button>
-            <form onSubmit={handleCargaMasivaOperativosSubmit}>
-              <label>Archivo CSV</label>
-              <input required type="file" accept=".csv,text/csv" onChange={handleCargaOperativosFileChange} />
-              {cargaOperativosFileName && (
-                <p className="caja-row-auto">{cargaOperativosFileName} — {cargaOperativosRows.length} fila(s) detectadas.</p>
-              )}
-              {cargaOperativosResult && (
-                <div style={{ marginTop: 10 }}>
-                  <p>
-                    <strong>{cargaOperativosResult.creados.length}</strong> creados, <strong>{cargaOperativosResult.actualizados.length}</strong> actualizados,{' '}
-                    <strong>{cargaOperativosResult.errores.length}</strong> con error.
-                  </p>
-                  {cargaOperativosResult.errores.length > 0 && (
-                    <ul style={{ fontSize: 12, color: 'var(--critical)', maxHeight: 120, overflowY: 'auto' }}>
-                      {cargaOperativosResult.errores.map((e, i) => <li key={i}>{e.dni}: {e.error}</li>)}
-                    </ul>
-                  )}
-                </div>
-              )}
-              {errorCargaOperativos && <div className="form-error">{errorCargaOperativos}</div>}
-              <div className="modal-actions">
-                <button type="button" className="btn-secondary" onClick={() => setShowCargaMasivaOperativos(false)}>Cerrar</button>
-                <button type="submit" className="btn-primary">Cargar</button>
               </div>
             </form>
           </div>
