@@ -121,13 +121,18 @@ router.get('/siguiente-numero', (req, res) => {
   res.json(sugerido);
 });
 
-// GET /api/invoices/entrenadores — entrenadores activos de la sede actual,
-// para el selector "Atribuir venta a" en RegistroVenta.jsx. Sin permiso de
-// Gerencia (a diferencia de /api/users): cualquier vendedor que registra una
-// venta debe poder ver esta lista, no solo administrar empleados.
+// GET /api/invoices/entrenadores — Trainers y Supervisores operativos
+// activos de la sede actual, para el selector "Atribuir venta a" en
+// RegistroVenta.jsx (y la reatribución en Invoices.jsx). Incluye tanto
+// empleados con usuario real como los registros operativos sin login (ver
+// /api/users/operativos) — a ambos se les puede atribuir una venta para que
+// alimente su Ranking correspondiente en el Tablero de Ventas. Sin permiso
+// de Gerencia (a diferencia de /api/users): cualquier vendedor que registra
+// una venta debe poder ver esta lista, no solo administrar empleados.
 router.get('/entrenadores', (req, res) => {
   const entrenadores = db.prepare(
-    `SELECT id, full_name FROM users WHERE activo = 1 AND categoria_staff = 'trainer' AND sucursal_id = ?
+    `SELECT id, full_name, categoria_staff FROM users
+     WHERE activo = 1 AND categoria_staff IN ('trainer', 'supervisor') AND sucursal_id = ?
      ORDER BY full_name ASC`
   ).all(req.sucursalId);
   res.json(entrenadores);
@@ -252,15 +257,16 @@ router.post('/', async (req, res) => {
   if (!client) return res.status(404).json({ error: 'Cliente no encontrado.' });
 
   // atribuido_a_id: quien registra la venta puede elegir que cuente para un
-  // entrenador de su misma sede en vez de para él mismo, solo para el
-  // ranking del Tablero de Ventas (ver comentario de la columna en db.js).
+  // Trainer o Supervisor operativo de su misma sede en vez de para él mismo,
+  // solo para el ranking del Tablero de Ventas (ver comentario de la
+  // columna en db.js).
   let atribuidoA = null;
   if (atribuido_a_id) {
     const entrenador = db.prepare(
-      'SELECT id FROM users WHERE id = ? AND activo = 1 AND categoria_staff = ? AND sucursal_id = ?'
-    ).get(atribuido_a_id, 'trainer', req.sucursalId);
+      `SELECT id FROM users WHERE id = ? AND activo = 1 AND categoria_staff IN ('trainer', 'supervisor') AND sucursal_id = ?`
+    ).get(atribuido_a_id, req.sucursalId);
     if (!entrenador) {
-      return res.status(400).json({ error: 'El entrenador seleccionado no existe o no pertenece a esta sede.' });
+      return res.status(400).json({ error: 'La persona seleccionada no existe o no pertenece a esta sede.' });
     }
     atribuidoA = entrenador.id;
   }
@@ -718,10 +724,10 @@ router.put('/:id/atribuido-a', requireGerenciaOSupervisor, (req, res) => {
   let atribuidoA = null;
   if (atribuido_a_id) {
     const entrenador = db.prepare(
-      'SELECT id FROM users WHERE id = ? AND activo = 1 AND categoria_staff = ? AND sucursal_id = ?'
-    ).get(atribuido_a_id, 'trainer', invoice.sucursal_id);
+      `SELECT id FROM users WHERE id = ? AND activo = 1 AND categoria_staff IN ('trainer', 'supervisor') AND sucursal_id = ?`
+    ).get(atribuido_a_id, invoice.sucursal_id);
     if (!entrenador) {
-      return res.status(400).json({ error: 'El entrenador seleccionado no existe o no pertenece a esta sede.' });
+      return res.status(400).json({ error: 'La persona seleccionada no existe o no pertenece a esta sede.' });
     }
     atribuidoA = entrenador.id;
   }

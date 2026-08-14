@@ -206,7 +206,7 @@ export default function Invoices() {
                       >
                         <option value="">{inv.vendedor_nombre || 'Vendedor'}</option>
                         {entrenadores.map((e) => (
-                          <option key={e.id} value={e.id}>{e.full_name} (Trainer)</option>
+                          <option key={e.id} value={e.id}>{e.full_name} ({e.categoria_staff === 'trainer' ? 'Trainer' : 'Supervisor'})</option>
                         ))}
                       </select>
                     ) : (

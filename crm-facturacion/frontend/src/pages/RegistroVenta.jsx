@@ -422,7 +422,7 @@ export default function RegistroVenta() {
                   <select value={atribuidoAId} onChange={(e) => setAtribuidoAId(e.target.value)}>
                     <option value="">Yo (vendedor)</option>
                     {entrenadores.map((e) => (
-                      <option key={e.id} value={e.id}>{e.full_name} (Trainer)</option>
+                      <option key={e.id} value={e.id}>{e.full_name} ({e.categoria_staff === 'trainer' ? 'Trainer' : 'Supervisor'})</option>
                     ))}
                   </select>
                 </div>
