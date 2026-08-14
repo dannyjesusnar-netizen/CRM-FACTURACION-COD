@@ -17,6 +17,30 @@ function emptyUserForm() {
   return { username: '', password: PASSWORD_PREDETERMINADA, nombres: '', apellidos: '', email: '', telefono: '', dni: '', role: 'vendedor', sucursal_id: '', custom_role_id: '' };
 }
 
+// Los tres únicos niveles que se pueden asignar a un empleado desde este
+// formulario (reemplaza el antiguo par Nivel + Rol personalizado libre).
+// Administrador = Gerencia (acceso total, sin rol personalizado). Supervisor
+// y Cajero son roles personalizados con estos módulos habilitados — se crean
+// automáticamente la primera vez que se necesitan (ver ensureRolesPredeterminados).
+const ROLES_PRESET_MODULOS = {
+  Supervisor: ['dashboard', 'ventas', 'compras', 'inventario', 'clientes', 'caja', 'reportes'],
+  Cajero: ['ventas', 'caja'],
+};
+
+function idRolPorNombre(roles, nombre) {
+  const r = roles.find((x) => x.nombre === nombre);
+  return r ? String(r.id) : '';
+}
+
+// Deriva cuál de los 3 niveles representa el form actual (para que el
+// select siempre muestre una opción válida, incluso para empleados
+// existentes creados antes de este cambio).
+function nivelDesdeForm(f, roles) {
+  if (f.role === 'gerencia') return 'administrador';
+  if (f.custom_role_id && String(f.custom_role_id) === idRolPorNombre(roles, 'Supervisor')) return 'supervisor';
+  return 'cajero';
+}
+
 function emptySucursalForm() {
   return { nombre: '', direccion: '' };
 }
@@ -192,8 +216,25 @@ export default function Configuracion() {
     api.get('/sucursales/limite').then((res) => setLimiteSucursales(res.data));
   }
 
+  async function ensureRolesPredeterminados(rolesActuales) {
+    const faltantes = Object.entries(ROLES_PRESET_MODULOS).filter(
+      ([nombre]) => !rolesActuales.some((r) => r.nombre === nombre)
+    );
+    if (faltantes.length === 0) return rolesActuales;
+    for (const [nombre, modulos] of faltantes) {
+      const permisos = {};
+      modulos.forEach((m) => { permisos[m] = true; });
+      await api.post('/roles', { nombre, descripcion: `Rol predeterminado: ${nombre}.`, permisos });
+    }
+    const res = await api.get('/roles');
+    return res.data;
+  }
+
   function loadRoles() {
-    api.get('/roles').then((res) => setRoles(res.data));
+    api.get('/roles').then(async (res) => {
+      const asegurados = await ensureRolesPredeterminados(res.data);
+      setRoles(asegurados);
+    });
   }
 
   function loadMetodosPago() {
@@ -358,9 +399,19 @@ export default function Configuracion() {
 
   function openNewUser() {
     setEditingId(null);
-    setForm(emptyUserForm());
+    setForm({ ...emptyUserForm(), custom_role_id: idRolPorNombre(roles, 'Cajero') });
     setErrorForm('');
     setShowForm(true);
+  }
+
+  function handleNivelChange(valor) {
+    if (valor === 'administrador') {
+      setForm((f) => ({ ...f, role: 'gerencia', custom_role_id: '' }));
+    } else if (valor === 'supervisor') {
+      setForm((f) => ({ ...f, role: 'vendedor', custom_role_id: idRolPorNombre(roles, 'Supervisor') }));
+    } else {
+      setForm((f) => ({ ...f, role: 'vendedor', custom_role_id: idRolPorNombre(roles, 'Cajero') }));
+    }
   }
 
   function openEditUser(u) {
@@ -1112,22 +1163,12 @@ export default function Configuracion() {
               <p style={{ fontSize: 11, color: 'var(--ink-muted)', marginTop: -10 }}>
                 El correo es solo para tenerlo como contacto — no enviamos ningún email automático (esta instancia no tiene un proveedor de correo configurado). El empleado inicia sesión con RUC + DNI + contraseña.
               </p>
-              <label>Nivel *</label>
-              <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
-                <option value="vendedor">Empleado (permisos por rol)</option>
-                <option value="gerencia">Gerencia (administrador, acceso total)</option>
+              <label>Rol *</label>
+              <select required value={nivelDesdeForm(form, roles)} onChange={(e) => handleNivelChange(e.target.value)}>
+                <option value="administrador">Administrador (acceso total)</option>
+                <option value="supervisor">Supervisor</option>
+                <option value="cajero">Cajero</option>
               </select>
-              {form.role === 'vendedor' && (
-                <>
-                  <label>Rol</label>
-                  <select value={form.custom_role_id} onChange={(e) => setForm({ ...form, custom_role_id: e.target.value })}>
-                    <option value="">Sin rol asignado (sin restricciones, como antes)</option>
-                    {roles.filter((r) => r.activo).map((r) => (
-                      <option key={r.id} value={r.id}>{r.nombre}</option>
-                    ))}
-                  </select>
-                </>
-              )}
               <label>Sede</label>
               <select value={form.sucursal_id} onChange={(e) => setForm({ ...form, sucursal_id: e.target.value })}>
                 <option value="">Todas las sedes (puede elegir al ingresar)</option>
