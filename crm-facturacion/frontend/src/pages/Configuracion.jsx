@@ -24,6 +24,30 @@ function emptyUserForm() {
   return { username: '', password: PASSWORD_PREDETERMINADA, nombres: '', apellidos: '', email: '', telefono: '', dni: '', role: 'vendedor', sucursal_id: '', custom_role_id: '', categoria_staff: 'vendedor', turno: '' };
 }
 
+// Carga masiva de Empleados: el CSV nunca lleva contraseña (quedaría en
+// texto plano en un archivo) — los empleados nuevos se crean con
+// PASSWORD_PREDETERMINADA, igual que "Restablecer contraseña". "nivel" usa
+// el mismo vocabulario que el selector "Rol" del formulario individual
+// (Administrador/Supervisor/Cajero, o el nombre exacto de otro rol
+// personalizado ya creado); "sede" es el nombre de la sede, no su id.
+const CARGA_MASIVA_EMPLEADOS_COLUMNAS = ['dni', 'nombres', 'apellidos', 'nivel', 'sede', 'categoria_staff', 'turno', 'telefono', 'email', 'username'];
+
+function parseCsvEmpleados(text) {
+  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  if (lines.length === 0) return [];
+  let start = 0;
+  if (/dni/i.test(lines[0]) && /nombres/i.test(lines[0])) start = 1;
+  const rows = [];
+  for (let i = start; i < lines.length; i += 1) {
+    const cols = lines[i].split(',').map((c) => c.trim().replace(/^"|"$/g, ''));
+    if (!cols[0]) continue;
+    const row = {};
+    CARGA_MASIVA_EMPLEADOS_COLUMNAS.forEach((key, idx) => { row[key] = cols[idx] ?? ''; });
+    rows.push(row);
+  }
+  return rows;
+}
+
 // Los tres únicos niveles que se pueden asignar a un empleado desde este
 // formulario (reemplaza el antiguo par Nivel + Rol personalizado libre).
 // Administrador = Gerencia (acceso total, sin rol personalizado). Supervisor
@@ -139,6 +163,11 @@ export default function Configuracion() {
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyUserForm());
   const [errorForm, setErrorForm] = useState('');
+  const [showCargaMasivaEmpleados, setShowCargaMasivaEmpleados] = useState(false);
+  const [cargaEmpleadosFileName, setCargaEmpleadosFileName] = useState('');
+  const [cargaEmpleadosRows, setCargaEmpleadosRows] = useState([]);
+  const [cargaEmpleadosResult, setCargaEmpleadosResult] = useState(null);
+  const [errorCargaEmpleados, setErrorCargaEmpleados] = useState('');
 
   // --- Metas de venta (Tablero de Ventas) ---
   // Gerencia asigna un monto "pool" por sede y categoría (Vendedores /
@@ -513,6 +542,57 @@ export default function Configuracion() {
     } catch (err) {
       toast.error(err.response?.data?.error || 'No se pudo restablecer la contraseña.');
     }
+  }
+
+  function openCargaMasivaEmpleados() {
+    setCargaEmpleadosFileName('');
+    setCargaEmpleadosRows([]);
+    setCargaEmpleadosResult(null);
+    setErrorCargaEmpleados('');
+    setShowCargaMasivaEmpleados(true);
+  }
+
+  function handleCargaEmpleadosFileChange(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setCargaEmpleadosFileName(file.name);
+    setCargaEmpleadosResult(null);
+    setErrorCargaEmpleados('');
+    const reader = new FileReader();
+    reader.onload = () => {
+      const rows = parseCsvEmpleados(String(reader.result || ''));
+      setCargaEmpleadosRows(rows);
+      if (rows.length === 0) setErrorCargaEmpleados('No se encontraron filas válidas (columnas esperadas: dni, nombres, apellidos, nivel, sede, categoria_staff, turno, telefono, email, username).');
+    };
+    reader.readAsText(file);
+  }
+
+  async function handleCargaMasivaEmpleadosSubmit(e) {
+    e.preventDefault();
+    setErrorCargaEmpleados('');
+    if (cargaEmpleadosRows.length === 0) { setErrorCargaEmpleados('Selecciona un archivo CSV con al menos una fila.'); return; }
+    try {
+      const res = await api.post('/users/carga-masiva', { rows: cargaEmpleadosRows });
+      setCargaEmpleadosResult(res.data);
+      if (res.data.creados.length > 0) toast.success(`${res.data.creados.length} empleado(s) creados (contraseña: ${PASSWORD_PREDETERMINADA}).`);
+      if (res.data.actualizados.length > 0) toast.success(`${res.data.actualizados.length} empleado(s) actualizados.`);
+      if (res.data.errores.length > 0) toast.error(`${res.data.errores.length} fila(s) con errores. Revisa el detalle.`);
+      loadUsuarios();
+    } catch (err) {
+      setErrorCargaEmpleados(err.response?.data?.error || 'No se pudo procesar el archivo.');
+    }
+  }
+
+  function descargarPlantillaCargaMasivaEmpleados() {
+    const header = CARGA_MASIVA_EMPLEADOS_COLUMNAS;
+    const ejemplo = ['45678912', 'Carlos', 'Ramírez', 'Cajero', sucursales[0]?.nombre || '', 'vendedor', 'manana', '999888777', 'carlos@ejemplo.com', ''];
+    const csv = [header, ejemplo].map((r) => r.join(',')).join('\n');
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'plantilla_carga_masiva_empleados.csv';
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
   }
 
   function exportarEmpleadosCsv() {
@@ -1045,6 +1125,7 @@ export default function Configuracion() {
                 <h3 style={{ margin: 0 }}>Empleados</h3>
                 <div style={{ display: 'flex', gap: 10 }}>
                   <button className="btn-export" onClick={exportarEmpleadosCsv}>Exportar</button>
+                  <button className="btn-secondary" style={{ width: 'auto' }} onClick={openCargaMasivaEmpleados}>Carga masiva</button>
                   <button className="btn-primary" style={{ width: 'auto' }} onClick={openNewUser}>Nuevo Empleado</button>
                 </div>
               </div>
@@ -1326,6 +1407,48 @@ export default function Configuracion() {
               <div className="modal-actions">
                 <button type="button" className="btn-secondary" onClick={() => setShowForm(false)}>Cancelar</button>
                 <button type="submit" className="btn-primary">{editingId ? 'Guardar cambios' : 'Guardar empleado'}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showCargaMasivaEmpleados && (
+        <div className="modal-overlay" onClick={() => setShowCargaMasivaEmpleados(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h2>Carga masiva de empleados</h2>
+            <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -6 }}>
+              Sube un CSV con columnas: dni, nombres, apellidos, nivel, sede, categoria_staff, turno, telefono, email, username.
+              Si el DNI ya existe, actualiza ese empleado; si no, lo crea. "nivel" es Administrador, o el nombre exacto de
+              un rol ya creado en Configuración → Roles (ej. Cajero, Supervisor). "sede" es el nombre de la sede (vacío = todas las sedes).
+              Los empleados nuevos quedan con la contraseña predeterminada <strong>{PASSWORD_PREDETERMINADA}</strong> — el CSV nunca lleva contraseñas.
+            </p>
+            <button type="button" className="btn-link" onClick={descargarPlantillaCargaMasivaEmpleados} style={{ marginBottom: 10 }}>
+              Descargar plantilla de ejemplo
+            </button>
+            <form onSubmit={handleCargaMasivaEmpleadosSubmit}>
+              <label>Archivo CSV</label>
+              <input required type="file" accept=".csv,text/csv" onChange={handleCargaEmpleadosFileChange} />
+              {cargaEmpleadosFileName && (
+                <p className="caja-row-auto">{cargaEmpleadosFileName} — {cargaEmpleadosRows.length} fila(s) detectadas.</p>
+              )}
+              {cargaEmpleadosResult && (
+                <div style={{ marginTop: 10 }}>
+                  <p>
+                    <strong>{cargaEmpleadosResult.creados.length}</strong> creados, <strong>{cargaEmpleadosResult.actualizados.length}</strong> actualizados,{' '}
+                    <strong>{cargaEmpleadosResult.errores.length}</strong> con error.
+                  </p>
+                  {cargaEmpleadosResult.errores.length > 0 && (
+                    <ul style={{ fontSize: 12, color: 'var(--critical)', maxHeight: 120, overflowY: 'auto' }}>
+                      {cargaEmpleadosResult.errores.map((e, i) => <li key={i}>{e.dni}: {e.error}</li>)}
+                    </ul>
+                  )}
+                </div>
+              )}
+              {errorCargaEmpleados && <div className="form-error">{errorCargaEmpleados}</div>}
+              <div className="modal-actions">
+                <button type="button" className="btn-secondary" onClick={() => setShowCargaMasivaEmpleados(false)}>Cerrar</button>
+                <button type="submit" className="btn-primary">Cargar</button>
               </div>
             </form>
           </div>

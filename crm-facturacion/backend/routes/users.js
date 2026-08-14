@@ -68,6 +68,111 @@ function customRoleIdOrError(customRoleId) {
   return { value: role.id };
 }
 
+// Contraseña con la que quedan todos los empleados creados por carga masiva
+// — nunca viaja en el CSV (sería un archivo con contraseñas en texto plano),
+// es la misma predeterminada que usa "Restablecer contraseña" en el frontend.
+const PASSWORD_PREDETERMINADA = 'Lima2026*';
+
+// El CSV usa el mismo vocabulario que el selector "Rol" del formulario
+// individual (Administrador/Supervisor/Cajero) más cualquier otro rol
+// personalizado que Gerencia ya haya creado, referenciado por su nombre
+// exacto (no por id, que el usuario del CSV no tiene forma de conocer).
+function nivelARolYCustomRole(nivelRaw) {
+  const nivel = (nivelRaw || '').toString().trim();
+  if (!nivel) return { error: 'nivel es requerido (Administrador, o el nombre exacto de un rol ya creado en Configuración → Roles, ej. Cajero, Supervisor).' };
+  if (nivel.toLowerCase() === 'administrador' || nivel.toLowerCase() === 'gerencia') {
+    return { role: 'gerencia', customRoleId: null };
+  }
+  const rol = db.prepare('SELECT id FROM roles WHERE nombre = ? AND activo = 1').get(nivel);
+  if (!rol) {
+    return { error: `El rol "${nivel}" no existe o está desactivado. Créalo primero en Configuración → Roles, o usa "Administrador".` };
+  }
+  return { role: 'vendedor', customRoleId: rol.id };
+}
+
+function sedeNombreASucursalId(sedeNombre) {
+  const nombre = (sedeNombre || '').toString().trim();
+  if (!nombre) return { value: null };
+  const suc = db.prepare('SELECT id FROM sucursales WHERE nombre = ? AND activo = 1').get(nombre);
+  if (!suc) return { error: `La sede "${nombre}" no existe o está desactivada.` };
+  return { value: suc.id };
+}
+
+// POST /api/users/carga-masiva { rows: [{ dni, nombres, apellidos, username,
+// nivel, sede, categoria_staff, turno, telefono, email }] }
+// Crea empleados nuevos (por DNI) o actualiza los que ya existen — mismo
+// criterio de "crear o actualizar" que products.js. La contraseña de un
+// empleado nuevo siempre queda en PASSWORD_PREDETERMINADA; actualizar por
+// esta vía nunca toca username ni contraseña de un empleado existente.
+router.post('/carga-masiva', (req, res) => {
+  const { rows } = req.body || {};
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return res.status(400).json({ error: 'rows es requerido y debe tener al menos una fila.' });
+  }
+  const creados = [];
+  const actualizados = [];
+  const errores = [];
+
+  for (const r of rows) {
+    const dni = (r.dni || '').toString().trim();
+    const nombres = (r.nombres || '').toString().trim();
+    const apellidos = (r.apellidos || '').toString().trim();
+    if (!dni || !nombres || !apellidos) {
+      errores.push({ dni: dni || '(vacío)', error: 'dni, nombres y apellidos son requeridos.' });
+      continue;
+    }
+    if (!/^\d{8}$/.test(dni)) {
+      errores.push({ dni, error: 'El DNI debe tener 8 dígitos.' });
+      continue;
+    }
+    const nivel = nivelARolYCustomRole(r.nivel);
+    if (nivel.error) { errores.push({ dni, error: nivel.error }); continue; }
+    const sede = sedeNombreASucursalId(r.sede);
+    if (sede.error) { errores.push({ dni, error: sede.error }); continue; }
+    const categoriaStaff = categoriaStaffOrError(r.categoria_staff);
+    if (categoriaStaff.error) { errores.push({ dni, error: categoriaStaff.error }); continue; }
+    const turnoResult = turnoOrError(r.turno);
+    if (turnoResult.error) { errores.push({ dni, error: turnoResult.error }); continue; }
+    const email = (r.email || '').toString().trim() || null;
+    const telefono = (r.telefono || '').toString().trim() || null;
+    const fullName = `${nombres} ${apellidos}`.trim();
+
+    const existing = db.prepare('SELECT * FROM users WHERE dni = ?').get(dni);
+    try {
+      if (existing) {
+        db.prepare(
+          `UPDATE users SET full_name = ?, nombres = ?, apellidos = ?, email = ?, telefono = ?, role = ?,
+           sucursal_id = ?, custom_role_id = ?, categoria_staff = ?, turno = ? WHERE id = ?`
+        ).run(
+          fullName, nombres, apellidos, email, telefono, nivel.role,
+          sede.value, nivel.customRoleId, categoriaStaff.value, turnoResult.value,
+          existing.id
+        );
+        actualizados.push({ dni, nombre: fullName });
+      } else {
+        const usernameRaw = (r.username || '').toString().trim();
+        const username = usernameRaw || dni;
+        if (db.prepare('SELECT id FROM users WHERE username = ?').get(username)) {
+          errores.push({ dni, error: `El usuario "${username}" ya está en uso por otro empleado.` });
+          continue;
+        }
+        const info = db.prepare(
+          `INSERT INTO users (username, password_hash, full_name, nombres, apellidos, email, telefono, role, dni, activo, sucursal_id, custom_role_id, categoria_staff, turno)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)`
+        ).run(
+          username, bcrypt.hashSync(PASSWORD_PREDETERMINADA, 10), fullName, nombres, apellidos, email, telefono,
+          nivel.role, dni, sede.value, nivel.customRoleId, categoriaStaff.value, turnoResult.value
+        );
+        creados.push({ dni, nombre: fullName });
+      }
+    } catch (err) {
+      errores.push({ dni, error: 'No se pudo guardar esta fila.' });
+    }
+  }
+
+  res.json({ creados, actualizados, errores, password_predeterminada: PASSWORD_PREDETERMINADA });
+});
+
 router.post('/', (req, res) => {
   const { username, password, nombres, apellidos, email, telefono, dni, role, sucursal_id, custom_role_id, categoria_staff, turno } = req.body || {};
   if (!username || !password || !nombres || !apellidos || !dni) {
