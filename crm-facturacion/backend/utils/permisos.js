@@ -144,6 +144,7 @@ module.exports = {
   MODULOS,
   ACCIONES_POR_MODULO,
   permisosDeUsuario,
+  tienePermiso,
   requirePermiso,
   requireAlgunPermiso,
   tieneAccion,

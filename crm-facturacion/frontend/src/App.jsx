@@ -74,10 +74,10 @@ export default function App() {
             <Route path="/movimientos/fotos" element={<RequirePermiso modulo="inventario"><CargarStockFotos /></RequirePermiso>} />
             <Route path="/lotes" element={<RequirePermiso modulo="inventario"><Lotes /></RequirePermiso>} />
             <Route path="/caja" element={<RequirePermiso modulo="caja"><Caja /></RequirePermiso>} />
+            <Route path="/caja/cuentas-por-cobrar" element={<RequirePermiso modulo="caja"><CuentasPorCobrar /></RequirePermiso>} />
             <Route path="/traslados" element={<RequirePermiso modulo="inventario"><Traslados /></RequirePermiso>} />
             <Route path="/produccion" element={<RequirePermiso modulo="inventario"><Produccion /></RequirePermiso>} />
             <Route path="/ventas" element={<RequirePermiso modulo="ventas"><Invoices /></RequirePermiso>} />
-            <Route path="/ventas/cuentas-por-cobrar" element={<RequirePermiso modulo="ventas"><CuentasPorCobrar /></RequirePermiso>} />
             <Route path="/ventas/nuevo/:tipo" element={<RequirePermiso modulo="ventas"><RegistroVenta /></RequirePermiso>} />
             <Route path="/ventas/nota-credito/nueva" element={<RequirePermiso modulo="ventas"><RegistroNotaCredito /></RequirePermiso>} />
             <Route path="/ventas/guia-remitente/nueva" element={<RequirePermiso modulo="ventas"><GuiaRemitente /></RequirePermiso>} />

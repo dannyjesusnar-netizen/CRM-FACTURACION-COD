@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
 import api from '../api';
 import { useToast } from '../context/ToastContext';
@@ -15,6 +16,7 @@ const TIPO_MOV_LABEL = { ingreso: 'Ingreso', egreso: 'Egreso' };
 
 export default function Caja() {
   const toast = useToast();
+  const navigate = useNavigate();
   const [fecha, setFecha] = useState(todayStr());
   const [empleadoId, setEmpleadoId] = useState('');
   const [moneda, setMoneda] = useState('');
@@ -123,6 +125,10 @@ export default function Caja() {
             <strong>S/ {fmt(data.totalGeneral)}</strong>
           </div>
         )}
+      </div>
+
+      <div className="actions-buttons" style={{ marginBottom: 16 }}>
+        <button className="ventas-action-btn" onClick={() => navigate('/caja/cuentas-por-cobrar')}>Cuentas por Cobrar</button>
       </div>
 
       <div className="caja-date-bar filter-panel">
