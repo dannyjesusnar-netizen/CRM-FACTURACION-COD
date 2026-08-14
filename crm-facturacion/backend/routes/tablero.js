@@ -1,10 +1,11 @@
 const express = require('express');
 const db = require('../db');
-const { requireAuth, requireGerencia } = require('../middleware/auth');
+const { requireAuth } = require('../middleware/auth');
+const { requireGerenciaOSupervisor } = require('../utils/permisos');
 
 const router = express.Router();
 router.use(requireAuth);
-router.use(requireGerencia);
+router.use(requireGerenciaOSupervisor);
 
 function round2(n) {
   return Math.round((n + Number.EPSILON) * 100) / 100;
@@ -14,6 +15,13 @@ function anioMes(req) {
   const anio = Number(req.query.anio) || new Date().getFullYear();
   const mes = Number(req.query.mes) || new Date().getMonth() + 1;
   return { anio, mes, mesPad: String(mes).padStart(2, '0') };
+}
+
+// sucursal_id opcional: sin valor = todas las sedes (vista ejecutiva por
+// defecto); con valor = el "dashboard" de esa sede en particular.
+function sedeFiltro(req) {
+  const raw = req.query.sucursal_id;
+  return raw ? Number(raw) : null;
 }
 
 function conPorcentaje(rows) {
@@ -49,6 +57,7 @@ router.get('/ranking-personal', (req, res) => {
     return res.status(400).json({ error: 'categoria inválida. Use trainer, vendedor o supervisor.' });
   }
   const { anio, mes, mesPad } = anioMes(req);
+  const sucursalId = sedeFiltro(req);
   const rows = db.prepare(`
     SELECT u.id AS user_id, u.full_name AS nombre, u.turno, s.nombre AS sede,
            COALESCE(SUM(CASE WHEN i.tipo_comprobante = 'nota_credito' THEN -i.total ELSE i.total END), 0) AS venta,
@@ -59,8 +68,9 @@ router.get('/ranking-personal', (req, res) => {
       AND strftime('%Y', i.fecha_emision) = ? AND strftime('%m', i.fecha_emision) = ?
     LEFT JOIN metas_venta m ON m.user_id = u.id AND m.anio = ? AND m.mes = ?
     WHERE u.categoria_staff = ? AND u.activo = 1
+      AND (? IS NULL OR u.sucursal_id = ?)
     GROUP BY u.id
-  `).all(String(anio), mesPad, anio, mes, categoria);
+  `).all(String(anio), mesPad, anio, mes, categoria, sucursalId, sucursalId);
 
   const withPct = rows.map((r) => ({
     ...r,
@@ -82,6 +92,7 @@ router.get('/ranking-personal', (req, res) => {
 // Totales".
 router.get('/resumen-sedes', (req, res) => {
   const { anio, mes, mesPad } = anioMes(req);
+  const sucursalId = sedeFiltro(req);
   const ventaPorSede = db.prepare(`
     SELECT s.id, s.nombre,
       COALESCE(SUM(CASE WHEN i.tipo_comprobante = 'nota_credito' THEN -i.total ELSE i.total END), 0) AS venta
@@ -89,8 +100,9 @@ router.get('/resumen-sedes', (req, res) => {
     LEFT JOIN invoices i ON i.sucursal_id = s.id AND i.estado = 'emitido'
       AND strftime('%Y', i.fecha_emision) = ? AND strftime('%m', i.fecha_emision) = ?
     WHERE s.activo = 1
+      AND (? IS NULL OR s.id = ?)
     GROUP BY s.id
-  `).all(String(anio), mesPad);
+  `).all(String(anio), mesPad, sucursalId, sucursalId);
 
   const metaPorSede = db.prepare(`
     SELECT u.sucursal_id AS id, COALESCE(SUM(m.monto_meta), 0) AS meta
@@ -130,6 +142,7 @@ router.get('/resumen-sedes', (req, res) => {
 // Total por marca (Proveedor asignado al producto).
 router.get('/total-por-marca', (req, res) => {
   const { anio, mesPad } = anioMes(req);
+  const sucursalId = sedeFiltro(req);
   const rows = db.prepare(`
     SELECT ${MARCA_EXPR} AS marca,
       SUM(CASE WHEN i.tipo_comprobante = 'nota_credito' THEN -ii.cantidad ELSE ii.cantidad END) AS cantidad,
@@ -139,15 +152,17 @@ router.get('/total-por-marca', (req, res) => {
     LEFT JOIN products p ON p.id = ii.product_id
     WHERE i.estado = 'emitido'
       AND strftime('%Y', i.fecha_emision) = ? AND strftime('%m', i.fecha_emision) = ?
+      AND (? IS NULL OR i.sucursal_id = ?)
     GROUP BY ${MARCA_EXPR}
     ORDER BY venta DESC
-  `).all(String(anio), mesPad);
+  `).all(String(anio), mesPad, sucursalId, sucursalId);
   res.json(conPorcentaje(rows));
 });
 
 // Total por producto (agrupado por categoría del producto).
 router.get('/total-por-producto', (req, res) => {
   const { anio, mesPad } = anioMes(req);
+  const sucursalId = sedeFiltro(req);
   const rows = db.prepare(`
     SELECT COALESCE(p.categoria, 'Sin categoría') AS categoria,
       SUM(CASE WHEN i.tipo_comprobante = 'nota_credito' THEN -ii.cantidad ELSE ii.cantidad END) AS cantidad,
@@ -157,9 +172,10 @@ router.get('/total-por-producto', (req, res) => {
     LEFT JOIN products p ON p.id = ii.product_id
     WHERE i.estado = 'emitido'
       AND strftime('%Y', i.fecha_emision) = ? AND strftime('%m', i.fecha_emision) = ?
+      AND (? IS NULL OR i.sucursal_id = ?)
     GROUP BY COALESCE(p.categoria, 'Sin categoría')
     ORDER BY venta DESC
-  `).all(String(anio), mesPad);
+  `).all(String(anio), mesPad, sucursalId, sucursalId);
   res.json(conPorcentaje(rows));
 });
 
