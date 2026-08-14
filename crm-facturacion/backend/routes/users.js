@@ -9,6 +9,25 @@ router.use(requireAuth);
 router.use(requireGerencia);
 
 const ROLES = ['gerencia', 'vendedor'];
+// categoria_staff agrupa al empleado en el Tablero de Ventas (Ranking
+// Trainers/Vendedores/Supervisores) — no tiene relación con el rol de
+// permisos (role/custom_role_id), que sigue controlando el acceso.
+const CATEGORIAS_STAFF = ['vendedor', 'trainer', 'supervisor'];
+const TURNOS = ['manana', 'tarde'];
+
+function categoriaStaffOrError(categoriaStaff) {
+  if (categoriaStaff === undefined) return { value: undefined };
+  if (!categoriaStaff) return { value: 'vendedor' };
+  if (!CATEGORIAS_STAFF.includes(categoriaStaff)) return { error: 'categoria_staff inválida.' };
+  return { value: categoriaStaff };
+}
+
+function turnoOrError(turno) {
+  if (turno === undefined) return { value: undefined };
+  if (!turno) return { value: null };
+  if (!TURNOS.includes(turno)) return { error: 'turno inválido. Use manana o tarde.' };
+  return { value: turno };
+}
 
 function sinPassword(user) {
   const { password_hash, ...rest } = user;
@@ -50,7 +69,7 @@ function customRoleIdOrError(customRoleId) {
 }
 
 router.post('/', (req, res) => {
-  const { username, password, nombres, apellidos, email, telefono, dni, role, sucursal_id, custom_role_id } = req.body || {};
+  const { username, password, nombres, apellidos, email, telefono, dni, role, sucursal_id, custom_role_id, categoria_staff, turno } = req.body || {};
   if (!username || !password || !nombres || !apellidos || !dni) {
     return res.status(400).json({ error: 'Usuario, contraseña, nombres, apellidos y DNI son requeridos.' });
   }
@@ -71,12 +90,16 @@ router.post('/', (req, res) => {
   if (sucursal.error) return res.status(400).json({ error: sucursal.error });
   const customRole = customRoleIdOrError(custom_role_id);
   if (customRole.error) return res.status(400).json({ error: customRole.error });
+  const categoriaStaff = categoriaStaffOrError(categoria_staff);
+  if (categoriaStaff.error) return res.status(400).json({ error: categoriaStaff.error });
+  const turnoResult = turnoOrError(turno);
+  if (turnoResult.error) return res.status(400).json({ error: turnoResult.error });
   const fullName = `${nombres} ${apellidos}`.trim();
   try {
     const info = db.prepare(
-      `INSERT INTO users (username, password_hash, full_name, nombres, apellidos, email, telefono, role, dni, activo, sucursal_id, custom_role_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`
-    ).run(username, bcrypt.hashSync(password, 10), fullName, nombres, apellidos, email || null, telefono || null, role, dni, sucursal.value, customRole.value);
+      `INSERT INTO users (username, password_hash, full_name, nombres, apellidos, email, telefono, role, dni, activo, sucursal_id, custom_role_id, categoria_staff, turno)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)`
+    ).run(username, bcrypt.hashSync(password, 10), fullName, nombres, apellidos, email || null, telefono || null, role, dni, sucursal.value, customRole.value, categoriaStaff.value ?? 'vendedor', turnoResult.value ?? null);
     const row = db.prepare('SELECT * FROM users WHERE id = ?').get(info.lastInsertRowid);
     res.status(201).json(sinPassword(row));
   } catch (err) {
@@ -90,7 +113,7 @@ router.post('/', (req, res) => {
 router.put('/:id', (req, res) => {
   const existing = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id);
   if (!existing) return res.status(404).json({ error: 'Usuario no encontrado.' });
-  const { nombres, apellidos, email, telefono, dni, role, password, sucursal_id, custom_role_id } = req.body || {};
+  const { nombres, apellidos, email, telefono, dni, role, password, sucursal_id, custom_role_id, categoria_staff, turno } = req.body || {};
   if (role && !ROLES.includes(role)) {
     return res.status(400).json({ error: 'role inválido. Use gerencia o vendedor.' });
   }
@@ -116,11 +139,23 @@ router.put('/:id', (req, res) => {
     if (customRole.error) return res.status(400).json({ error: customRole.error });
     customRoleId = customRole.value;
   }
+  let categoriaStaffValue = existing.categoria_staff;
+  if (categoria_staff !== undefined) {
+    const categoriaStaff = categoriaStaffOrError(categoria_staff);
+    if (categoriaStaff.error) return res.status(400).json({ error: categoriaStaff.error });
+    categoriaStaffValue = categoriaStaff.value;
+  }
+  let turnoValue = existing.turno;
+  if (turno !== undefined) {
+    const turnoResult = turnoOrError(turno);
+    if (turnoResult.error) return res.status(400).json({ error: turnoResult.error });
+    turnoValue = turnoResult.value;
+  }
   const nombresFinal = nombres ?? existing.nombres;
   const apellidosFinal = apellidos ?? existing.apellidos;
   const fullName = `${nombresFinal || ''} ${apellidosFinal || ''}`.trim() || existing.full_name;
   db.prepare(
-    `UPDATE users SET full_name = ?, nombres = ?, apellidos = ?, email = ?, telefono = ?, dni = ?, role = ?, password_hash = ?, sucursal_id = ?, custom_role_id = ?
+    `UPDATE users SET full_name = ?, nombres = ?, apellidos = ?, email = ?, telefono = ?, dni = ?, role = ?, password_hash = ?, sucursal_id = ?, custom_role_id = ?, categoria_staff = ?, turno = ?
      WHERE id = ?`
   ).run(
     fullName,
@@ -133,6 +168,8 @@ router.put('/:id', (req, res) => {
     password ? bcrypt.hashSync(password, 10) : existing.password_hash,
     sucursalId,
     customRoleId,
+    categoriaStaffValue,
+    turnoValue,
     req.params.id
   );
   res.json(sinPassword(db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id)));

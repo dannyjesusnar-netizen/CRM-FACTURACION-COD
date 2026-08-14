@@ -626,12 +626,33 @@ CREATE TABLE IF NOT EXISTS role_acciones (
     // creadas antes de que existiera este sistema). Gerencia nunca lo usa:
     // siempre tiene acceso completo, sea cual sea este valor.
     ['custom_role_id', 'INTEGER REFERENCES roles(id)'],
+    // categoria_staff: agrupación para el Tablero de Ventas (Ranking
+    // Trainers/Vendedores/Supervisores) — independiente del rol de permisos
+    // (role/custom_role_id), que sigue gobernando el acceso al sistema.
+    ['categoria_staff', "TEXT DEFAULT 'vendedor'"],
+    // turno del empleado (mañana/tarde), mismo patrón que clients.turno.
+    ['turno', 'TEXT'],
   ];
   for (const [col, def] of USER_NEW_COLUMNS) {
     if (!userColumns.includes(col)) {
       db.exec(`ALTER TABLE users ADD COLUMN ${col} ${def}`);
     }
   }
+
+  // Metas de venta: asignadas a mano por Gerencia, una por empleado/mes.
+  // Alimenta el Ranking Trainers/Vendedores y el Resumen Sedes del Tablero
+  // de Ventas (routes/tablero.js).
+  db.exec(`
+CREATE TABLE IF NOT EXISTS metas_venta (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  anio INTEGER NOT NULL,
+  mes INTEGER NOT NULL,
+  monto_meta REAL NOT NULL DEFAULT 0,
+  created_at TEXT DEFAULT (datetime('now')),
+  UNIQUE(user_id, anio, mes)
+);
+`);
 
   const empresaColumns = db.prepare("PRAGMA table_info(empresa_config)").all().map((c) => c.name);
   const EMPRESA_NEW_COLUMNS = [

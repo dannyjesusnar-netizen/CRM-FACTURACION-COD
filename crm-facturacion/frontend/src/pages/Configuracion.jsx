@@ -13,8 +13,15 @@ const DEPARTAMENTOS_PERU = [
 
 const PASSWORD_PREDETERMINADA = 'Lima2026*';
 
+const MESES = [
+  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
+];
+
+const CATEGORIA_STAFF_LABEL = { vendedor: 'Vendedor', trainer: 'Trainer', supervisor: 'Supervisor' };
+
 function emptyUserForm() {
-  return { username: '', password: PASSWORD_PREDETERMINADA, nombres: '', apellidos: '', email: '', telefono: '', dni: '', role: 'vendedor', sucursal_id: '', custom_role_id: '' };
+  return { username: '', password: PASSWORD_PREDETERMINADA, nombres: '', apellidos: '', email: '', telefono: '', dni: '', role: 'vendedor', sucursal_id: '', custom_role_id: '', categoria_staff: 'vendedor', turno: '' };
 }
 
 // Los tres únicos niveles que se pueden asignar a un empleado desde este
@@ -133,6 +140,13 @@ export default function Configuracion() {
   const [form, setForm] = useState(emptyUserForm());
   const [errorForm, setErrorForm] = useState('');
 
+  // --- Metas de venta (Tablero de Ventas) ---
+  const hoy = new Date();
+  const [metasAnio, setMetasAnio] = useState(hoy.getFullYear());
+  const [metasMes, setMetasMes] = useState(hoy.getMonth() + 1);
+  const [metas, setMetas] = useState({});
+  const [metasGuardando, setMetasGuardando] = useState(null);
+
   // --- Sucursales ---
   const [sucursales, setSucursales] = useState([]);
   const [limiteSucursales, setLimiteSucursales] = useState(null);
@@ -206,6 +220,29 @@ export default function Configuracion() {
     const params = {};
     if (q) params.q = q;
     api.get('/users', { params }).then((res) => setUsuarios(res.data));
+  }
+
+  function loadMetas() {
+    api.get('/metas-venta', { params: { anio: metasAnio, mes: metasMes } }).then((res) => {
+      const mapa = {};
+      res.data.forEach((m) => { mapa[m.user_id] = m.monto_meta; });
+      setMetas(mapa);
+    });
+  }
+
+  useEffect(() => {
+    if (seccion === 'metas') loadMetas();
+  }, [seccion, metasAnio, metasMes]);
+
+  async function guardarMeta(userId, montoMeta) {
+    setMetasGuardando(userId);
+    try {
+      await api.put('/metas-venta', { user_id: userId, anio: metasAnio, mes: metasMes, monto_meta: montoMeta });
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'No se pudo guardar la meta.');
+    } finally {
+      setMetasGuardando(null);
+    }
   }
 
   function loadSucursales() {
@@ -420,6 +457,7 @@ export default function Configuracion() {
       username: u.username, password: '', nombres: u.nombres || '', apellidos: u.apellidos || '',
       email: u.email || '', telefono: u.telefono || '', dni: u.dni || '', role: u.role,
       sucursal_id: u.sucursal_id || '', custom_role_id: u.custom_role_id || '',
+      categoria_staff: u.categoria_staff || 'vendedor', turno: u.turno || '',
     });
     setErrorForm('');
     setShowForm(true);
@@ -431,6 +469,7 @@ export default function Configuracion() {
     const payloadComun = {
       nombres: form.nombres, apellidos: form.apellidos, email: form.email || null, telefono: form.telefono || null,
       dni: form.dni, role: form.role, sucursal_id: form.sucursal_id || null, custom_role_id: form.custom_role_id || null,
+      categoria_staff: form.categoria_staff || 'vendedor', turno: form.turno || null,
     };
     try {
       if (editingId) {
@@ -629,6 +668,9 @@ export default function Configuracion() {
           </div>
           <div className={'reports-sidebar-item' + (seccion === 'empleados' ? ' active' : '')} onClick={() => setSeccion('empleados')} role="button" tabIndex={0}>
             <UsersIcon size={16} /><span>Empleados</span>
+          </div>
+          <div className={'reports-sidebar-item' + (seccion === 'metas' ? ' active' : '')} onClick={() => setSeccion('metas')} role="button" tabIndex={0}>
+            <Wallet size={16} /><span>Metas de venta</span>
           </div>
           <div className={'reports-sidebar-item' + (seccion === 'roles' ? ' active' : '')} onClick={() => setSeccion('roles')} role="button" tabIndex={0}>
             <ShieldCheck size={16} /><span>Roles de usuario</span>
@@ -1054,6 +1096,61 @@ export default function Configuracion() {
             </>
           )}
 
+          {seccion === 'metas' && (
+            <>
+              <div className="report-toolbar">
+                <h3 style={{ margin: 0 }}>Metas de venta</h3>
+              </div>
+              <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -8 }}>
+                Asigna la meta mensual (S/) de cada empleado — alimenta el Ranking Trainers/Vendedores
+                y el Resumen de sedes del Dashboard.
+              </p>
+              <div className="filter-panel">
+                <div className="filter-field">
+                  <label>Año</label>
+                  <input type="number" value={metasAnio} onChange={(e) => setMetasAnio(Number(e.target.value))} style={{ width: 100 }} />
+                </div>
+                <div className="filter-field">
+                  <label>Mes</label>
+                  <select value={metasMes} onChange={(e) => setMetasMes(Number(e.target.value))}>
+                    {MESES.map((nombre, idx) => (
+                      <option key={idx} value={idx + 1}>{nombre}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <table className="data-table">
+                <thead>
+                  <tr><th>Empleado</th><th>Categoría</th><th>Sede</th><th style={{ textAlign: 'right' }}>Meta mensual (S/)</th></tr>
+                </thead>
+                <tbody>
+                  {usuarios.filter((u) => u.activo).map((u) => (
+                    <tr key={u.id}>
+                      <td>{u.nombres || u.full_name}</td>
+                      <td>{CATEGORIA_STAFF_LABEL[u.categoria_staff] || 'Vendedor'}</td>
+                      <td>{u.sucursal_nombre || 'Todas las sedes'}</td>
+                      <td style={{ textAlign: 'right' }}>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          style={{ width: 130, textAlign: 'right' }}
+                          disabled={metasGuardando === u.id}
+                          value={metas[u.id] ?? ''}
+                          onChange={(e) => setMetas({ ...metas, [u.id]: e.target.value })}
+                          onBlur={(e) => guardarMeta(u.id, Number(e.target.value) || 0)}
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                  {usuarios.filter((u) => u.activo).length === 0 && (
+                    <tr><td colSpan={4} className="empty-row">No hay empleados activos.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </>
+          )}
+
           {seccion === 'roles' && (
             <>
               <div className="report-toolbar">
@@ -1176,6 +1273,24 @@ export default function Configuracion() {
                   <option key={s.id} value={s.id}>{s.nombre}</option>
                 ))}
               </select>
+              <div className="form-row">
+                <div>
+                  <label>Categoría (Tablero de Ventas)</label>
+                  <select value={form.categoria_staff} onChange={(e) => setForm({ ...form, categoria_staff: e.target.value })}>
+                    <option value="vendedor">Vendedor</option>
+                    <option value="trainer">Trainer</option>
+                    <option value="supervisor">Supervisor</option>
+                  </select>
+                </div>
+                <div>
+                  <label>Turno</label>
+                  <select value={form.turno} onChange={(e) => setForm({ ...form, turno: e.target.value })}>
+                    <option value="">Sin turno</option>
+                    <option value="manana">Mañana</option>
+                    <option value="tarde">Tarde</option>
+                  </select>
+                </div>
+              </div>
               <label>{editingId ? 'Nueva contraseña (dejar en blanco para no cambiarla)' : 'Contraseña * (mínimo 8 caracteres, mayúscula, minúscula, número y carácter especial)'}</label>
               <input required={!editingId} type="text" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
               {!editingId && (
