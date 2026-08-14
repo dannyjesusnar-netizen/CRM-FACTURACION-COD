@@ -48,30 +48,6 @@ function nivelDesdeForm(f, roles) {
   return 'cajero';
 }
 
-// Los tres únicos niveles que se pueden asignar a un empleado desde este
-// formulario (reemplaza el antiguo par Nivel + Rol personalizado libre).
-// Administrador = Gerencia (acceso total, sin rol personalizado). Supervisor
-// y Cajero son roles personalizados con estos módulos habilitados — se crean
-// automáticamente la primera vez que se necesitan (ver ensureRolesPredeterminados).
-const ROLES_PRESET_MODULOS = {
-  Supervisor: ['dashboard', 'ventas', 'compras', 'inventario', 'clientes', 'caja', 'reportes'],
-  Cajero: ['ventas', 'caja'],
-};
-
-function idRolPorNombre(roles, nombre) {
-  const r = roles.find((x) => x.nombre === nombre);
-  return r ? String(r.id) : '';
-}
-
-// Deriva cuál de los 3 niveles representa el form actual (para que el
-// select siempre muestre una opción válida, incluso para empleados
-// existentes creados antes de este cambio).
-function nivelDesdeForm(f, roles) {
-  if (f.role === 'gerencia') return 'administrador';
-  if (f.custom_role_id && String(f.custom_role_id) === idRolPorNombre(roles, 'Supervisor')) return 'supervisor';
-  return 'cajero';
-}
-
 function emptySucursalForm() {
   return { nombre: '', direccion: '' };
 }
