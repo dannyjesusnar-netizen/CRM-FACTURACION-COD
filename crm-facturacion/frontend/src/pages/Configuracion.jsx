@@ -48,6 +48,31 @@ function parseCsvEmpleados(text) {
   return rows;
 }
 
+function emptyOperativoForm() {
+  return { nombres: '', apellidos: '', dni: '', categoria_staff: 'trainer', sucursal_id: '', turno: '' };
+}
+
+// Carga masiva de Entrenadores/Supervisores operativos: sin username ni
+// password (no se crea usuario real, ver comentario en users.js) ni "nivel"
+// (siempre quedan sin acceso al sistema) — solo lo mínimo para el ranking.
+const CARGA_MASIVA_OPERATIVOS_COLUMNAS = ['dni', 'nombres', 'apellidos', 'categoria_staff', 'sede', 'turno'];
+
+function parseCsvOperativos(text) {
+  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  if (lines.length === 0) return [];
+  let start = 0;
+  if (/dni/i.test(lines[0]) && /nombres/i.test(lines[0])) start = 1;
+  const rows = [];
+  for (let i = start; i < lines.length; i += 1) {
+    const cols = lines[i].split(',').map((c) => c.trim().replace(/^"|"$/g, ''));
+    if (!cols[0]) continue;
+    const row = {};
+    CARGA_MASIVA_OPERATIVOS_COLUMNAS.forEach((key, idx) => { row[key] = cols[idx] ?? ''; });
+    rows.push(row);
+  }
+  return rows;
+}
+
 // Los tres únicos niveles que se pueden asignar a un empleado desde este
 // formulario (reemplaza el antiguo par Nivel + Rol personalizado libre).
 // Administrador = Gerencia (acceso total, sin rol personalizado). Supervisor
@@ -169,6 +194,21 @@ export default function Configuracion() {
   const [cargaEmpleadosResult, setCargaEmpleadosResult] = useState(null);
   const [errorCargaEmpleados, setErrorCargaEmpleados] = useState('');
 
+  // --- Entrenadores y Supervisores operativos (registro sin usuario) ---
+  // Solo alimentan el Tablero de Ventas (ranking + "Atribuir venta a") — no
+  // inician sesión ni facturan, así que no llevan usuario/contraseña.
+  const [operativos, setOperativos] = useState([]);
+  const [qOperativos, setQOperativos] = useState('');
+  const [showOperativoForm, setShowOperativoForm] = useState(false);
+  const [editingOperativoId, setEditingOperativoId] = useState(null);
+  const [operativoForm, setOperativoForm] = useState(emptyOperativoForm());
+  const [errorOperativoForm, setErrorOperativoForm] = useState('');
+  const [showCargaMasivaOperativos, setShowCargaMasivaOperativos] = useState(false);
+  const [cargaOperativosFileName, setCargaOperativosFileName] = useState('');
+  const [cargaOperativosRows, setCargaOperativosRows] = useState([]);
+  const [cargaOperativosResult, setCargaOperativosResult] = useState(null);
+  const [errorCargaOperativos, setErrorCargaOperativos] = useState('');
+
   // --- Metas de venta (Tablero de Ventas) ---
   // Gerencia asigna un monto "pool" por sede y categoría (Vendedores /
   // Trainers) cada mes; el backend lo reparte en partes iguales entre los
@@ -216,6 +256,7 @@ export default function Configuracion() {
   useEffect(() => {
     api.get('/empresa').then((res) => setEmpresa(res.data));
     loadUsuarios();
+    loadOperativos();
     loadSucursales();
     loadLimiteSucursales();
     loadRoles();
@@ -254,6 +295,12 @@ export default function Configuracion() {
     const params = {};
     if (q) params.q = q;
     api.get('/users', { params }).then((res) => setUsuarios(res.data));
+  }
+
+  function loadOperativos() {
+    const params = {};
+    if (qOperativos) params.q = qOperativos;
+    api.get('/users/operativos', { params }).then((res) => setOperativos(res.data));
   }
 
   function loadMetas() {
@@ -612,6 +659,109 @@ export default function Configuracion() {
     document.body.appendChild(a);
     a.click();
     a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  function openNewOperativo() {
+    setEditingOperativoId(null);
+    setOperativoForm(emptyOperativoForm());
+    setErrorOperativoForm('');
+    setShowOperativoForm(true);
+  }
+
+  function openEditOperativo(o) {
+    setEditingOperativoId(o.id);
+    setOperativoForm({
+      nombres: o.nombres || '', apellidos: o.apellidos || '', dni: o.dni || '',
+      categoria_staff: o.categoria_staff || 'trainer', sucursal_id: o.sucursal_id || '', turno: o.turno || '',
+    });
+    setErrorOperativoForm('');
+    setShowOperativoForm(true);
+  }
+
+  async function handleSubmitOperativo(e) {
+    e.preventDefault();
+    setErrorOperativoForm('');
+    const payload = {
+      nombres: operativoForm.nombres, apellidos: operativoForm.apellidos, dni: operativoForm.dni,
+      categoria_staff: operativoForm.categoria_staff, sucursal_id: operativoForm.sucursal_id || null,
+      turno: operativoForm.turno || null,
+    };
+    try {
+      if (editingOperativoId) {
+        await api.put(`/users/${editingOperativoId}`, payload);
+        toast.success('Registro actualizado.');
+      } else {
+        await api.post('/users/operativos', payload);
+        toast.success('Registro creado — no tiene usuario ni contraseña, no puede iniciar sesión.');
+      }
+      setShowOperativoForm(false);
+      loadOperativos();
+    } catch (err) {
+      setErrorOperativoForm(err.response?.data?.error || 'No se pudo guardar el registro.');
+    }
+  }
+
+  async function handleToggleEstadoOperativo(o) {
+    const accion = o.activo ? 'desactivar' : 'activar';
+    if (!window.confirm(`¿Seguro que quieres ${accion} a ${o.full_name}?`)) return;
+    try {
+      await api.put(`/users/${o.id}/estado`, { activo: !o.activo });
+      toast.success(`Registro ${o.activo ? 'desactivado' : 'activado'}.`);
+      loadOperativos();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'No se pudo cambiar el estado.');
+    }
+  }
+
+  function openCargaMasivaOperativos() {
+    setCargaOperativosFileName('');
+    setCargaOperativosRows([]);
+    setCargaOperativosResult(null);
+    setErrorCargaOperativos('');
+    setShowCargaMasivaOperativos(true);
+  }
+
+  function handleCargaOperativosFileChange(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setCargaOperativosFileName(file.name);
+    setCargaOperativosResult(null);
+    setErrorCargaOperativos('');
+    const reader = new FileReader();
+    reader.onload = () => {
+      const rows = parseCsvOperativos(String(reader.result || ''));
+      setCargaOperativosRows(rows);
+      if (rows.length === 0) setErrorCargaOperativos('No se encontraron filas válidas (columnas esperadas: dni, nombres, apellidos, categoria_staff, sede, turno).');
+    };
+    reader.readAsText(file);
+  }
+
+  async function handleCargaMasivaOperativosSubmit(e) {
+    e.preventDefault();
+    setErrorCargaOperativos('');
+    if (cargaOperativosRows.length === 0) { setErrorCargaOperativos('Selecciona un archivo CSV con al menos una fila.'); return; }
+    try {
+      const res = await api.post('/users/operativos/carga-masiva', { rows: cargaOperativosRows });
+      setCargaOperativosResult(res.data);
+      if (res.data.creados.length > 0) toast.success(`${res.data.creados.length} registro(s) creados.`);
+      if (res.data.actualizados.length > 0) toast.success(`${res.data.actualizados.length} registro(s) actualizados.`);
+      if (res.data.errores.length > 0) toast.error(`${res.data.errores.length} fila(s) con errores. Revisa el detalle.`);
+      loadOperativos();
+    } catch (err) {
+      setErrorCargaOperativos(err.response?.data?.error || 'No se pudo procesar el archivo.');
+    }
+  }
+
+  function descargarPlantillaCargaMasivaOperativos() {
+    const header = CARGA_MASIVA_OPERATIVOS_COLUMNAS;
+    const ejemplo = ['87654321', 'Lucía', 'Fernández', 'trainer', sucursales[0]?.nombre || '', 'manana'];
+    const csv = [header, ejemplo].map((r) => r.join(',')).join('\n');
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'plantilla_carga_masiva_operativos.csv';
+    document.body.appendChild(a); a.click(); a.remove();
     URL.revokeObjectURL(url);
   }
 
@@ -1179,6 +1329,62 @@ export default function Configuracion() {
                   )}
                 </tbody>
               </table>
+
+              <div className="report-toolbar" style={{ marginTop: 28 }}>
+                <h3 style={{ margin: 0 }}>Entrenadores y Supervisores operativos</h3>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <button className="btn-secondary" style={{ width: 'auto' }} onClick={openCargaMasivaOperativos}>Carga masiva</button>
+                  <button className="btn-primary" style={{ width: 'auto' }} onClick={openNewOperativo}>Nuevo registro</button>
+                </div>
+              </div>
+              <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -8 }}>
+                Solo alimentan el Ranking Trainers/Supervisores y el selector "Atribuir venta a" del Tablero de Ventas —
+                no tienen usuario ni contraseña, no pueden iniciar sesión ni facturar.
+              </p>
+
+              <form className="filter-panel" onSubmit={(e) => { e.preventDefault(); loadOperativos(); }}>
+                <div className="filter-field grow">
+                  <label>Buscar por nombre, apellido o DNI</label>
+                  <input value={qOperativos} onChange={(e) => setQOperativos(e.target.value)} placeholder="Buscar.." />
+                </div>
+                <div className="filter-actions">
+                  <button type="submit" className="btn-secondary">Buscar</button>
+                </div>
+              </form>
+
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Nombres</th><th>Apellidos</th><th>Categoría</th><th>Sede</th><th>N° documento</th><th>Turno</th><th>Estado</th><th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {operativos.map((o) => (
+                    <tr key={o.id}>
+                      <td>{o.nombres || o.full_name}</td>
+                      <td>{o.apellidos || ''}</td>
+                      <td>{CATEGORIA_STAFF_LABEL[o.categoria_staff] || o.categoria_staff}</td>
+                      <td>{o.sucursal_nombre || 'Todas las sedes'}</td>
+                      <td>{o.dni ? `DNI : ${o.dni}` : '—'}</td>
+                      <td>{o.turno === 'manana' ? 'Mañana' : o.turno === 'tarde' ? 'Tarde' : '—'}</td>
+                      <td>
+                        <span className={'badge ' + (o.activo ? 'badge-good' : 'badge-critical')}>
+                          {o.activo ? 'Habilitado' : 'Deshabilitado'}
+                        </span>
+                      </td>
+                      <td className="row-actions">
+                        <button className="btn-link" onClick={() => openEditOperativo(o)}>Editar</button>
+                        <button className={'btn-link' + (o.activo ? ' danger' : '')} onClick={() => handleToggleEstadoOperativo(o)}>
+                          {o.activo ? 'Desactivar' : 'Activar'}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {operativos.length === 0 && (
+                    <tr><td colSpan={8} className="empty-row">No hay entrenadores ni supervisores operativos registrados.</td></tr>
+                  )}
+                </tbody>
+              </table>
             </>
           )}
 
@@ -1448,6 +1654,102 @@ export default function Configuracion() {
               {errorCargaEmpleados && <div className="form-error">{errorCargaEmpleados}</div>}
               <div className="modal-actions">
                 <button type="button" className="btn-secondary" onClick={() => setShowCargaMasivaEmpleados(false)}>Cerrar</button>
+                <button type="submit" className="btn-primary">Cargar</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showOperativoForm && (
+        <div className="modal-overlay" onClick={() => setShowOperativoForm(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h2>{editingOperativoId ? 'Editar registro' : 'Nuevo Entrenador o Supervisor operativo'}</h2>
+            <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -6 }}>
+              No crea un usuario del sistema — esta persona no puede iniciar sesión ni facturar, solo queda
+              disponible para el Ranking del Tablero de Ventas y para atribuirle ventas desde Ventas.
+            </p>
+            <form onSubmit={handleSubmitOperativo}>
+              <div className="form-row">
+                <div>
+                  <label>Nombre *</label>
+                  <input required value={operativoForm.nombres} onChange={(e) => setOperativoForm({ ...operativoForm, nombres: e.target.value })} />
+                </div>
+                <div>
+                  <label>Apellidos *</label>
+                  <input required value={operativoForm.apellidos} onChange={(e) => setOperativoForm({ ...operativoForm, apellidos: e.target.value })} />
+                </div>
+              </div>
+              <label>DNI * (8 dígitos)</label>
+              <input required value={operativoForm.dni} onChange={(e) => setOperativoForm({ ...operativoForm, dni: e.target.value })} maxLength={8} />
+              <div className="form-row">
+                <div>
+                  <label>Categoría *</label>
+                  <select required value={operativoForm.categoria_staff} onChange={(e) => setOperativoForm({ ...operativoForm, categoria_staff: e.target.value })}>
+                    <option value="trainer">Trainer</option>
+                    <option value="supervisor">Supervisor operativo</option>
+                  </select>
+                </div>
+                <div>
+                  <label>Turno</label>
+                  <select value={operativoForm.turno} onChange={(e) => setOperativoForm({ ...operativoForm, turno: e.target.value })}>
+                    <option value="">Sin turno</option>
+                    <option value="manana">Mañana</option>
+                    <option value="tarde">Tarde</option>
+                  </select>
+                </div>
+              </div>
+              <label>Sede</label>
+              <select value={operativoForm.sucursal_id} onChange={(e) => setOperativoForm({ ...operativoForm, sucursal_id: e.target.value })}>
+                <option value="">Todas las sedes</option>
+                {sucursales.filter((s) => s.activo).map((s) => (
+                  <option key={s.id} value={s.id}>{s.nombre}</option>
+                ))}
+              </select>
+              {errorOperativoForm && <div className="form-error">{errorOperativoForm}</div>}
+              <div className="modal-actions">
+                <button type="button" className="btn-secondary" onClick={() => setShowOperativoForm(false)}>Cancelar</button>
+                <button type="submit" className="btn-primary">{editingOperativoId ? 'Guardar cambios' : 'Guardar registro'}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showCargaMasivaOperativos && (
+        <div className="modal-overlay" onClick={() => setShowCargaMasivaOperativos(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h2>Carga masiva de Entrenadores/Supervisores operativos</h2>
+            <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -6 }}>
+              Sube un CSV con columnas: dni, nombres, apellidos, categoria_staff, sede, turno. "categoria_staff" es
+              trainer o supervisor. Si el DNI ya existe como registro operativo, lo actualiza; si no, lo crea.
+              Ninguno de estos registros tiene usuario ni contraseña — no pueden iniciar sesión.
+            </p>
+            <button type="button" className="btn-link" onClick={descargarPlantillaCargaMasivaOperativos} style={{ marginBottom: 10 }}>
+              Descargar plantilla de ejemplo
+            </button>
+            <form onSubmit={handleCargaMasivaOperativosSubmit}>
+              <label>Archivo CSV</label>
+              <input required type="file" accept=".csv,text/csv" onChange={handleCargaOperativosFileChange} />
+              {cargaOperativosFileName && (
+                <p className="caja-row-auto">{cargaOperativosFileName} — {cargaOperativosRows.length} fila(s) detectadas.</p>
+              )}
+              {cargaOperativosResult && (
+                <div style={{ marginTop: 10 }}>
+                  <p>
+                    <strong>{cargaOperativosResult.creados.length}</strong> creados, <strong>{cargaOperativosResult.actualizados.length}</strong> actualizados,{' '}
+                    <strong>{cargaOperativosResult.errores.length}</strong> con error.
+                  </p>
+                  {cargaOperativosResult.errores.length > 0 && (
+                    <ul style={{ fontSize: 12, color: 'var(--critical)', maxHeight: 120, overflowY: 'auto' }}>
+                      {cargaOperativosResult.errores.map((e, i) => <li key={i}>{e.dni}: {e.error}</li>)}
+                    </ul>
+                  )}
+                </div>
+              )}
+              {errorCargaOperativos && <div className="form-error">{errorCargaOperativos}</div>}
+              <div className="modal-actions">
+                <button type="button" className="btn-secondary" onClick={() => setShowCargaMasivaOperativos(false)}>Cerrar</button>
                 <button type="submit" className="btn-primary">Cargar</button>
               </div>
             </form>

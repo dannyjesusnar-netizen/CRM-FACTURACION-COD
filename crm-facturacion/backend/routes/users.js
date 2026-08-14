@@ -1,5 +1,6 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const db = require('../db');
 const { requireAuth, requireGerencia } = require('../middleware/auth');
 const { passwordError } = require('../utils/password');
@@ -35,13 +36,16 @@ function sinPassword(user) {
 }
 
 // GET /api/users?q=&estado=
+// Solo empleados con acceso real al sistema (puede_iniciar_sesion = 1) — los
+// registros operativos (Trainer/Supervisor sin usuario, ver /operativos) se
+// listan aparte para no mezclarlos con la gente que sí inicia sesión.
 router.get('/', (req, res) => {
   const { q, estado } = req.query;
   let sql = `SELECT u.*, s.nombre AS sucursal_nombre, r.nombre AS rol_personalizado_nombre
              FROM users u
              LEFT JOIN sucursales s ON s.id = u.sucursal_id
              LEFT JOIN roles r ON r.id = u.custom_role_id
-             WHERE 1=1`;
+             WHERE u.puede_iniciar_sesion = 1`;
   const params = [];
   if (q) {
     sql += ' AND (u.full_name LIKE ? OR u.nombres LIKE ? OR u.apellidos LIKE ? OR u.username LIKE ? OR u.dni LIKE ? OR u.email LIKE ?)';
@@ -290,6 +294,140 @@ router.put('/:id/estado', (req, res) => {
   const { activo } = req.body || {};
   db.prepare('UPDATE users SET activo = ? WHERE id = ?').run(activo ? 1 : 0, req.params.id);
   res.json(sinPassword(db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id)));
+});
+
+// --- Registros operativos (Trainer / Supervisor operativo) ---
+// Personas que solo alimentan el Tablero de Ventas (ranking + atribución de
+// ventas, ver routes/tablero.js e invoices.atribuido_a) — nunca inician
+// sesión ni facturan, así que no necesitan usuario/contraseña reales.
+// Reutilizan la misma tabla `users` (así el resto del sistema — ranking,
+// selector "Atribuir venta a", cálculo de meta por headcount — no necesita
+// ningún cambio: ya filtra por categoria_staff/activo), pero quedan
+// marcados con puede_iniciar_sesion = 0 y bloqueados en el login.
+const CATEGORIAS_OPERATIVO = ['trainer', 'supervisor'];
+
+function generarUsernameOperativo(dni) {
+  let candidato = `op_${dni}`;
+  let intento = 0;
+  while (db.prepare('SELECT id FROM users WHERE username = ?').get(candidato)) {
+    intento += 1;
+    candidato = `op_${dni}_${intento}`;
+  }
+  return candidato;
+}
+
+function passwordHashAleatorio() {
+  return bcrypt.hashSync(crypto.randomBytes(24).toString('hex'), 10);
+}
+
+// GET /api/users/operativos?q=&estado=
+router.get('/operativos', (req, res) => {
+  const { q, estado } = req.query;
+  let sql = `SELECT u.*, s.nombre AS sucursal_nombre
+             FROM users u
+             LEFT JOIN sucursales s ON s.id = u.sucursal_id
+             WHERE u.puede_iniciar_sesion = 0`;
+  const params = [];
+  if (q) {
+    sql += ' AND (u.full_name LIKE ? OR u.nombres LIKE ? OR u.apellidos LIKE ? OR u.dni LIKE ?)';
+    params.push(`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`);
+  }
+  if (estado === 'activo') { sql += ' AND u.activo = 1'; }
+  if (estado === 'inactivo') { sql += ' AND u.activo = 0'; }
+  sql += ' ORDER BY u.nombres ASC, u.full_name ASC';
+  const rows = db.prepare(sql).all(...params);
+  res.json(rows.map(sinPassword));
+});
+
+// POST /api/users/operativos { nombres, apellidos, dni, categoria_staff, sucursal_id, turno }
+router.post('/operativos', (req, res) => {
+  const { nombres, apellidos, dni, categoria_staff, sucursal_id, turno } = req.body || {};
+  if (!nombres || !apellidos || !dni) {
+    return res.status(400).json({ error: 'Nombres, apellidos y DNI son requeridos.' });
+  }
+  if (!/^\d{8}$/.test(dni)) {
+    return res.status(400).json({ error: 'El DNI debe tener 8 dígitos.' });
+  }
+  if (!CATEGORIAS_OPERATIVO.includes(categoria_staff)) {
+    return res.status(400).json({ error: 'categoria_staff inválida. Use trainer o supervisor.' });
+  }
+  if (db.prepare('SELECT id FROM users WHERE dni = ?').get(dni)) {
+    return res.status(409).json({ error: 'Ya existe un empleado (con o sin acceso al sistema) con ese DNI.' });
+  }
+  const sucursal = sucursalIdOrError(sucursal_id);
+  if (sucursal.error) return res.status(400).json({ error: sucursal.error });
+  const turnoResult = turnoOrError(turno);
+  if (turnoResult.error) return res.status(400).json({ error: turnoResult.error });
+
+  const fullName = `${nombres} ${apellidos}`.trim();
+  const info = db.prepare(
+    `INSERT INTO users (username, password_hash, full_name, nombres, apellidos, role, dni, activo, sucursal_id, categoria_staff, turno, puede_iniciar_sesion)
+     VALUES (?, ?, ?, ?, ?, 'vendedor', ?, 1, ?, ?, ?, 0)`
+  ).run(generarUsernameOperativo(dni), passwordHashAleatorio(), fullName, nombres, apellidos, dni, sucursal.value, categoria_staff, turnoResult.value ?? null);
+  const row = db.prepare('SELECT * FROM users WHERE id = ?').get(info.lastInsertRowid);
+  res.status(201).json(sinPassword(row));
+});
+
+// POST /api/users/operativos/carga-masiva { rows: [{ dni, nombres, apellidos,
+// categoria_staff, sede, turno }] } — crea o actualiza registros operativos
+// por DNI. Si el DNI ya pertenece a un empleado CON acceso al sistema, la
+// fila cae en error en vez de degradarlo silenciosamente a "sin acceso".
+router.post('/operativos/carga-masiva', (req, res) => {
+  const { rows } = req.body || {};
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return res.status(400).json({ error: 'rows es requerido y debe tener al menos una fila.' });
+  }
+  const creados = [];
+  const actualizados = [];
+  const errores = [];
+
+  for (const r of rows) {
+    const dni = (r.dni || '').toString().trim();
+    const nombres = (r.nombres || '').toString().trim();
+    const apellidos = (r.apellidos || '').toString().trim();
+    if (!dni || !nombres || !apellidos) {
+      errores.push({ dni: dni || '(vacío)', error: 'dni, nombres y apellidos son requeridos.' });
+      continue;
+    }
+    if (!/^\d{8}$/.test(dni)) {
+      errores.push({ dni, error: 'El DNI debe tener 8 dígitos.' });
+      continue;
+    }
+    const categoriaStaff = (r.categoria_staff || '').toString().trim();
+    if (!CATEGORIAS_OPERATIVO.includes(categoriaStaff)) {
+      errores.push({ dni, error: 'categoria_staff inválida. Use trainer o supervisor.' });
+      continue;
+    }
+    const sede = sedeNombreASucursalId(r.sede);
+    if (sede.error) { errores.push({ dni, error: sede.error }); continue; }
+    const turnoResult = turnoOrError(r.turno);
+    if (turnoResult.error) { errores.push({ dni, error: turnoResult.error }); continue; }
+    const fullName = `${nombres} ${apellidos}`.trim();
+
+    const existing = db.prepare('SELECT * FROM users WHERE dni = ?').get(dni);
+    if (existing && existing.puede_iniciar_sesion) {
+      errores.push({ dni, error: 'Ese DNI ya pertenece a un empleado con acceso al sistema — edítalo desde Empleados, no desde esta carga.' });
+      continue;
+    }
+    try {
+      if (existing) {
+        db.prepare(
+          `UPDATE users SET full_name = ?, nombres = ?, apellidos = ?, sucursal_id = ?, categoria_staff = ?, turno = ? WHERE id = ?`
+        ).run(fullName, nombres, apellidos, sede.value, categoriaStaff, turnoResult.value, existing.id);
+        actualizados.push({ dni, nombre: fullName });
+      } else {
+        db.prepare(
+          `INSERT INTO users (username, password_hash, full_name, nombres, apellidos, role, dni, activo, sucursal_id, categoria_staff, turno, puede_iniciar_sesion)
+           VALUES (?, ?, ?, ?, ?, 'vendedor', ?, 1, ?, ?, ?, 0)`
+        ).run(generarUsernameOperativo(dni), passwordHashAleatorio(), fullName, nombres, apellidos, dni, sede.value, categoriaStaff, turnoResult.value);
+        creados.push({ dni, nombre: fullName });
+      }
+    } catch (err) {
+      errores.push({ dni, error: 'No se pudo guardar esta fila.' });
+    }
+  }
+
+  res.json({ creados, actualizados, errores });
 });
 
 module.exports = router;

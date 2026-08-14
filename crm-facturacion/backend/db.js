@@ -632,6 +632,12 @@ CREATE TABLE IF NOT EXISTS role_acciones (
     ['categoria_staff', "TEXT DEFAULT 'vendedor'"],
     // turno del empleado (mañana/tarde), mismo patrón que clients.turno.
     ['turno', 'TEXT'],
+    // puede_iniciar_sesion = 0: "registro operativo" (Trainer / Supervisor
+    // operativo) creado solo para que el Tablero de Ventas y la atribución
+    // de ventas (invoices.atribuido_a) tengan a quién sumarle — nunca inicia
+    // sesión, no factura nada. Se les bloquea el login en auth.js. Todos los
+    // empleados existentes (y los nuevos por defecto) quedan en 1.
+    ['puede_iniciar_sesion', 'INTEGER NOT NULL DEFAULT 1'],
   ];
   for (const [col, def] of USER_NEW_COLUMNS) {
     if (!userColumns.includes(col)) {
