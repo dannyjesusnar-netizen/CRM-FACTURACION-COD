@@ -110,6 +110,26 @@ function tieneAccion(user, modulo, accion) {
   return !!fila.habilitado;
 }
 
+// Acceso al Tablero de Ventas ejecutivo (cross-sede, en Dashboard): solo
+// Gerencia o un empleado con el rol personalizado "Supervisor" — a
+// diferencia de tienePermiso/tieneAccion, aquí NO aplica la compatibilidad
+// "sin custom_role_id = acceso total": un Cajero (o cualquier otro rol) no
+// debe ver las cifras de todas las sedes solo por no tener rol asignado.
+function esGerenciaOSupervisor(user) {
+  if (!user) return false;
+  if (user.role === 'gerencia') return true;
+  const userRow = db.prepare('SELECT custom_role_id FROM users WHERE id = ?').get(user.id);
+  if (!userRow || !userRow.custom_role_id) return false;
+  const role = db.prepare('SELECT nombre FROM roles WHERE id = ?').get(userRow.custom_role_id);
+  return role?.nombre === 'Supervisor';
+}
+
+function requireGerenciaOSupervisor(req, res, next) {
+  if (!req.user) return res.status(401).json({ error: 'No autenticado.' });
+  if (esGerenciaOSupervisor(req.user)) return next();
+  return res.status(403).json({ error: 'Solo Gerencia o un Supervisor puede acceder al Tablero de Ventas.' });
+}
+
 function requirePermiso(modulo) {
   return (req, res, next) => {
     if (!req.user) return res.status(401).json({ error: 'No autenticado.' });
@@ -149,4 +169,6 @@ module.exports = {
   requireAlgunPermiso,
   tieneAccion,
   requireAccion,
+  esGerenciaOSupervisor,
+  requireGerenciaOSupervisor,
 };

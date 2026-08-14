@@ -44,7 +44,7 @@ function pctBadge(pct) {
 
 export default function Dashboard() {
   const { user } = useAuth();
-  const esGerencia = user?.role === 'gerencia';
+  const puedeVerTablero = !!user?.puede_ver_tablero;
   const [summary, setSummary] = useState(null);
   const [ventasPorDia, setVentasPorDia] = useState([]);
   const [ventasPorTipo, setVentasPorTipo] = useState([]);
@@ -53,6 +53,8 @@ export default function Dashboard() {
   const hoy = new Date();
   const [tableroAnio, setTableroAnio] = useState(hoy.getFullYear());
   const [tableroMes, setTableroMes] = useState(hoy.getMonth() + 1);
+  const [tableroSedeId, setTableroSedeId] = useState('');
+  const [sucursalesTablero, setSucursalesTablero] = useState([]);
   const [rankingTrainers, setRankingTrainers] = useState([]);
   const [rankingVendedores, setRankingVendedores] = useState([]);
   const [totalMarca, setTotalMarca] = useState([]);
@@ -73,9 +75,14 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => {
-    if (!esGerencia) return;
+    if (!puedeVerTablero) return;
+    api.get('/sucursales').then((res) => setSucursalesTablero(res.data));
+  }, [puedeVerTablero]);
+
+  useEffect(() => {
+    if (!puedeVerTablero) return;
     setTableroLoading(true);
-    const params = { anio: tableroAnio, mes: tableroMes };
+    const params = { anio: tableroAnio, mes: tableroMes, sucursal_id: tableroSedeId || undefined };
     Promise.all([
       api.get('/tablero/ranking-personal', { params: { ...params, categoria: 'trainer' } }),
       api.get('/tablero/ranking-personal', { params: { ...params, categoria: 'vendedor' } }),
@@ -89,7 +96,7 @@ export default function Dashboard() {
       setTotalProducto(producto.data);
       setResumenSedes(sedes.data);
     }).finally(() => setTableroLoading(false));
-  }, [esGerencia, tableroAnio, tableroMes]);
+  }, [puedeVerTablero, tableroAnio, tableroMes, tableroSedeId]);
 
   if (loading) return (
     <div className="page-loading">
@@ -214,11 +221,20 @@ export default function Dashboard() {
         </table>
       </div>
 
-      {esGerencia && (
+      {puedeVerTablero && (
         <div className="dashboard-tablero">
           <div className="report-toolbar">
             <h2 className="page-title" style={{ margin: 0, fontSize: 18 }}>Tablero de Ventas</h2>
             <div className="filter-panel" style={{ margin: 0 }}>
+              <div className="filter-field">
+                <label>Sede</label>
+                <select value={tableroSedeId} onChange={(e) => setTableroSedeId(e.target.value)}>
+                  <option value="">Todas las sedes</option>
+                  {sucursalesTablero.map((s) => (
+                    <option key={s.id} value={s.id}>{s.nombre}</option>
+                  ))}
+                </select>
+              </div>
               <div className="filter-field">
                 <label>Año</label>
                 <input type="number" value={tableroAnio} onChange={(e) => setTableroAnio(Number(e.target.value))} style={{ width: 100 }} />
@@ -365,7 +381,11 @@ export default function Dashboard() {
                 <div className="stat-card" style={{ alignSelf: 'start' }}>
                   <div className="stat-label">Ventas Totales</div>
                   <div className="stat-value">{money(resumenSedes.ventas_totales)}</div>
-                  <div className="stat-sub">{MESES[tableroMes - 1]} {tableroAnio} — todas las sedes</div>
+                  <div className="stat-sub">
+                    {MESES[tableroMes - 1]} {tableroAnio} — {tableroSedeId
+                      ? (sucursalesTablero.find((s) => String(s.id) === String(tableroSedeId))?.nombre || 'sede seleccionada')
+                      : 'todas las sedes'}
+                  </div>
                 </div>
               </div>
             </>

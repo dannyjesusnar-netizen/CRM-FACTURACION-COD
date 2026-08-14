@@ -7,7 +7,7 @@ const { resolveTenantDb } = require('../utils/tenant');
 const { consultarRuc } = require('../utils/rucLookup');
 const { JWT_SECRET, requireAuth } = require('../middleware/auth');
 const { passwordError } = require('../utils/password');
-const { permisosDeUsuario } = require('../utils/permisos');
+const { permisosDeUsuario, esGerenciaOSupervisor } = require('../utils/permisos');
 
 const router = express.Router();
 
@@ -27,6 +27,7 @@ function emitirToken(res, user, ruc) {
       sucursal_id: sucursalFija?.id || null, sucursal_nombre: sucursalFija?.nombre || null,
       custom_role_id: user.custom_role_id || null,
       permisos: permisosDeUsuario(user),
+      puede_ver_tablero: esGerenciaOSupervisor(user),
     }
   });
 }
