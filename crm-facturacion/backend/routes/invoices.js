@@ -121,6 +121,18 @@ router.get('/siguiente-numero', (req, res) => {
   res.json(sugerido);
 });
 
+// GET /api/invoices/entrenadores — entrenadores activos de la sede actual,
+// para el selector "Atribuir venta a" en RegistroVenta.jsx. Sin permiso de
+// Gerencia (a diferencia de /api/users): cualquier vendedor que registra una
+// venta debe poder ver esta lista, no solo administrar empleados.
+router.get('/entrenadores', (req, res) => {
+  const entrenadores = db.prepare(
+    `SELECT id, full_name FROM users WHERE activo = 1 AND categoria_staff = 'trainer' AND sucursal_id = ?
+     ORDER BY full_name ASC`
+  ).all(req.sucursalId);
+  res.json(entrenadores);
+});
+
 // GET /api/invoices/buscar?tipo=&serie=&numero= -> comprobante original (para Nota de Credito -> Recuperar)
 router.get('/buscar', (req, res) => {
   const { tipo, serie, numero } = req.query;
@@ -186,7 +198,7 @@ router.post('/', async (req, res) => {
     tipo_comprobante, client_id, items, moneda, observaciones, fecha_emision, forma_pago,
     numero: numeroManual, descuento_global_pct,
     modifica_tipo, modifica_serie, modifica_numero, tipo_nota,
-    monto_pagado: montoPagadoBody, medio_abono, pagos,
+    monto_pagado: montoPagadoBody, medio_abono, pagos, atribuido_a_id,
   } = req.body || {};
 
   if (!['factura', 'boleta', 'nota_credito'].includes(tipo_comprobante)) {
@@ -227,6 +239,20 @@ router.post('/', async (req, res) => {
 
   const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(client_id);
   if (!client) return res.status(404).json({ error: 'Cliente no encontrado.' });
+
+  // atribuido_a_id: quien registra la venta puede elegir que cuente para un
+  // entrenador de su misma sede en vez de para él mismo, solo para el
+  // ranking del Tablero de Ventas (ver comentario de la columna en db.js).
+  let atribuidoA = null;
+  if (atribuido_a_id) {
+    const entrenador = db.prepare(
+      'SELECT id FROM users WHERE id = ? AND activo = 1 AND categoria_staff = ? AND sucursal_id = ?'
+    ).get(atribuido_a_id, 'trainer', req.sucursalId);
+    if (!entrenador) {
+      return res.status(400).json({ error: 'El entrenador seleccionado no existe o no pertenece a esta sede.' });
+    }
+    atribuidoA = entrenador.id;
+  }
 
   if (tipo_comprobante === 'factura' && client.tipo_documento !== 'RUC') {
     return res.status(400).json({ error: 'Para emitir factura el cliente debe tener RUC.' });
@@ -302,8 +328,8 @@ router.post('/', async (req, res) => {
       `INSERT INTO invoices (
          tipo_comprobante, serie, numero, client_id, created_by, fecha_emision, moneda,
          subtotal, igv, descuento_global_pct, total, estado, observaciones, forma_pago, monto_pagado,
-         modifica_tipo, modifica_serie, modifica_numero, tipo_nota, sucursal_id
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'emitido', ?, ?, ?, ?, ?, ?, ?, ?)`
+         modifica_tipo, modifica_serie, modifica_numero, tipo_nota, sucursal_id, atribuido_a
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'emitido', ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       tipo_comprobante,
       serie,
@@ -323,7 +349,8 @@ router.post('/', async (req, res) => {
       tipo_comprobante === 'nota_credito' ? (modifica_serie || null) : null,
       tipo_comprobante === 'nota_credito' && modifica_numero ? Number(modifica_numero) : null,
       tipo_comprobante === 'nota_credito' ? (tipo_nota || null) : null,
-      req.sucursalId
+      req.sucursalId,
+      atribuidoA
     );
     const invoiceId = info.lastInsertRowid;
     const insertItem = db.prepare(

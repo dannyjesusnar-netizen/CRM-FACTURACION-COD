@@ -39,6 +39,10 @@ export default function RegistroVenta() {
   const [error, setError] = useState('');
   const [metodosPago, setMetodosPago] = useState([]);
   const [igvRate, setIgvRate] = useState(0.18);
+  // Quien registra la venta puede elegir que cuente para un entrenador de
+  // su sede en vez de para él mismo, en el Ranking del Tablero de Ventas.
+  const [entrenadores, setEntrenadores] = useState([]);
+  const [atribuidoAId, setAtribuidoAId] = useState('');
 
   // Vista previa: se genera el PDF real (el mismo diseño del comprobante
   // emitido) antes de confirmar — así "Enter"/"Emitir" ya no dispara la
@@ -63,6 +67,10 @@ export default function RegistroVenta() {
     api.get('/empresa').then((res) => {
       if (res.data?.igv_rate) setIgvRate(Number(res.data.igv_rate));
     });
+    if (tipo !== 'cotizacion') {
+      api.get('/invoices/entrenadores').then((res) => setEntrenadores(res.data)).catch(() => {});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -221,6 +229,7 @@ export default function RegistroVenta() {
       if (cuenta === 'mixto') {
         payload.pagos = pagosMixto.map((p) => ({ medio: p.medio, monto: Number(p.monto) }));
       }
+      if (atribuidoAId) payload.atribuido_a_id = Number(atribuidoAId);
     }
     return payload;
   }
@@ -407,6 +416,17 @@ export default function RegistroVenta() {
                   <option value="mixto">🔀 Pago mixto (2 o más medios)</option>
                 </select>
               </div>
+              {entrenadores.length > 0 && (
+                <div className="filter-field">
+                  <label>Atribuir venta a</label>
+                  <select value={atribuidoAId} onChange={(e) => setAtribuidoAId(e.target.value)}>
+                    <option value="">Yo (vendedor)</option>
+                    {entrenadores.map((e) => (
+                      <option key={e.id} value={e.id}>{e.full_name} (Trainer)</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               {cuenta === 'abonado' && (
                 <>
                   <div className="filter-field">

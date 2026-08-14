@@ -50,10 +50,12 @@ const PROVEEDOR_SUBQUERY = `COALESCE(
 const MARCA_EXPR = `COALESCE(${PROVEEDOR_SUBQUERY}, 'Sin marca')`;
 
 // Ranking Trainers/Vendedores/Supervisores: venta y % de cumplimiento de
-// meta por empleado de esa categoría, cruzando todas las sedes. La meta no
-// se asigna persona por persona: Gerencia asigna un pool por sede+categoría
-// (metas_venta_sede) que se reparte en partes iguales entre los empleados
-// activos de esa categoría en esa sede.
+// meta por empleado de esa categoría, cruzando todas las sedes. La venta se
+// atribuye a invoices.atribuido_a si el vendedor eligió esa opción al
+// emitir el comprobante (ver routes/invoices.js), o a created_by (quien lo
+// registró) si no. La meta no se asigna persona por persona: Gerencia
+// asigna un pool por sede+categoría (metas_venta_sede) que se reparte en
+// partes iguales entre los empleados activos de esa categoría en esa sede.
 router.get('/ranking-personal', (req, res) => {
   const categoria = req.query.categoria;
   if (!['trainer', 'vendedor', 'supervisor'].includes(categoria)) {
@@ -66,7 +68,7 @@ router.get('/ranking-personal', (req, res) => {
            COALESCE(SUM(CASE WHEN i.tipo_comprobante = 'nota_credito' THEN -i.total ELSE i.total END), 0) AS venta
     FROM users u
     LEFT JOIN sucursales s ON s.id = u.sucursal_id
-    LEFT JOIN invoices i ON i.created_by = u.id AND i.estado = 'emitido'
+    LEFT JOIN invoices i ON COALESCE(i.atribuido_a, i.created_by) = u.id AND i.estado = 'emitido'
       AND strftime('%Y', i.fecha_emision) = ? AND strftime('%m', i.fecha_emision) = ?
     WHERE u.categoria_staff = ? AND u.activo = 1
       AND (? IS NULL OR u.sucursal_id = ?)
