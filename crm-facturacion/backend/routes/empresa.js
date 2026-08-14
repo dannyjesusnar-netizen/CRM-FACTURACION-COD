@@ -20,6 +20,7 @@ router.put('/', requireGerencia, (req, res) => {
     razon_social, ruc, nombre_comercial, direccion_fiscal, telefono, email,
     actividad_ciiu, actividad_mcc, departamento, provincia, distrito, logo_data_url,
     color_acento, mostrar_logo_pdf, mostrar_datos_contacto_pdf, tamano_pdf, terminos_condiciones_pdf,
+    color_tablero_ventas,
   } = req.body || {};
   if (!razon_social || !ruc) {
     return res.status(400).json({ error: 'Razón social y RUC son requeridos.' });
@@ -33,6 +34,9 @@ router.put('/', requireGerencia, (req, res) => {
   if (color_acento && !/^#[0-9a-fA-F]{6}$/.test(color_acento)) {
     return res.status(400).json({ error: 'color_acento debe ser un color hexadecimal (ej. #0f4c81).' });
   }
+  if (color_tablero_ventas && !/^#[0-9a-fA-F]{6}$/.test(color_tablero_ventas)) {
+    return res.status(400).json({ error: 'color_tablero_ventas debe ser un color hexadecimal (ej. #16a34a).' });
+  }
   if (tamano_pdf && !TAMANOS_PDF.includes(tamano_pdf)) {
     return res.status(400).json({ error: 'tamano_pdf inválido. Use A4 o ticket_80mm.' });
   }
@@ -41,7 +45,7 @@ router.put('/', requireGerencia, (req, res) => {
     `UPDATE empresa_config SET razon_social = ?, ruc = ?, nombre_comercial = ?, direccion_fiscal = ?,
      telefono = ?, email = ?, actividad_ciiu = ?, actividad_mcc = ?, departamento = ?, provincia = ?, distrito = ?,
      logo_data_url = ?, color_acento = ?, mostrar_logo_pdf = ?, mostrar_datos_contacto_pdf = ?, tamano_pdf = ?,
-     terminos_condiciones_pdf = ?, updated_at = datetime('now'), updated_by = ? WHERE id = 1`
+     terminos_condiciones_pdf = ?, color_tablero_ventas = ?, updated_at = datetime('now'), updated_by = ? WHERE id = 1`
   ).run(
     razon_social,
     ruc,
@@ -60,6 +64,7 @@ router.put('/', requireGerencia, (req, res) => {
     mostrar_datos_contacto_pdf !== undefined ? (mostrar_datos_contacto_pdf ? 1 : 0) : existing?.mostrar_datos_contacto_pdf ?? 1,
     tamano_pdf || existing?.tamano_pdf || 'A4',
     terminos_condiciones_pdf !== undefined ? (terminos_condiciones_pdf || null) : existing?.terminos_condiciones_pdf || null,
+    color_tablero_ventas || existing?.color_tablero_ventas || '#16a34a',
     req.user?.id || null
   );
   // Si esta sesión es de la instalación base (no de una empresa que ya se

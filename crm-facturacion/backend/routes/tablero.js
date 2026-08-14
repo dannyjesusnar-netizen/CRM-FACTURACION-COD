@@ -50,7 +50,10 @@ const PROVEEDOR_SUBQUERY = `COALESCE(
 const MARCA_EXPR = `COALESCE(${PROVEEDOR_SUBQUERY}, 'Sin marca')`;
 
 // Ranking Trainers/Vendedores/Supervisores: venta y % de cumplimiento de
-// meta por empleado de esa categoría, cruzando todas las sedes.
+// meta por empleado de esa categoría, cruzando todas las sedes. La meta no
+// se asigna persona por persona: Gerencia asigna un pool por sede+categoría
+// (metas_venta_sede) que se reparte en partes iguales entre los empleados
+// activos de esa categoría en esa sede.
 router.get('/ranking-personal', (req, res) => {
   const categoria = req.query.categoria;
   if (!['trainer', 'vendedor', 'supervisor'].includes(categoria)) {
@@ -59,25 +62,37 @@ router.get('/ranking-personal', (req, res) => {
   const { anio, mes, mesPad } = anioMes(req);
   const sucursalId = sedeFiltro(req);
   const rows = db.prepare(`
-    SELECT u.id AS user_id, u.full_name AS nombre, u.turno, s.nombre AS sede,
-           COALESCE(SUM(CASE WHEN i.tipo_comprobante = 'nota_credito' THEN -i.total ELSE i.total END), 0) AS venta,
-           COALESCE(m.monto_meta, 0) AS meta
+    SELECT u.id AS user_id, u.full_name AS nombre, u.turno, u.sucursal_id, s.nombre AS sede,
+           COALESCE(SUM(CASE WHEN i.tipo_comprobante = 'nota_credito' THEN -i.total ELSE i.total END), 0) AS venta
     FROM users u
     LEFT JOIN sucursales s ON s.id = u.sucursal_id
     LEFT JOIN invoices i ON i.created_by = u.id AND i.estado = 'emitido'
       AND strftime('%Y', i.fecha_emision) = ? AND strftime('%m', i.fecha_emision) = ?
-    LEFT JOIN metas_venta m ON m.user_id = u.id AND m.anio = ? AND m.mes = ?
     WHERE u.categoria_staff = ? AND u.activo = 1
       AND (? IS NULL OR u.sucursal_id = ?)
     GROUP BY u.id
-  `).all(String(anio), mesPad, anio, mes, categoria, sucursalId, sucursalId);
+  `).all(String(anio), mesPad, categoria, sucursalId, sucursalId);
 
-  const withPct = rows.map((r) => ({
-    ...r,
-    venta: round2(r.venta),
-    meta: round2(r.meta),
-    porcentaje: r.meta > 0 ? round2((r.venta / r.meta) * 100) : null,
-  }));
+  const pools = db.prepare(
+    'SELECT sucursal_id, monto_meta FROM metas_venta_sede WHERE categoria_staff = ? AND anio = ? AND mes = ?'
+  ).all(categoria, anio, mes);
+  const poolMap = new Map(pools.map((p) => [p.sucursal_id, p.monto_meta]));
+  const conteos = db.prepare(
+    `SELECT sucursal_id, COUNT(*) AS cantidad FROM users
+     WHERE categoria_staff = ? AND activo = 1 AND sucursal_id IS NOT NULL GROUP BY sucursal_id`
+  ).all(categoria);
+  const conteoMap = new Map(conteos.map((c) => [c.sucursal_id, c.cantidad]));
+
+  const withPct = rows.map((r) => {
+    const cantidad = conteoMap.get(r.sucursal_id) || 0;
+    const pool = poolMap.get(r.sucursal_id) || 0;
+    const meta = cantidad > 0 ? pool / cantidad : 0;
+    return {
+      user_id: r.user_id, nombre: r.nombre, turno: r.turno, sede: r.sede,
+      venta: round2(r.venta), meta: round2(meta),
+      porcentaje: meta > 0 ? round2((r.venta / meta) * 100) : null,
+    };
+  });
   withPct.sort((a, b) => {
     if (a.porcentaje === null && b.porcentaje === null) return b.venta - a.venta;
     if (a.porcentaje === null) return 1;
@@ -87,9 +102,9 @@ router.get('/ranking-personal', (req, res) => {
   res.json(withPct);
 });
 
-// Resumen por sede: venta, meta (suma de las metas de los empleados de esa
-// sede) y % de cumplimiento, más el total general para la tarjeta "Ventas
-// Totales".
+// Resumen por sede: venta, meta (suma de los pools de vendedores + trainers
+// asignados a esa sede ese mes) y % de cumplimiento, más el total general
+// para la tarjeta "Ventas Totales".
 router.get('/resumen-sedes', (req, res) => {
   const { anio, mes, mesPad } = anioMes(req);
   const sucursalId = sedeFiltro(req);
@@ -104,13 +119,10 @@ router.get('/resumen-sedes', (req, res) => {
     GROUP BY s.id
   `).all(String(anio), mesPad, sucursalId, sucursalId);
 
-  const metaPorSede = db.prepare(`
-    SELECT u.sucursal_id AS id, COALESCE(SUM(m.monto_meta), 0) AS meta
-    FROM users u
-    JOIN metas_venta m ON m.user_id = u.id AND m.anio = ? AND m.mes = ?
-    WHERE u.sucursal_id IS NOT NULL
-    GROUP BY u.sucursal_id
-  `).all(anio, mes);
+  const metaPorSede = db.prepare(
+    `SELECT sucursal_id AS id, SUM(monto_meta) AS meta FROM metas_venta_sede
+     WHERE anio = ? AND mes = ? GROUP BY sucursal_id`
+  ).all(anio, mes);
   const metaMap = new Map(metaPorSede.map((r) => [r.id, r.meta]));
 
   const sedes = ventaPorSede
