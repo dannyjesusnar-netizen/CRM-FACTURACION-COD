@@ -10,7 +10,7 @@ import OdinWidget from './OdinWidget';
 import {
   TrendingUp, ShoppingCart, Bike, Wallet, Users, Calculator, ClipboardList, FileText,
   Moon, Sun, Settings, ChevronDown, Phone, FileSignature, Lock, Video, BarChart3, LogOut,
-  Building2, CreditCard, Sparkles, Smartphone,
+  CreditCard, Sparkles, Smartphone,
 } from 'lucide-react';
 import { canInstallPwa, isIosDevice, isRunningStandalone, promptPwaInstall, subscribePwaInstall } from '../utils/pwaInstall';
 
@@ -123,11 +123,6 @@ export default function Layout() {
             <span className="user-name">{(user?.role || 'GERENCIA').toUpperCase()}</span>
             <ChevronDown size={14} className={'caret-icon' + (menuOpen ? ' open' : '')} />
             <div className={'user-dropdown' + (menuOpen ? ' open' : '')}>
-              {!user?.sucursal_id && (
-                <div className="user-dropdown-item" onClick={() => navigate('/seleccionar-sede')}>
-                  <Building2 size={15} className="dropdown-icon" /> Cambiar de sede
-                </div>
-              )}
               <div className="user-dropdown-item" onClick={() => toast.info('Soporte: escríbenos y te ayudamos (próximamente).')}>
                 <Phone size={15} className="dropdown-icon" /> Soporte
               </div>
