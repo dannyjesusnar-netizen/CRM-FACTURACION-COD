@@ -54,7 +54,7 @@ export default function CuentasPorCobrar() {
   return (
     <div>
       <h1 className="page-title" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <button className="icon-link" title="Volver a Ventas" onClick={() => navigate('/ventas')} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}>
+        <button className="icon-link" title="Volver a Caja y Bancos" onClick={() => navigate('/caja')} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}>
           <ArrowLeft size={20} />
         </button>
         CUENTAS POR COBRAR

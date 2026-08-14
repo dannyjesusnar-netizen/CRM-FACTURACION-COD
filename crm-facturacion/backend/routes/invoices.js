@@ -4,12 +4,11 @@ const { requireAuth, resolveSucursal } = require('../middleware/auth');
 const { buildInvoicePdf } = require('../utils/pdf');
 const { consumirStock, incrementarStock, ajustarStockSucursal, StockInsuficienteError } = require('../utils/stock');
 const { emitirComprobante, estaConfigurado } = require('../utils/facturacionElectronica');
-const { requirePermiso, requireAccion, tieneAccion } = require('../utils/permisos');
+const { requirePermiso, requireAccion, requireAlgunPermiso, tieneAccion, tienePermiso } = require('../utils/permisos');
 const { siguienteNumero } = require('../utils/series');
 
 const router = express.Router();
 router.use(requireAuth);
-router.use(requirePermiso('ventas'));
 router.use(resolveSucursal);
 
 // Tipos de comprobante que este router emite (deben existir en series_config).
@@ -28,6 +27,91 @@ const TIPOS_NOTA_DEVUELVEN_STOCK = ['anulacion_operacion', 'anulacion_error_ruc'
 function round2(n) {
   return Math.round((n + Number.EPSILON) * 100) / 100;
 }
+
+// Cuentas por cobrar es visible tanto desde Ventas como desde Caja y Bancos
+// (pantalla "Cuentas por Cobrar" enlazada desde ambas), así que estos tres
+// endpoints se registran ANTES del candado general `requirePermiso('ventas')`
+// de más abajo: alcanza con tener el módulo Caja habilitado, o el desglose
+// existente por acción dentro de Ventas (para no perder esa granularidad).
+function requireVerCuentasPorCobrar(req, res, next) {
+  if (!req.user) return res.status(401).json({ error: 'No autenticado.' });
+  if (tienePermiso(req.user, 'caja') || tieneAccion(req.user, 'ventas', 'cuentas_por_cobrar')) return next();
+  return res.status(403).json({ error: 'No tienes permiso para ver cuentas por cobrar.' });
+}
+function requireRegistrarCobro(req, res, next) {
+  if (!req.user) return res.status(401).json({ error: 'No autenticado.' });
+  if (tienePermiso(req.user, 'caja') || tieneAccion(req.user, 'ventas', 'registrar_cobro')) return next();
+  return res.status(403).json({ error: 'No tienes permiso para registrar cobros.' });
+}
+
+// GET /api/invoices/deudas -> ventas "abonado" con saldo pendiente (cuentas por cobrar)
+router.get('/deudas', requireVerCuentasPorCobrar, (req, res) => {
+  const rows = db.prepare(`
+    SELECT i.id, i.tipo_comprobante, i.serie, i.numero, i.fecha_emision, i.total, i.monto_pagado,
+           (i.total - i.monto_pagado) AS saldo,
+           c.id AS client_id, c.nombre AS cliente_nombre, c.numero_documento AS cliente_documento,
+           c.tipo_documento AS cliente_tipo_documento, c.telefono AS cliente_telefono
+    FROM invoices i JOIN clients c ON c.id = i.client_id
+    WHERE i.sucursal_id = ? AND i.forma_pago = 'abonado' AND i.estado = 'emitido'
+      AND (i.total - i.monto_pagado) > 0.005
+    ORDER BY i.fecha_emision ASC, i.id ASC
+  `).all(req.sucursalId);
+  res.json(rows.map((r) => ({ ...r, saldo: round2(r.saldo) })));
+});
+
+// GET /api/invoices/:id/cobros -> historial de abonos/cobros de una venta "abonado"
+router.get('/:id/cobros', requireVerCuentasPorCobrar, (req, res) => {
+  const invoice = db.prepare('SELECT id FROM invoices WHERE id = ? AND sucursal_id = ?').get(req.params.id, req.sucursalId);
+  if (!invoice) return res.status(404).json({ error: 'Comprobante no encontrado.' });
+  const rows = db.prepare(
+    `SELECT co.*, u.full_name AS usuario_nombre FROM cobros co
+     LEFT JOIN users u ON u.id = co.created_by
+     WHERE co.invoice_id = ? ORDER BY co.id DESC`
+  ).all(req.params.id);
+  res.json(rows);
+});
+
+// POST /api/invoices/:id/cobros { monto, medio, observacion } -> registra un cobro contra el saldo pendiente
+router.post('/:id/cobros', requireRegistrarCobro, (req, res) => {
+  const invoice = db.prepare('SELECT * FROM invoices WHERE id = ? AND sucursal_id = ?').get(req.params.id, req.sucursalId);
+  if (!invoice) return res.status(404).json({ error: 'Comprobante no encontrado.' });
+  if (invoice.forma_pago !== 'abonado') {
+    return res.status(400).json({ error: 'Este comprobante no es una venta abonada.' });
+  }
+  if (invoice.estado !== 'emitido') {
+    return res.status(400).json({ error: 'El comprobante está anulado.' });
+  }
+  const { monto, medio, observacion } = req.body || {};
+  if (!esMetodoPagoValido(medio)) {
+    return res.status(400).json({ error: 'Selecciona un método de pago válido.' });
+  }
+  const saldoActual = round2(invoice.total - invoice.monto_pagado);
+  const montoNum = round2(Number(monto || 0));
+  if (montoNum <= 0) return res.status(400).json({ error: 'El monto debe ser mayor a 0.' });
+  if (montoNum > saldoActual + 0.005) {
+    return res.status(400).json({ error: `El monto no puede superar el saldo pendiente (S/ ${saldoActual.toFixed(2)}).` });
+  }
+  const client = db.prepare('SELECT nombre FROM clients WHERE id = ?').get(invoice.client_id);
+  const referenciaComprobante = `${invoice.serie}-${String(invoice.numero).padStart(6, '0')}`;
+  const hoy = new Date().toISOString().slice(0, 10);
+
+  const registrar = db.transaction(() => {
+    db.prepare('UPDATE invoices SET monto_pagado = monto_pagado + ? WHERE id = ?').run(montoNum, invoice.id);
+    db.prepare(
+      `INSERT INTO cobros (invoice_id, monto, medio, observacion, created_by) VALUES (?, ?, ?, ?, ?)`
+    ).run(invoice.id, montoNum, medio, observacion || null, req.user?.id || null);
+    db.prepare(
+      `INSERT INTO caja_movimientos (fecha, tipo, medio, categoria, monto, descripcion, created_by, sucursal_id)
+       VALUES (?, 'ingreso', ?, 'cuentas_cobrar', ?, ?, ?, ?)`
+    ).run(hoy, medio, montoNum, `Cobro - ${referenciaComprobante} - ${client?.nombre || ''}`, req.user?.id || null, req.sucursalId);
+  });
+  registrar();
+
+  const updated = db.prepare('SELECT * FROM invoices WHERE id = ?').get(invoice.id);
+  res.json({ ...updated, saldo: round2(updated.total - updated.monto_pagado) });
+});
+
+router.use(requirePermiso('ventas'));
 
 // GET /api/invoices/siguiente-numero?tipo=factura -> { serie, numero } sugerido para el formulario
 router.get('/siguiente-numero', (req, res) => {
@@ -49,21 +133,6 @@ router.get('/buscar', (req, res) => {
   if (!invoice) return res.status(404).json({ error: 'No se encontró un comprobante con esos datos.' });
   const items = db.prepare('SELECT * FROM invoice_items WHERE invoice_id = ?').all(invoice.id);
   res.json({ ...invoice, items });
-});
-
-// GET /api/invoices/deudas -> ventas "abonado" con saldo pendiente (cuentas por cobrar)
-router.get('/deudas', requireAccion('ventas', 'cuentas_por_cobrar'), (req, res) => {
-  const rows = db.prepare(`
-    SELECT i.id, i.tipo_comprobante, i.serie, i.numero, i.fecha_emision, i.total, i.monto_pagado,
-           (i.total - i.monto_pagado) AS saldo,
-           c.id AS client_id, c.nombre AS cliente_nombre, c.numero_documento AS cliente_documento,
-           c.tipo_documento AS cliente_tipo_documento, c.telefono AS cliente_telefono
-    FROM invoices i JOIN clients c ON c.id = i.client_id
-    WHERE i.sucursal_id = ? AND i.forma_pago = 'abonado' AND i.estado = 'emitido'
-      AND (i.total - i.monto_pagado) > 0.005
-    ORDER BY i.fecha_emision ASC, i.id ASC
-  `).all(req.sucursalId);
-  res.json(rows.map((r) => ({ ...r, saldo: round2(r.saldo) })));
 });
 
 // GET /api/invoices?tipo=&estado=&client_id=&from=&to=&q=
@@ -525,58 +594,6 @@ router.post('/:id/anular', requireAccion('ventas', 'anular_comprobante'), (req, 
 
   const updated = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id);
   res.json(updated);
-});
-
-// GET /api/invoices/:id/cobros -> historial de abonos/cobros de una venta "abonado"
-router.get('/:id/cobros', requireAccion('ventas', 'cuentas_por_cobrar'), (req, res) => {
-  const invoice = db.prepare('SELECT id FROM invoices WHERE id = ? AND sucursal_id = ?').get(req.params.id, req.sucursalId);
-  if (!invoice) return res.status(404).json({ error: 'Comprobante no encontrado.' });
-  const rows = db.prepare(
-    `SELECT co.*, u.full_name AS usuario_nombre FROM cobros co
-     LEFT JOIN users u ON u.id = co.created_by
-     WHERE co.invoice_id = ? ORDER BY co.id DESC`
-  ).all(req.params.id);
-  res.json(rows);
-});
-
-// POST /api/invoices/:id/cobros { monto, medio, observacion } -> registra un cobro contra el saldo pendiente
-router.post('/:id/cobros', requireAccion('ventas', 'registrar_cobro'), (req, res) => {
-  const invoice = db.prepare('SELECT * FROM invoices WHERE id = ? AND sucursal_id = ?').get(req.params.id, req.sucursalId);
-  if (!invoice) return res.status(404).json({ error: 'Comprobante no encontrado.' });
-  if (invoice.forma_pago !== 'abonado') {
-    return res.status(400).json({ error: 'Este comprobante no es una venta abonada.' });
-  }
-  if (invoice.estado !== 'emitido') {
-    return res.status(400).json({ error: 'El comprobante está anulado.' });
-  }
-  const { monto, medio, observacion } = req.body || {};
-  if (!esMetodoPagoValido(medio)) {
-    return res.status(400).json({ error: 'Selecciona un método de pago válido.' });
-  }
-  const saldoActual = round2(invoice.total - invoice.monto_pagado);
-  const montoNum = round2(Number(monto || 0));
-  if (montoNum <= 0) return res.status(400).json({ error: 'El monto debe ser mayor a 0.' });
-  if (montoNum > saldoActual + 0.005) {
-    return res.status(400).json({ error: `El monto no puede superar el saldo pendiente (S/ ${saldoActual.toFixed(2)}).` });
-  }
-  const client = db.prepare('SELECT nombre FROM clients WHERE id = ?').get(invoice.client_id);
-  const referenciaComprobante = `${invoice.serie}-${String(invoice.numero).padStart(6, '0')}`;
-  const hoy = new Date().toISOString().slice(0, 10);
-
-  const registrar = db.transaction(() => {
-    db.prepare('UPDATE invoices SET monto_pagado = monto_pagado + ? WHERE id = ?').run(montoNum, invoice.id);
-    db.prepare(
-      `INSERT INTO cobros (invoice_id, monto, medio, observacion, created_by) VALUES (?, ?, ?, ?, ?)`
-    ).run(invoice.id, montoNum, medio, observacion || null, req.user?.id || null);
-    db.prepare(
-      `INSERT INTO caja_movimientos (fecha, tipo, medio, categoria, monto, descripcion, created_by, sucursal_id)
-       VALUES (?, 'ingreso', ?, 'cuentas_cobrar', ?, ?, ?, ?)`
-    ).run(hoy, medio, montoNum, `Cobro - ${referenciaComprobante} - ${client?.nombre || ''}`, req.user?.id || null, req.sucursalId);
-  });
-  registrar();
-
-  const updated = db.prepare('SELECT * FROM invoices WHERE id = ?').get(invoice.id);
-  res.json({ ...updated, saldo: round2(updated.total - updated.monto_pagado) });
 });
 
 router.get('/:id/pdf', async (req, res) => {
