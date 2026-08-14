@@ -1634,6 +1634,61 @@ export default function Configuracion() {
         </div>
       )}
 
+      {showOperativoForm && (
+        <div className="modal-overlay" onClick={() => setShowOperativoForm(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h2>{editingOperativoId ? 'Editar registro' : 'Nuevo Entrenador o Supervisor operativo'}</h2>
+            <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -6 }}>
+              No crea un usuario del sistema — esta persona no puede iniciar sesión ni facturar, solo queda
+              disponible para el Ranking del Tablero de Ventas y para atribuirle ventas desde Ventas.
+            </p>
+            <form onSubmit={handleSubmitOperativo}>
+              <div className="form-row">
+                <div>
+                  <label>Nombre *</label>
+                  <input required value={operativoForm.nombres} onChange={(e) => setOperativoForm({ ...operativoForm, nombres: e.target.value })} />
+                </div>
+                <div>
+                  <label>Apellidos *</label>
+                  <input required value={operativoForm.apellidos} onChange={(e) => setOperativoForm({ ...operativoForm, apellidos: e.target.value })} />
+                </div>
+              </div>
+              <label>DNI * (8 dígitos)</label>
+              <input required value={operativoForm.dni} onChange={(e) => setOperativoForm({ ...operativoForm, dni: e.target.value })} maxLength={8} />
+              <div className="form-row">
+                <div>
+                  <label>Categoría *</label>
+                  <select required value={operativoForm.categoria_staff} onChange={(e) => setOperativoForm({ ...operativoForm, categoria_staff: e.target.value })}>
+                    <option value="trainer">Trainer</option>
+                    <option value="supervisor">Supervisor operativo</option>
+                  </select>
+                </div>
+                <div>
+                  <label>Turno</label>
+                  <select value={operativoForm.turno} onChange={(e) => setOperativoForm({ ...operativoForm, turno: e.target.value })}>
+                    <option value="">Sin turno</option>
+                    <option value="manana">Mañana</option>
+                    <option value="tarde">Tarde</option>
+                  </select>
+                </div>
+              </div>
+              <label>Sede</label>
+              <select value={operativoForm.sucursal_id} onChange={(e) => setOperativoForm({ ...operativoForm, sucursal_id: e.target.value })}>
+                <option value="">Todas las sedes</option>
+                {sucursales.filter((s) => s.activo).map((s) => (
+                  <option key={s.id} value={s.id}>{s.nombre}</option>
+                ))}
+              </select>
+              {errorOperativoForm && <div className="form-error">{errorOperativoForm}</div>}
+              <div className="modal-actions">
+                <button type="button" className="btn-secondary" onClick={() => setShowOperativoForm(false)}>Cancelar</button>
+                <button type="submit" className="btn-primary">{editingOperativoId ? 'Guardar cambios' : 'Guardar registro'}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {showSucursalForm && (
         <div className="modal-overlay" onClick={() => setShowSucursalForm(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
