@@ -49,7 +49,9 @@ export default function CuentasPorCobrar() {
     }
   }
 
-  const totalAdeudado = round2(deudas.reduce((s, d) => s + d.saldo, 0));
+  // Nunca sumar soles y dólares como si fueran la misma unidad.
+  const totalAdeudadoPEN = round2(deudas.filter((d) => d.moneda !== 'USD').reduce((s, d) => s + d.saldo, 0));
+  const totalAdeudadoUSD = round2(deudas.filter((d) => d.moneda === 'USD').reduce((s, d) => s + d.saldo, 0));
 
   return (
     <div>
@@ -60,7 +62,8 @@ export default function CuentasPorCobrar() {
         CUENTAS POR COBRAR
       </h1>
       <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -8 }}>
-        Ventas emitidas como "Abonado" con saldo pendiente. Total adeudado: <strong>S/ {totalAdeudado.toFixed(2)}</strong>
+        Ventas emitidas como "Abonado" con saldo pendiente. Total adeudado: <strong>S/ {totalAdeudadoPEN.toFixed(2)}</strong>
+        {totalAdeudadoUSD > 0 && <> + <strong>$ {totalAdeudadoUSD.toFixed(2)}</strong></>}
       </p>
 
       <table className="data-table">

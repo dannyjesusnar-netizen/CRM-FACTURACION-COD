@@ -280,15 +280,17 @@ export default function Dashboard() {
           <div className="report-toolbar">
             <h2 className="page-title" style={{ margin: 0, fontSize: 18 }}>Tablero de Ventas</h2>
             <div className="filter-panel" style={{ margin: 0 }}>
-              <div className="filter-field">
-                <label>Sede</label>
-                <select value={tableroSedeId} onChange={(e) => setTableroSedeId(e.target.value)}>
-                  <option value="">Todas las sedes</option>
-                  {sucursalesTablero.map((s) => (
-                    <option key={s.id} value={s.id}>{s.nombre}</option>
-                  ))}
-                </select>
-              </div>
+              {user?.role === 'gerencia' && (
+                <div className="filter-field">
+                  <label>Sede</label>
+                  <select value={tableroSedeId} onChange={(e) => setTableroSedeId(e.target.value)}>
+                    <option value="">Todas las sedes</option>
+                    {sucursalesTablero.map((s) => (
+                      <option key={s.id} value={s.id}>{s.nombre}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div className="filter-field">
                 <label>Año</label>
                 <input type="number" value={tableroAnio} onChange={(e) => setTableroAnio(Number(e.target.value))} style={{ width: 100 }} />

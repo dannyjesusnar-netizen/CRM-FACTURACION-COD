@@ -26,9 +26,9 @@ router.get('/', (req, res) => {
     SELECT g.*, c.nombre AS cliente_nombre, c.numero_documento AS cliente_documento
     FROM guias_remitentes g
     LEFT JOIN clients c ON c.id = g.client_id
-    WHERE 1=1
+    WHERE g.sucursal_id = ?
   `;
-  const params = [];
+  const params = [req.sucursalId];
   if (estado) { sql += ' AND g.estado = ?'; params.push(estado); }
   if (client_id) { sql += ' AND g.client_id = ?'; params.push(client_id); }
   if (from) { sql += ' AND date(g.created_at) >= date(?)'; params.push(from); }
@@ -44,8 +44,8 @@ router.get('/', (req, res) => {
 router.get('/:id', (req, res) => {
   const guia = db.prepare(
     `SELECT g.*, c.nombre AS cliente_nombre, c.numero_documento AS cliente_documento
-     FROM guias_remitentes g LEFT JOIN clients c ON c.id = g.client_id WHERE g.id = ?`
-  ).get(req.params.id);
+     FROM guias_remitentes g LEFT JOIN clients c ON c.id = g.client_id WHERE g.id = ? AND g.sucursal_id = ?`
+  ).get(req.params.id, req.sucursalId);
   if (!guia) return res.status(404).json({ error: 'Guía no encontrada.' });
   const items = db.prepare('SELECT * FROM guia_items WHERE guia_id = ?').all(req.params.id);
   res.json({ ...guia, items });
@@ -89,8 +89,8 @@ router.post('/', requireAccion('ventas', 'guia_remision'), (req, res) => {
   const insertAll = db.transaction(() => {
     const numero = numeroManual ? Number(numeroManual) : numeroSugerido;
     const info = db.prepare(
-      `INSERT INTO guias_remitentes (serie, numero, motivo_traslado, client_id, punto_partida, punto_llegada, peso_total, cantidad_bultos, estado, observaciones, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'emitida', ?, ?)`
+      `INSERT INTO guias_remitentes (serie, numero, motivo_traslado, client_id, punto_partida, punto_llegada, peso_total, cantidad_bultos, estado, observaciones, created_by, sucursal_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'emitida', ?, ?, ?)`
     ).run(
       serie,
       numero,
@@ -101,7 +101,8 @@ router.post('/', requireAccion('ventas', 'guia_remision'), (req, res) => {
       pesoTotal,
       Number(cantidad_bultos || 0),
       observaciones || null,
-      req.user?.id || null
+      req.user?.id || null,
+      req.sucursalId
     );
     const guiaId = info.lastInsertRowid;
     const insertItem = db.prepare(
@@ -121,7 +122,7 @@ router.post('/', requireAccion('ventas', 'guia_remision'), (req, res) => {
 });
 
 router.post('/:id/anular', (req, res) => {
-  const guia = db.prepare('SELECT * FROM guias_remitentes WHERE id = ?').get(req.params.id);
+  const guia = db.prepare('SELECT * FROM guias_remitentes WHERE id = ? AND sucursal_id = ?').get(req.params.id, req.sucursalId);
   if (!guia) return res.status(404).json({ error: 'Guía no encontrada.' });
   if (guia.estado === 'anulada') return res.status(400).json({ error: 'La guía ya está anulada.' });
   db.prepare("UPDATE guias_remitentes SET estado = 'anulada' WHERE id = ?").run(req.params.id);

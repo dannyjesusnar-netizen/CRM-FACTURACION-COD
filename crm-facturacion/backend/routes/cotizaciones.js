@@ -29,9 +29,9 @@ router.get('/', (req, res) => {
     SELECT co.*, c.nombre AS cliente_nombre, c.numero_documento AS cliente_documento
     FROM cotizaciones co
     LEFT JOIN clients c ON c.id = co.client_id
-    WHERE 1=1
+    WHERE co.sucursal_id = ?
   `;
-  const params = [];
+  const params = [req.sucursalId];
   if (estado) { sql += ' AND co.estado = ?'; params.push(estado); }
   if (client_id) { sql += ' AND co.client_id = ?'; params.push(client_id); }
   if (from) { sql += ' AND date(co.fecha_emision) >= date(?)'; params.push(from); }
@@ -47,8 +47,8 @@ router.get('/', (req, res) => {
 router.get('/:id', (req, res) => {
   const cot = db.prepare(
     `SELECT co.*, c.nombre AS cliente_nombre, c.numero_documento AS cliente_documento
-     FROM cotizaciones co LEFT JOIN clients c ON c.id = co.client_id WHERE co.id = ?`
-  ).get(req.params.id);
+     FROM cotizaciones co LEFT JOIN clients c ON c.id = co.client_id WHERE co.id = ? AND co.sucursal_id = ?`
+  ).get(req.params.id, req.sucursalId);
   if (!cot) return res.status(404).json({ error: 'Cotización no encontrada.' });
   const items = db.prepare('SELECT * FROM cotizacion_items WHERE cotizacion_id = ?').all(req.params.id);
   res.json({ ...cot, items });
@@ -94,8 +94,8 @@ router.post('/', requireAccion('ventas', 'cotizacion'), (req, res) => {
   const insertAll = db.transaction(() => {
     const numero = numeroManual ? Number(numeroManual) : numeroSugerido;
     const info = db.prepare(
-      `INSERT INTO cotizaciones (serie, numero, client_id, created_by, fecha_emision, moneda, subtotal, igv, descuento_global_pct, total, estado, observaciones)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'vigente', ?)`
+      `INSERT INTO cotizaciones (serie, numero, client_id, created_by, fecha_emision, moneda, subtotal, igv, descuento_global_pct, total, estado, observaciones, sucursal_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'vigente', ?, ?)`
     ).run(
       serie,
       numero,
@@ -107,7 +107,8 @@ router.post('/', requireAccion('ventas', 'cotizacion'), (req, res) => {
       igv,
       descuentoGlobalPct,
       total,
-      observaciones || null
+      observaciones || null,
+      req.sucursalId
     );
     const cotizacionId = info.lastInsertRowid;
     const insertItem = db.prepare(
@@ -127,7 +128,7 @@ router.post('/', requireAccion('ventas', 'cotizacion'), (req, res) => {
 });
 
 router.post('/:id/anular', (req, res) => {
-  const cot = db.prepare('SELECT * FROM cotizaciones WHERE id = ?').get(req.params.id);
+  const cot = db.prepare('SELECT * FROM cotizaciones WHERE id = ? AND sucursal_id = ?').get(req.params.id, req.sucursalId);
   if (!cot) return res.status(404).json({ error: 'Cotización no encontrada.' });
   if (cot.estado === 'anulada') return res.status(400).json({ error: 'La cotización ya está anulada.' });
   db.prepare("UPDATE cotizaciones SET estado = 'anulada' WHERE id = ?").run(req.params.id);

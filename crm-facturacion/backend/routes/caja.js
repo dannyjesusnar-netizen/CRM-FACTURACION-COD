@@ -39,12 +39,19 @@ function ventasAuto(fecha, codigoMetodo, sucursalId, moneda, empleadoId) {
 // abonar/cobrar una venta) no llevan moneda propia — siempre fueron en
 // soles. Por eso, cuando se filtra por Dólares, estas líneas se excluyen
 // entero (no hay nada en USD que mostrar ahí) en vez de sumarlas mal.
+//
+// Los movimientos ligados a un comprobante (invoice_id, ver mixto/abonado/
+// cobros) se excluyen del arqueo si ese comprobante terminó anulado — de lo
+// contrario una venta anulada sigue apareciendo como dinero cobrado en Caja
+// para siempre.
 function movimientosSum(fecha, tipo, medio, categoria, sucursalId, moneda, empleadoId) {
   if (moneda === 'USD') return 0;
-  let sql = `SELECT COALESCE(SUM(monto), 0) AS total FROM caja_movimientos
-     WHERE fecha = ? AND tipo = ? AND medio = ? AND categoria = ? AND sucursal_id = ?`;
+  let sql = `SELECT COALESCE(SUM(cm.monto), 0) AS total FROM caja_movimientos cm
+     LEFT JOIN invoices i ON i.id = cm.invoice_id
+     WHERE cm.fecha = ? AND cm.tipo = ? AND cm.medio = ? AND cm.categoria = ? AND cm.sucursal_id = ?
+       AND (cm.invoice_id IS NULL OR i.estado != 'anulado')`;
   const params = [fecha, tipo, medio, categoria, sucursalId];
-  if (empleadoId) { sql += ' AND created_by = ?'; params.push(empleadoId); }
+  if (empleadoId) { sql += ' AND cm.created_by = ?'; params.push(empleadoId); }
   const row = db.prepare(sql).get(...params);
   return round2(row.total);
 }
@@ -79,11 +86,11 @@ function buildResumen(fecha, sucursalId, { moneda, empleadoId } = {}) {
     egresos.total = round2(EGRESO_CATS.reduce((s, c) => s + egresos[c], 0));
 
     // El saldo inicial (billetes físicos con los que abrió la caja) solo
-    // existe para Efectivo, y solo tiene sentido sin filtros activos — es un
-    // monto real de un día puntual, no algo que se pueda "acotar" por
-    // empleado o dividir por moneda.
+    // existe para Efectivo en soles, y solo tiene sentido sin más filtros
+    // activos — es un monto real de un día puntual, no algo que se pueda
+    // "acotar" por empleado, y no existe versión en dólares.
     let saldo_inicial = 0;
-    if (m.codigo === 'efectivo' && !moneda && !empleadoId) {
+    if (m.codigo === 'efectivo' && moneda === 'PEN' && !empleadoId) {
       const saldoRow = db.prepare('SELECT saldo_inicial_efectivo FROM caja_saldos_iniciales WHERE fecha = ? AND sucursal_id = ?').get(fecha, sucursalId);
       saldo_inicial = saldoRow ? saldoRow.saldo_inicial_efectivo : 0;
     }
@@ -97,9 +104,13 @@ function buildResumen(fecha, sucursalId, { moneda, empleadoId } = {}) {
 }
 
 // GET /api/caja?fecha=YYYY-MM-DD&moneda=PEN|USD&empleado_id=
+// El arqueo es un conteo de dinero físico/por método: nunca debe sumar soles
+// y dólares como si fueran la misma unidad. Si no se especifica moneda, se
+// asume PEN (igual que los caja_movimientos manuales, que siempre son en
+// soles) — para ver el arqueo en dólares hay que filtrar explícitamente.
 router.get('/', (req, res) => {
   const fecha = req.query.fecha || todayStr();
-  const moneda = ['PEN', 'USD'].includes(req.query.moneda) ? req.query.moneda : null;
+  const moneda = req.query.moneda === 'USD' ? 'USD' : 'PEN';
   const empleadoId = req.query.empleado_id ? Number(req.query.empleado_id) : null;
   const resumen = buildResumen(fecha, req.sucursalId, { moneda, empleadoId });
 
@@ -113,7 +124,7 @@ router.get('/', (req, res) => {
   const movimientos = db.prepare(movSql).all(...movParams);
 
   const totalGeneral = round2(resumen.reduce((s, r) => s + r.saldo_final, 0));
-  res.json({ fecha, resumen, movimientos, totalGeneral });
+  res.json({ fecha, moneda, resumen, movimientos, totalGeneral });
 });
 
 // GET /api/caja/empleados -> empleados visibles en la sede activa, para el filtro "Cuenta"
@@ -158,8 +169,12 @@ function metodoActivo(codigo) {
 // POST /api/caja/movimientos { fecha, tipo, medio, categoria, monto, descripcion }
 router.post('/movimientos', requireAccion('caja', 'movimientos'), (req, res) => {
   const { fecha, tipo, medio, categoria, monto, descripcion } = req.body || {};
-  if (!fecha || !tipo || !medio || !categoria || !monto) {
+  if (!fecha || !tipo || !medio || !categoria || monto === undefined || monto === null || monto === '') {
     return res.status(400).json({ error: 'fecha, tipo, medio, categoria y monto son requeridos.' });
+  }
+  const montoNum = Number(monto);
+  if (!Number.isFinite(montoNum) || montoNum <= 0) {
+    return res.status(400).json({ error: 'El monto debe ser un número mayor a 0.' });
   }
   if (!['ingreso', 'egreso'].includes(tipo)) {
     return res.status(400).json({ error: 'tipo invalido.' });
@@ -179,7 +194,7 @@ router.post('/movimientos', requireAccion('caja', 'movimientos'), (req, res) => 
   const info = db.prepare(
     `INSERT INTO caja_movimientos (fecha, tipo, medio, categoria, monto, descripcion, created_by, sucursal_id)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(fecha, tipo, medio, categoria, Number(monto), descripcion || null, req.user?.id || null, req.sucursalId);
+  ).run(fecha, tipo, medio, categoria, montoNum, descripcion || null, req.user?.id || null, req.sucursalId);
   const row = db.prepare('SELECT * FROM caja_movimientos WHERE id = ?').get(info.lastInsertRowid);
   res.status(201).json(row);
 });
@@ -188,6 +203,14 @@ router.post('/movimientos', requireAccion('caja', 'movimientos'), (req, res) => 
 router.delete('/movimientos/:id', requireAccion('caja', 'eliminar_movimiento'), (req, res) => {
   const row = db.prepare('SELECT * FROM caja_movimientos WHERE id = ? AND sucursal_id = ?').get(req.params.id, req.sucursalId);
   if (!row) return res.status(404).json({ error: 'Movimiento no encontrado.' });
+  // Los movimientos que el sistema generó automáticamente a partir de un
+  // comprobante (cobro, abono, pago mixto) no se pueden borrar sueltos: el
+  // dinero ya quedó registrado también en invoices.monto_pagado/cobros, y
+  // borrar solo el lado de Caja los desincroniza (el cliente queda "pagado"
+  // sin que la caja lo refleje). Para revertirlo, anula el comprobante.
+  if (row.invoice_id) {
+    return res.status(400).json({ error: 'Este movimiento proviene de un comprobante y no se puede eliminar directamente — anula el comprobante para revertirlo.' });
+  }
   db.prepare('DELETE FROM caja_movimientos WHERE id = ?').run(req.params.id);
   res.json({ ok: true });
 });

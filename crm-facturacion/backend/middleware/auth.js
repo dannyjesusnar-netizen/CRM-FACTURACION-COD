@@ -2,7 +2,18 @@ const jwt = require('jsonwebtoken');
 const db = require('../db');
 const { resolveTenantDb } = require('../utils/tenant');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'crm-facturacion-dev-secret-change-me';
+const DEV_JWT_SECRET = 'crm-facturacion-dev-secret-change-me';
+const JWT_SECRET = process.env.JWT_SECRET || DEV_JWT_SECRET;
+
+// En producción, un JWT_SECRET adivinable (o el valor por defecto de
+// desarrollo, público en este mismo archivo) permite forjar tokens válidos
+// para cualquier tenant — es el equivalente a no tener autenticación.
+// render.yaml ya genera uno real (generateValue: true), pero cualquier otro
+// despliegue que se salte esa configuración debe fallar fuerte, no arrancar
+// en silencio con la puerta abierta.
+if (process.env.NODE_ENV === 'production' && JWT_SECRET === DEV_JWT_SECRET) {
+  throw new Error('JWT_SECRET no está configurado (o usa el valor de desarrollo) en un entorno de producción. Define una variable de entorno JWT_SECRET real antes de arrancar.');
+}
 
 // requireAuth valida el token y, a partir del RUC que quedó guardado en él al
 // hacer login, resuelve con qué base de datos (empresa) debe trabajar el
