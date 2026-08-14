@@ -715,6 +715,38 @@ CREATE TABLE IF NOT EXISTS metas_venta_sede (
   if (!cajaMovimientoColumns.includes('sucursal_id')) {
     db.exec('ALTER TABLE caja_movimientos ADD COLUMN sucursal_id INTEGER REFERENCES sucursales(id)');
   }
+  // invoice_id: marca los movimientos que el sistema genera automáticamente
+  // al emitir/cobrar una venta (mixto, abonado, cobros de cuentas por
+  // cobrar) — a diferencia de los movimientos manuales de Caja, estos no se
+  // pueden borrar sueltos sin desincronizar invoices.monto_pagado/cobros de
+  // lo que el arqueo muestra (ver DELETE /movimientos/:id).
+  if (!cajaMovimientoColumns.includes('invoice_id')) {
+    db.exec('ALTER TABLE caja_movimientos ADD COLUMN invoice_id INTEGER REFERENCES invoices(id)');
+  }
+  // cotizaciones/guias_remitentes nacieron antes que el multi-sede real y
+  // nunca quedaron scoped a una sucursal — a diferencia de invoices/purchases,
+  // que sí tienen sucursal_id desde esa migración. Sin esto, un usuario fijo
+  // a una sede podía listar/ver/anular cotizaciones y guías de otra sede del
+  // mismo tenant. Los registros existentes se asignan a la sede principal
+  // (mismo criterio que caja_saldos_iniciales) para no perderlos de vista.
+  const cotizacionColumns = db.prepare("PRAGMA table_info(cotizaciones)").all().map((c) => c.name);
+  if (!cotizacionColumns.includes('sucursal_id')) {
+    db.exec('ALTER TABLE cotizaciones ADD COLUMN sucursal_id INTEGER REFERENCES sucursales(id)');
+    const principalCot = db.prepare('SELECT id FROM sucursales WHERE es_principal = 1').get()
+      || db.prepare('SELECT id FROM sucursales ORDER BY id ASC LIMIT 1').get();
+    if (principalCot) {
+      db.prepare('UPDATE cotizaciones SET sucursal_id = ? WHERE sucursal_id IS NULL').run(principalCot.id);
+    }
+  }
+  const guiaColumns = db.prepare("PRAGMA table_info(guias_remitentes)").all().map((c) => c.name);
+  if (!guiaColumns.includes('sucursal_id')) {
+    db.exec('ALTER TABLE guias_remitentes ADD COLUMN sucursal_id INTEGER REFERENCES sucursales(id)');
+    const principalGuia = db.prepare('SELECT id FROM sucursales WHERE es_principal = 1').get()
+      || db.prepare('SELECT id FROM sucursales ORDER BY id ASC LIMIT 1').get();
+    if (principalGuia) {
+      db.prepare('UPDATE guias_remitentes SET sucursal_id = ? WHERE sucursal_id IS NULL').run(principalGuia.id);
+    }
+  }
 
   // Registrar Compra al estilo de un comprobante real: documento, serie-número
   // del proveedor, moneda/tipo de cambio, tipo de compra y destino de la

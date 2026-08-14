@@ -17,9 +17,17 @@ function anioMes(req) {
   return { anio, mes, mesPad: String(mes).padStart(2, '0') };
 }
 
-// sucursal_id opcional: sin valor = todas las sedes (vista ejecutiva por
-// defecto); con valor = el "dashboard" de esa sede en particular.
+// Gerencia: sucursal_id opcional — sin valor ve todas las sedes (vista
+// ejecutiva por defecto), con valor ve el "dashboard" de esa sede en
+// particular. Un Supervisor, en cambio, siempre queda pegado a la sede a la
+// que está asignado — sin importar qué sucursal_id le pase al query param —
+// para que no pueda ver la facturación de otras sedes que no le
+// corresponden (requireGerenciaOSupervisor solo valida el rol, no la sede).
 function sedeFiltro(req) {
+  if (req.user.role !== 'gerencia') {
+    const row = db.prepare('SELECT sucursal_id FROM users WHERE id = ?').get(req.user.id);
+    return row?.sucursal_id || null;
+  }
   const raw = req.query.sucursal_id;
   return raw ? Number(raw) : null;
 }

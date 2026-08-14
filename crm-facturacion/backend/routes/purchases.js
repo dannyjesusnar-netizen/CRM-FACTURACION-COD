@@ -2,7 +2,7 @@ const express = require('express');
 const multer = require('multer');
 const db = require('../db');
 const { requireAuth, resolveSucursal } = require('../middleware/auth');
-const { incrementarStock, ajustarStockSucursal, round2 } = require('../utils/stock');
+const { incrementarStock, ajustarStockSucursal, getStockSucursal, round2 } = require('../utils/stock');
 const { requirePermiso, requireAccion } = require('../utils/permisos');
 const { parseGuiaXml, parseGuiaPdf } = require('../utils/guiaParser');
 
@@ -283,11 +283,23 @@ router.post('/:id/anular', requireAccion('compras', 'anular_compra'), (req, res)
     return res.status(400).json({ error: 'La compra ya esta anulada.' });
   }
   const items = db.prepare('SELECT * FROM purchase_items WHERE purchase_id = ?').all(req.params.id);
+  // Se acumula por producto (no línea por línea) porque una compra puede
+  // tener el mismo producto en más de un ítem — validar cada línea contra la
+  // misma lectura de stock sin acumular permite vaciar el stock por debajo
+  // de cero. Se valida contra el stock de ESTA sede (no el agregado de todas
+  // las sedes): si parte de esta compra ya fue trasladada a otra sede, el
+  // agregado puede alcanzar aunque esta sede específica ya no tenga nada.
+  const requeridoPorProducto = new Map();
   for (const it of items) {
-    const product = db.prepare('SELECT * FROM products WHERE id = ?').get(it.product_id);
-    if (product && product.stock < it.cantidad) {
+    requeridoPorProducto.set(it.product_id, (requeridoPorProducto.get(it.product_id) || 0) + it.cantidad);
+  }
+  for (const [productId, cantidadRequerida] of requeridoPorProducto) {
+    const product = db.prepare('SELECT * FROM products WHERE id = ?').get(productId);
+    if (!product) continue;
+    const disponibleSede = getStockSucursal(productId, purchase.sucursal_id);
+    if (disponibleSede < cantidadRequerida) {
       return res.status(409).json({
-        error: `No se puede anular: ${product.nombre} ya no tiene stock suficiente (parte de esta compra ya fue vendida o trasladada).`,
+        error: `No se puede anular: ${product.nombre} ya no tiene stock suficiente en esta sede (parte de esta compra ya fue vendida o trasladada).`,
       });
     }
   }

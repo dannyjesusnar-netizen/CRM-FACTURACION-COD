@@ -2,7 +2,7 @@ const express = require('express');
 const db = require('../db');
 const { requireAuth, resolveSucursal } = require('../middleware/auth');
 const { buildInvoicePdf } = require('../utils/pdf');
-const { consumirStock, incrementarStock, ajustarStockSucursal, StockInsuficienteError } = require('../utils/stock');
+const { consumirStock, incrementarStock, ajustarStockSucursal, getStockSucursal, StockInsuficienteError } = require('../utils/stock');
 const { emitirComprobante, estaConfigurado } = require('../utils/facturacionElectronica');
 const { requirePermiso, requireAccion, requireAlgunPermiso, tieneAccion, tienePermiso, requireGerenciaOSupervisor } = require('../utils/permisos');
 const { siguienteNumero } = require('../utils/series');
@@ -47,7 +47,7 @@ function requireRegistrarCobro(req, res, next) {
 // GET /api/invoices/deudas -> ventas "abonado" con saldo pendiente (cuentas por cobrar)
 router.get('/deudas', requireVerCuentasPorCobrar, (req, res) => {
   const rows = db.prepare(`
-    SELECT i.id, i.tipo_comprobante, i.serie, i.numero, i.fecha_emision, i.total, i.monto_pagado,
+    SELECT i.id, i.tipo_comprobante, i.serie, i.numero, i.fecha_emision, i.moneda, i.total, i.monto_pagado,
            (i.total - i.monto_pagado) AS saldo,
            c.id AS client_id, c.nombre AS cliente_nombre, c.numero_documento AS cliente_documento,
            c.tipo_documento AS cliente_tipo_documento, c.telefono AS cliente_telefono
@@ -101,9 +101,9 @@ router.post('/:id/cobros', requireRegistrarCobro, (req, res) => {
       `INSERT INTO cobros (invoice_id, monto, medio, observacion, created_by) VALUES (?, ?, ?, ?, ?)`
     ).run(invoice.id, montoNum, medio, observacion || null, req.user?.id || null);
     db.prepare(
-      `INSERT INTO caja_movimientos (fecha, tipo, medio, categoria, monto, descripcion, created_by, sucursal_id)
-       VALUES (?, 'ingreso', ?, 'cuentas_cobrar', ?, ?, ?, ?)`
-    ).run(hoy, medio, montoNum, `Cobro - ${referenciaComprobante} - ${client?.nombre || ''}`, req.user?.id || null, req.sucursalId);
+      `INSERT INTO caja_movimientos (fecha, tipo, medio, categoria, monto, descripcion, created_by, sucursal_id, invoice_id)
+       VALUES (?, 'ingreso', ?, 'cuentas_cobrar', ?, ?, ?, ?, ?)`
+    ).run(hoy, medio, montoNum, `Cobro - ${referenciaComprobante} - ${client?.nombre || ''}`, req.user?.id || null, req.sucursalId, invoice.id);
   });
   registrar();
 
@@ -140,8 +140,8 @@ router.get('/buscar', (req, res) => {
     `SELECT i.*, c.nombre AS cliente_nombre, c.numero_documento AS cliente_documento,
             c.tipo_documento AS cliente_tipo_documento, c.direccion AS cliente_direccion
      FROM invoices i JOIN clients c ON c.id = i.client_id
-     WHERE i.tipo_comprobante = ? AND i.serie = ? AND i.numero = ?`
-  ).get(tipo, serie, Number(numero));
+     WHERE i.tipo_comprobante = ? AND i.serie = ? AND i.numero = ? AND i.sucursal_id = ?`
+  ).get(tipo, serie, Number(numero), req.sucursalId);
   if (!invoice) return res.status(404).json({ error: 'No se encontró un comprobante con esos datos.' });
   const items = db.prepare('SELECT * FROM invoice_items WHERE invoice_id = ?').all(invoice.id);
   res.json({ ...invoice, items });
@@ -212,6 +212,16 @@ router.post('/', async (req, res) => {
   if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: 'Debe incluir al menos un item.' });
   }
+  for (const it of items) {
+    const cantidad = Number(it.cantidad);
+    const precio = Number(it.precio_unitario);
+    if (!Number.isFinite(cantidad) || cantidad <= 0) {
+      return res.status(400).json({ error: 'La cantidad de cada ítem debe ser mayor a 0.' });
+    }
+    if (!Number.isFinite(precio) || precio < 0) {
+      return res.status(400).json({ error: 'El precio unitario de cada ítem no puede ser negativo.' });
+    }
+  }
   const esMixto = forma_pago === 'mixto';
   if (forma_pago && forma_pago !== 'abonado' && forma_pago !== 'mixto' && !esMetodoPagoValido(forma_pago)) {
     return res.status(400).json({ error: 'forma_pago invalida. Debe ser un método de pago activo, "abonado" o "mixto".' });
@@ -257,6 +267,33 @@ router.post('/', async (req, res) => {
 
   if (tipo_comprobante === 'factura' && client.tipo_documento !== 'RUC') {
     return res.status(400).json({ error: 'Para emitir factura el cliente debe tener RUC.' });
+  }
+
+  // Una nota de crédito solo puede emitirse contra un comprobante real, vigente
+  // (no anulado) y que no sea a su vez otra nota de crédito — de lo contrario
+  // cualquiera podría fabricar una nota de crédito "de la nada" por cualquier
+  // monto, sin respaldo, lo cual es fraude contable.
+  let notaCreditoOriginal = null;
+  if (tipo_comprobante === 'nota_credito') {
+    if (!modifica_tipo || !modifica_serie || !modifica_numero) {
+      return res.status(400).json({ error: 'Debe indicar el comprobante que esta nota de crédito modifica (tipo, serie y número).' });
+    }
+    notaCreditoOriginal = db.prepare(
+      `SELECT * FROM invoices WHERE tipo_comprobante = ? AND serie = ? AND numero = ? AND sucursal_id = ?`
+    ).get(modifica_tipo, modifica_serie, Number(modifica_numero), req.sucursalId);
+    if (!notaCreditoOriginal) {
+      return res.status(400).json({ error: 'El comprobante que intenta modificar no existe en esta sede.' });
+    }
+    if (notaCreditoOriginal.tipo_comprobante === 'nota_credito') {
+      return res.status(400).json({ error: 'No se puede emitir una nota de crédito sobre otra nota de crédito.' });
+    }
+    if (notaCreditoOriginal.estado === 'anulado') {
+      return res.status(400).json({ error: 'El comprobante que intenta modificar está anulado.' });
+    }
+    // La nota de crédito hereda la atribución del comprobante que modifica —
+    // no tiene sentido que el vendedor que la emite elija a mano a quién
+    // "restarle" la venta; debe restarse a quien se la llevó originalmente.
+    atribuidoA = notaCreditoOriginal.atribuido_a;
   }
 
   const esAbonado = forma_pago === 'abonado';
@@ -308,6 +345,35 @@ router.post('/', async (req, res) => {
   const ratio = totalBruto > 0 ? total / totalBruto : 1;
   const igv = round2(igvBruto * ratio);
   const subtotal = round2(total - igv);
+
+  // El descuento global se aplica proporcionalmente a cada línea, para que la
+  // suma de invoice_items (impresa en el PDF y enviada a SUNAT/Nubefact)
+  // reconcilie con el total del comprobante en vez de quedar con los importes
+  // "brutos" pre-descuento.
+  if (descuentoGlobalPct > 0) {
+    for (const it of preparedItems) {
+      it.subtotal = round2(it.subtotal * ratio);
+      it.igv_item = round2(it.igv_item * ratio);
+    }
+  }
+
+  // El monto de una nota de crédito no puede superar lo que aún queda
+  // disponible del comprobante original (su total menos lo ya acreditado por
+  // notas de crédito previas vigentes) — evita sobre-acreditar o vaciar el
+  // mismo comprobante varias veces.
+  if (tipo_comprobante === 'nota_credito') {
+    const yaAcreditado = db.prepare(
+      `SELECT COALESCE(SUM(total), 0) AS suma FROM invoices
+       WHERE tipo_comprobante = 'nota_credito' AND estado = 'emitido'
+         AND modifica_tipo = ? AND modifica_serie = ? AND modifica_numero = ? AND sucursal_id = ?`
+    ).get(modifica_tipo, modifica_serie, Number(modifica_numero), req.sucursalId).suma;
+    const disponible = round2(notaCreditoOriginal.total - yaAcreditado);
+    if (total > disponible + 0.01) {
+      return res.status(400).json({
+        error: `El monto de la nota de crédito (S/ ${total.toFixed(2)}) supera el saldo disponible del comprobante original (S/ ${disponible.toFixed(2)}).`,
+      });
+    }
+  }
 
   if (esMixto) {
     const sumaPagos = round2(pagosMixto.reduce((s, p) => s + p.monto, 0));
@@ -400,9 +466,9 @@ router.post('/', async (req, res) => {
         `INSERT INTO cobros (invoice_id, monto, medio, observacion, created_by) VALUES (?, ?, ?, ?, ?)`
       ).run(invoiceId, montoPagado, medioAbono, 'Abono al emitir la venta', req.user?.id || null);
       db.prepare(
-        `INSERT INTO caja_movimientos (fecha, tipo, medio, categoria, monto, descripcion, created_by, sucursal_id)
-         VALUES (?, 'ingreso', ?, 'cuentas_cobrar', ?, ?, ?, ?)`
-      ).run(fechaEmisionFinal, medioAbono, montoPagado, `Abono - ${referenciaComprobante} - ${client.nombre}`, req.user?.id || null, req.sucursalId);
+        `INSERT INTO caja_movimientos (fecha, tipo, medio, categoria, monto, descripcion, created_by, sucursal_id, invoice_id)
+         VALUES (?, 'ingreso', ?, 'cuentas_cobrar', ?, ?, ?, ?, ?)`
+      ).run(fechaEmisionFinal, medioAbono, montoPagado, `Abono - ${referenciaComprobante} - ${client.nombre}`, req.user?.id || null, req.sucursalId, invoiceId);
     }
 
     // Pago mixto: la venta ya está pagada por completo, pero repartida entre
@@ -413,12 +479,12 @@ router.post('/', async (req, res) => {
         `INSERT INTO cobros (invoice_id, monto, medio, observacion, created_by) VALUES (?, ?, ?, ?, ?)`
       );
       const insertCajaMov = db.prepare(
-        `INSERT INTO caja_movimientos (fecha, tipo, medio, categoria, monto, descripcion, created_by, sucursal_id)
-         VALUES (?, 'ingreso', ?, 'ventas', ?, ?, ?, ?)`
+        `INSERT INTO caja_movimientos (fecha, tipo, medio, categoria, monto, descripcion, created_by, sucursal_id, invoice_id)
+         VALUES (?, 'ingreso', ?, 'ventas', ?, ?, ?, ?, ?)`
       );
       for (const p of pagosMixto) {
         insertCobro.run(invoiceId, p.monto, p.medio, 'Pago mixto', req.user?.id || null);
-        insertCajaMov.run(fechaEmisionFinal, p.medio, p.monto, `Venta (pago mixto) - ${referenciaComprobante} - ${client.nombre}`, req.user?.id || null, req.sucursalId);
+        insertCajaMov.run(fechaEmisionFinal, p.medio, p.monto, `Venta (pago mixto) - ${referenciaComprobante} - ${client.nombre}`, req.user?.id || null, req.sucursalId, invoiceId);
       }
     }
     return invoiceId;
@@ -570,55 +636,68 @@ router.post('/:id/anular', requireAccion('ventas', 'anular_comprobante'), (req, 
   const esNotaCreditoFinanciera = invoice.tipo_comprobante === 'nota_credito' && !esNotaCreditoConDevolucion;
 
   // Si la nota de crédito devolvió stock al emitirse, anularla debe revertir esa
-  // devolución; para eso hace falta que exista stock suficiente para descontar.
+  // devolución; para eso hace falta que exista stock suficiente para descontar
+  // EN ESTA SEDE. Se acumula por producto (no línea por línea) porque un mismo
+  // producto puede aparecer en más de un ítem de la nota — validar cada línea
+  // contra la misma lectura de stock sin acumular permitiría vaciar el stock
+  // por debajo de cero.
   if (esNotaCreditoConDevolucion) {
+    const requeridoPorProducto = new Map();
     for (const it of items) {
       if (!it.product_id) continue;
-      const prod = db.prepare('SELECT * FROM products WHERE id = ?').get(it.product_id);
-      if (prod && prod.tipo === 'producto' && prod.stock < it.cantidad) {
+      requeridoPorProducto.set(it.product_id, (requeridoPorProducto.get(it.product_id) || 0) + it.cantidad);
+    }
+    for (const [productId, cantidadRequerida] of requeridoPorProducto) {
+      const prod = db.prepare('SELECT * FROM products WHERE id = ?').get(productId);
+      if (!prod || prod.tipo !== 'producto' || prod.stock === null) continue;
+      const disponibleSede = getStockSucursal(productId, invoice.sucursal_id);
+      if (disponibleSede < cantidadRequerida) {
         return res.status(409).json({
-          error: `No se puede anular: ${prod.nombre} ya no tiene stock suficiente (parte de esa devolución ya fue vendida o trasladada).`,
+          error: `No se puede anular: ${prod.nombre} ya no tiene stock suficiente en esta sede (parte de esa devolución ya fue vendida o trasladada).`,
         });
       }
     }
   }
 
-  db.prepare("UPDATE invoices SET estado = 'anulado' WHERE id = ?").run(req.params.id);
+  const anular = db.transaction(() => {
+    db.prepare("UPDATE invoices SET estado = 'anulado' WHERE id = ?").run(req.params.id);
 
-  for (const it of items) {
-    if (!it.product_id) continue;
-    const prod = db.prepare('SELECT * FROM products WHERE id = ?').get(it.product_id);
-    if (!prod || prod.tipo !== 'producto' || prod.stock === null) continue;
+    for (const it of items) {
+      if (!it.product_id) continue;
+      const prod = db.prepare('SELECT * FROM products WHERE id = ?').get(it.product_id);
+      if (!prod || prod.tipo !== 'producto' || prod.stock === null) continue;
 
-    if (esNotaCreditoFinanciera) {
-      // Ajuste puramente financiero: nunca movió stock, tampoco al anularla.
-      continue;
-    }
+      if (esNotaCreditoFinanciera) {
+        // Ajuste puramente financiero: nunca movió stock, tampoco al anularla.
+        continue;
+      }
 
-    if (esNotaCreditoConDevolucion) {
-      db.prepare('UPDATE products SET stock = stock - ? WHERE id = ?').run(it.cantidad, it.product_id);
+      if (esNotaCreditoConDevolucion) {
+        db.prepare('UPDATE products SET stock = stock - ? WHERE id = ?').run(it.cantidad, it.product_id);
+        const nuevoStock = db.prepare('SELECT stock FROM products WHERE id = ?').get(it.product_id).stock;
+        ajustarStockSucursal(it.product_id, invoice.sucursal_id, -it.cantidad);
+        db.prepare(
+          `INSERT INTO stock_movements (product_id, tipo, cantidad, stock_resultante, motivo, referencia, created_by, sucursal_id)
+           VALUES (?, 'anulacion', ?, ?, 'Anulación de nota de crédito (revierte devolución)', ?, ?, ?)`
+        ).run(it.product_id, -it.cantidad, nuevoStock, referenciaComprobante, req.user?.id || null, invoice.sucursal_id);
+        continue;
+      }
+
+      // Factura/Boleta: restaurar exactamente los lotes/series de donde se descontó esta venta
+      const itemLotes = db.prepare('SELECT * FROM invoice_item_lotes WHERE invoice_item_id = ?').all(it.id);
+      for (const il of itemLotes) {
+        db.prepare('UPDATE lotes SET cantidad_actual = cantidad_actual + ? WHERE id = ?').run(il.cantidad, il.lote_id);
+      }
+      db.prepare('UPDATE products SET stock = stock + ? WHERE id = ?').run(it.cantidad, it.product_id);
       const nuevoStock = db.prepare('SELECT stock FROM products WHERE id = ?').get(it.product_id).stock;
-      ajustarStockSucursal(it.product_id, invoice.sucursal_id, -it.cantidad);
+      ajustarStockSucursal(it.product_id, invoice.sucursal_id, it.cantidad);
       db.prepare(
-        `INSERT INTO stock_movements (product_id, tipo, cantidad, stock_resultante, motivo, referencia, created_by, sucursal_id)
-         VALUES (?, 'anulacion', ?, ?, 'Anulación de nota de crédito (revierte devolución)', ?, ?, ?)`
-      ).run(it.product_id, -it.cantidad, nuevoStock, referenciaComprobante, req.user?.id || null, invoice.sucursal_id);
-      continue;
+        `INSERT INTO stock_movements (product_id, lote_id, tipo, cantidad, stock_resultante, motivo, referencia, created_by, sucursal_id)
+         VALUES (?, ?, 'anulacion', ?, ?, 'Anulación de comprobante', ?, ?, ?)`
+      ).run(it.product_id, itemLotes[0]?.lote_id || null, it.cantidad, nuevoStock, referenciaComprobante, req.user?.id || null, invoice.sucursal_id);
     }
-
-    // Factura/Boleta: restaurar exactamente los lotes/series de donde se descontó esta venta
-    const itemLotes = db.prepare('SELECT * FROM invoice_item_lotes WHERE invoice_item_id = ?').all(it.id);
-    for (const il of itemLotes) {
-      db.prepare('UPDATE lotes SET cantidad_actual = cantidad_actual + ? WHERE id = ?').run(il.cantidad, il.lote_id);
-    }
-    db.prepare('UPDATE products SET stock = stock + ? WHERE id = ?').run(it.cantidad, it.product_id);
-    const nuevoStock = db.prepare('SELECT stock FROM products WHERE id = ?').get(it.product_id).stock;
-    ajustarStockSucursal(it.product_id, invoice.sucursal_id, it.cantidad);
-    db.prepare(
-      `INSERT INTO stock_movements (product_id, lote_id, tipo, cantidad, stock_resultante, motivo, referencia, created_by, sucursal_id)
-       VALUES (?, ?, 'anulacion', ?, ?, 'Anulación de comprobante', ?, ?, ?)`
-    ).run(it.product_id, itemLotes[0]?.lote_id || null, it.cantidad, nuevoStock, referenciaComprobante, req.user?.id || null, invoice.sucursal_id);
-  }
+  });
+  anular();
 
   const updated = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id);
   res.json(updated);
