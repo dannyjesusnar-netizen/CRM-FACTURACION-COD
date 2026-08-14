@@ -45,6 +45,10 @@ function pctBadge(pct) {
 export default function Dashboard() {
   const { user } = useAuth();
   const puedeVerTablero = !!user?.puede_ver_tablero;
+  // Hoja 1 = Tablero de Ventas (solo Gerencia/Supervisor), Hoja 2 = el
+  // resumen general que ya existía. Quien no puede ver el Tablero solo
+  // tiene la Hoja 2, sin selector.
+  const [hoja, setHoja] = useState(puedeVerTablero ? '1' : '2');
   const [summary, setSummary] = useState(null);
   const [ventasPorDia, setVentasPorDia] = useState([]);
   const [ventasPorTipo, setVentasPorTipo] = useState([]);
@@ -98,13 +102,6 @@ export default function Dashboard() {
     }).finally(() => setTableroLoading(false));
   }, [puedeVerTablero, tableroAnio, tableroMes, tableroSedeId]);
 
-  if (loading) return (
-    <div className="page-loading">
-      <span className="spinner" />
-      Cargando dashboard...
-    </div>
-  );
-
   const lineData = {
     labels: ventasPorDia.map((r) => r.dia.slice(5)),
     datasets: [
@@ -155,73 +152,97 @@ export default function Dashboard() {
     },
   };
 
+  const hojaGeneral = (
+    loading ? (
+      <div className="page-loading">
+        <span className="spinner" />
+        Cargando dashboard...
+      </div>
+    ) : (
+      <>
+        <div className="stat-grid">
+          <div className="stat-card">
+            <div className="stat-label">Ventas de hoy</div>
+            <div className="stat-value">{money(summary.ventasHoy.total)}</div>
+            <div className="stat-sub">{summary.ventasHoy.cantidad} comprobante(s)</div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-label">Ventas del mes</div>
+            <div className="stat-value">{money(summary.ventasMes.total)}</div>
+            <div className="stat-sub">{summary.ventasMes.cantidad} comprobante(s)</div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-label">Clientes registrados</div>
+            <div className="stat-value">{summary.totalClientes}</div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-label">Productos activos</div>
+            <div className="stat-value">{summary.totalProductos}</div>
+          </div>
+        </div>
+
+        <div className="chart-grid">
+          <div className="panel">
+            <h3>Ventas últimos 30 días</h3>
+            <Line data={lineData} options={chartOptions} height={220} />
+          </div>
+          <div className="panel">
+            <h3>Ventas por tipo de comprobante</h3>
+            <Bar data={barData} options={chartOptions} height={220} />
+          </div>
+        </div>
+
+        <div className="panel">
+          <h3>Últimas ventas</h3>
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Comprobante</th>
+                <th>Cliente</th>
+                <th>Fecha</th>
+                <th>Estado</th>
+                <th style={{ textAlign: 'right' }}>Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {summary.ultimasVentas.map((v) => (
+                <tr key={v.id}>
+                  <td>{v.serie}-{String(v.numero).padStart(6, '0')}</td>
+                  <td>{v.cliente_nombre}</td>
+                  <td>{v.fecha_emision}</td>
+                  <td>
+                    <span className={'badge ' + (v.estado === 'anulado' ? 'badge-critical' : 'badge-good')}>
+                      {v.estado}
+                    </span>
+                  </td>
+                  <td style={{ textAlign: 'right' }}>{money(v.total)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </>
+    )
+  );
+
   return (
     <div>
       <h1 className="page-title">Dashboard</h1>
 
-      <div className="stat-grid">
-        <div className="stat-card">
-          <div className="stat-label">Ventas de hoy</div>
-          <div className="stat-value">{money(summary.ventasHoy.total)}</div>
-          <div className="stat-sub">{summary.ventasHoy.cantidad} comprobante(s)</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-label">Ventas del mes</div>
-          <div className="stat-value">{money(summary.ventasMes.total)}</div>
-          <div className="stat-sub">{summary.ventasMes.cantidad} comprobante(s)</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-label">Clientes registrados</div>
-          <div className="stat-value">{summary.totalClientes}</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-label">Productos activos</div>
-          <div className="stat-value">{summary.totalProductos}</div>
-        </div>
-      </div>
-
-      <div className="chart-grid">
-        <div className="panel">
-          <h3>Ventas últimos 30 días</h3>
-          <Line data={lineData} options={chartOptions} height={220} />
-        </div>
-        <div className="panel">
-          <h3>Ventas por tipo de comprobante</h3>
-          <Bar data={barData} options={chartOptions} height={220} />
-        </div>
-      </div>
-
-      <div className="panel">
-        <h3>Últimas ventas</h3>
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Comprobante</th>
-              <th>Cliente</th>
-              <th>Fecha</th>
-              <th>Estado</th>
-              <th style={{ textAlign: 'right' }}>Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            {summary.ultimasVentas.map((v) => (
-              <tr key={v.id}>
-                <td>{v.serie}-{String(v.numero).padStart(6, '0')}</td>
-                <td>{v.cliente_nombre}</td>
-                <td>{v.fecha_emision}</td>
-                <td>
-                  <span className={'badge ' + (v.estado === 'anulado' ? 'badge-critical' : 'badge-good')}>
-                    {v.estado}
-                  </span>
-                </td>
-                <td style={{ textAlign: 'right' }}>{money(v.total)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
       {puedeVerTablero && (
+        <div className="dashboard-hojas">
+          <button type="button" className={'dashboard-hoja-btn' + (hoja === '1' ? ' active' : '')} onClick={() => setHoja('1')}>
+            Hoja 1 · Tablero de Ventas
+          </button>
+          <button type="button" className={'dashboard-hoja-btn' + (hoja === '2' ? ' active' : '')} onClick={() => setHoja('2')}>
+            Hoja 2 · Resumen general
+          </button>
+        </div>
+      )}
+
+      {(!puedeVerTablero || hoja === '2') && hojaGeneral}
+
+      {puedeVerTablero && hoja === '1' && (
         <div className="dashboard-tablero">
           <div className="report-toolbar">
             <h2 className="page-title" style={{ margin: 0, fontSize: 18 }}>Tablero de Ventas</h2>
