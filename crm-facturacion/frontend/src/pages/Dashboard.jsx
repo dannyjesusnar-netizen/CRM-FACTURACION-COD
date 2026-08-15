@@ -330,7 +330,7 @@ export default function Dashboard() {
                   </thead>
                   <tbody>
                     {rankingTrainers.map((r) => (
-                      <tr key={r.user_id}>
+                      <tr key={r.user_id} style={r.faltante ? { color: 'var(--ink-muted)', fontStyle: 'italic' } : undefined}>
                         <td>{r.nombre}</td>
                         <td>{r.sede || '—'}</td>
                         <td>{r.turno === 'manana' ? 'Mañana' : r.turno === 'tarde' ? 'Tarde' : '—'}</td>
@@ -354,7 +354,7 @@ export default function Dashboard() {
                   </thead>
                   <tbody>
                     {rankingVendedores.map((r) => (
-                      <tr key={r.user_id}>
+                      <tr key={r.user_id} style={r.faltante ? { color: 'var(--ink-muted)', fontStyle: 'italic' } : undefined}>
                         <td>{r.nombre}</td>
                         <td>{r.sede || '—'}</td>
                         <td style={{ textAlign: 'right' }}>{money(r.venta)}</td>

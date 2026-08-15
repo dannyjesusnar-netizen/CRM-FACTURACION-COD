@@ -32,6 +32,8 @@ function sedeFiltro(req) {
   return raw ? Number(raw) : null;
 }
 
+const CATEGORIA_LABEL = { trainer: 'Trainer', vendedor: 'Vendedor', supervisor: 'Supervisor' };
+
 function conPorcentaje(rows) {
   const total = rows.reduce((acc, r) => acc + r.venta, 0);
   return rows.map((r) => ({
@@ -107,6 +109,41 @@ router.get('/ranking-personal', (req, res) => {
       porcentaje: meta > 0 ? round2((r.venta / meta) * 100) : null,
     };
   });
+
+  // Si la dotación asignada a una sede es mayor a la cantidad de
+  // empleados activos de esa categoría que tiene registrados (p.ej.
+  // dotación 14 con solo 13 trainers asignados), se agregan filas
+  // placeholder "Trainer faltante 1", "Trainer faltante 2"... para que el
+  // ranking muestre el cupo completo y el vacío quede visible — no se
+  // inventan ventas ni metas individuales distintas a las del resto del
+  // equipo, solo venta 0.
+  if (dotacionMap.size > 0) {
+    const sedesIds = [...dotacionMap.keys()].filter((id) => sucursalId === null || id === sucursalId);
+    const sedeNombreMap = new Map(
+      db.prepare('SELECT id, nombre FROM sucursales').all().map((s) => [s.id, s.nombre])
+    );
+    for (const sId of sedesIds) {
+      const dotacion = dotacionMap.get(sId) || 0;
+      const real = conteoMap.get(sId) || 0;
+      const faltantes = dotacion - real;
+      if (faltantes <= 0) continue;
+      const pool = poolMap.get(sId) || 0;
+      const meta = dotacion > 0 ? pool / dotacion : 0;
+      for (let i = 1; i <= faltantes; i += 1) {
+        withPct.push({
+          user_id: `faltante-${sId}-${i}`,
+          nombre: `${CATEGORIA_LABEL[categoria] || categoria} faltante ${i}`,
+          turno: null,
+          sede: sedeNombreMap.get(sId) || null,
+          venta: 0,
+          meta: round2(meta),
+          porcentaje: meta > 0 ? 0 : null,
+          faltante: true,
+        });
+      }
+    }
+  }
+
   withPct.sort((a, b) => {
     if (a.porcentaje === null && b.porcentaje === null) return b.venta - a.venta;
     if (a.porcentaje === null) return 1;
