@@ -33,6 +33,15 @@ function money(n) {
   return `S/ ${Number(n || 0).toFixed(2)}`;
 }
 
+// Fila "Total" al pie de un ranking: suma de venta, suma de meta (incluye
+// las filas "faltante", para que el % general refleje también el hueco de
+// dotación sin cubrir) y el % de alcance general del equipo completo.
+function totalesRanking(rows) {
+  const venta = rows.reduce((acc, r) => acc + r.venta, 0);
+  const meta = rows.reduce((acc, r) => acc + r.meta, 0);
+  return { venta, meta, porcentaje: meta > 0 ? (venta / meta) * 100 : null };
+}
+
 const MESES = [
   'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
@@ -343,6 +352,21 @@ export default function Dashboard() {
                       <tr><td colSpan={6} className="empty-row">No hay trainers con ventas en el período.</td></tr>
                     )}
                   </tbody>
+                  {rankingTrainers.length > 0 && (() => {
+                    const t = totalesRanking(rankingTrainers);
+                    return (
+                      <tfoot>
+                        <tr className="totals-footer">
+                          <td>Total</td>
+                          <td></td>
+                          <td></td>
+                          <td style={{ textAlign: 'right' }}>{money(t.venta)}</td>
+                          <td style={{ textAlign: 'right' }}>{money(t.meta)}</td>
+                          <td>{pctBadge(t.porcentaje)}</td>
+                        </tr>
+                      </tfoot>
+                    );
+                  })()}
                 </table>
               </div>
 
@@ -366,6 +390,20 @@ export default function Dashboard() {
                       <tr><td colSpan={5} className="empty-row">No hay vendedores con ventas en el período.</td></tr>
                     )}
                   </tbody>
+                  {rankingVendedores.length > 0 && (() => {
+                    const t = totalesRanking(rankingVendedores);
+                    return (
+                      <tfoot>
+                        <tr className="totals-footer">
+                          <td>Total</td>
+                          <td></td>
+                          <td style={{ textAlign: 'right' }}>{money(t.venta)}</td>
+                          <td style={{ textAlign: 'right' }}>{money(t.meta)}</td>
+                          <td>{pctBadge(t.porcentaje)}</td>
+                        </tr>
+                      </tfoot>
+                    );
+                  })()}
                 </table>
               </div>
 
