@@ -224,26 +224,33 @@ archivo (`backend/utils/facturacionElectronica.js`) para que sea sencillo
 reemplazar la llamada HTTP por la API del proveedor que elijas, sin tocar el
 resto del sistema.
 
-## Límite de sedes por plan (`MAX_SUCURSALES`)
+## Sedes libres y solicitud de sede adicional
 
-Si rentas este CRM a distintas empresas con planes de distinto tamaño (por
-ejemplo, "hasta 12 sucursales"), puedes fijar ese tope por variable de
-entorno del backend. **No es una opción que Gerencia pueda cambiar desde la
-app** — se configura al desplegar la instancia del cliente, para que el
-límite acordado sea real y no algo que el propio cliente pueda quitarse.
+Cada empresa cliente puede crear un número de sedes sin pedir permiso
+(`sedes_libres` en su registro de `tenantRegistry.js`, por defecto **1**).
+A diferencia del viejo esquema por variable de entorno, esto se administra
+**por empresa** desde panel-central (Companies.jsx → columna "Sedes libres"),
+no con una variable de entorno global del proceso.
 
-| Variable | Valor |
-| --- | --- |
-| `MAX_SUCURSALES` | número máximo de sedes permitidas (ej. `12`) |
+- Mientras la empresa no llegó a su cupo de sedes libres, Configuración →
+  Sucursales funciona igual que siempre: "+ Nueva sede" crea la sede al
+  instante.
+- Al llegar al cupo, ese botón cambia a "Solicitar nueva sede": Gerencia
+  llena el mismo formulario (nombre, dirección) más un motivo opcional, y
+  queda registrado como una solicitud pendiente — no crea la sede.
+- El dueño de la plataforma ve las solicitudes pendientes de cada empresa en
+  panel-central (Companies.jsx → botón "Solicitudes") y las aprueba o
+  rechaza. Al aprobar, la sede se crea tal cual fue pedida (incluida su
+  serie de comprobantes) directamente en la base de esa empresa — Gerencia
+  la ve aparecer sola la próxima vez que entra a Sucursales.
+- El backend también rechaza la creación directa (`POST /api/sucursales`)
+  si de todos modos se intenta pasar el cupo libre por otra vía, con un
+  mensaje indicando que debe enviar una solicitud.
 
-Si no defines la variable, no hay límite. Con ella configurada:
-
-- Configuración → Sucursales muestra cuántas sedes lleva usadas la empresa
-  frente al máximo del plan.
-- El botón "+ Nueva sede" se deshabilita al llegar al tope.
-- El backend también rechaza la creación (`POST /api/sucursales`) si de
-  todos modos se intenta llegar al límite por otra vía, con un mensaje claro
-  indicando que debe contactar a su proveedor para ampliarlo.
+Una instalación que corre suelta (sin panel-central al lado, o antes de
+guardar el RUC en Configuración → Datos de la empresa) no tiene registro de
+tenant, así que no aplica ningún cupo — se comporta como siempre, sin
+límite.
 
 ## Administración remota de cuentas admin (`PLATFORM_TOKEN`)
 

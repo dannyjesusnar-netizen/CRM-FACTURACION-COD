@@ -77,6 +77,13 @@ function emptySucursalForm() {
   return { nombre: '', direccion: '' };
 }
 
+function emptySolicitudSedeForm() {
+  return { nombre: '', direccion: '', motivo: '' };
+}
+
+const ESTADO_SOLICITUD_LABEL = { pendiente: 'Pendiente', aprobada: 'Aprobada', rechazada: 'Rechazada' };
+const ESTADO_SOLICITUD_BADGE = { pendiente: 'badge-warning', aprobada: 'badge-good', rechazada: 'badge-critical' };
+
 function todayStr() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -220,6 +227,10 @@ export default function Configuracion() {
   const [editingSucursalId, setEditingSucursalId] = useState(null);
   const [sucursalForm, setSucursalForm] = useState(emptySucursalForm());
   const [errorSucursal, setErrorSucursal] = useState('');
+  const [solicitudesSede, setSolicitudesSede] = useState([]);
+  const [showSolicitudSedeForm, setShowSolicitudSedeForm] = useState(false);
+  const [solicitudSedeForm, setSolicitudSedeForm] = useState(emptySolicitudSedeForm());
+  const [errorSolicitudSede, setErrorSolicitudSede] = useState('');
 
   // --- Roles de usuario ---
   const [roles, setRoles] = useState([]);
@@ -251,6 +262,7 @@ export default function Configuracion() {
     loadOperativos();
     loadSucursales();
     loadLimiteSucursales();
+    loadSolicitudesSede();
     loadRoles();
     loadMetodosPago();
   }, []);
@@ -393,6 +405,29 @@ export default function Configuracion() {
 
   function loadLimiteSucursales() {
     api.get('/sucursales/limite').then((res) => setLimiteSucursales(res.data));
+  }
+
+  function loadSolicitudesSede() {
+    api.get('/sucursales/solicitudes').then((res) => setSolicitudesSede(res.data));
+  }
+
+  function openNuevaSolicitudSede() {
+    setSolicitudSedeForm(emptySolicitudSedeForm());
+    setErrorSolicitudSede('');
+    setShowSolicitudSedeForm(true);
+  }
+
+  async function handleSubmitSolicitudSede(e) {
+    e.preventDefault();
+    setErrorSolicitudSede('');
+    try {
+      await api.post('/sucursales/solicitudes', solicitudSedeForm);
+      toast.success('Solicitud enviada — tu proveedor la revisará.');
+      setShowSolicitudSedeForm(false);
+      loadSolicitudesSede();
+    } catch (err) {
+      setErrorSolicitudSede(err.response?.data?.error || 'No se pudo enviar la solicitud.');
+    }
   }
 
   async function ensureRolesPredeterminados(rolesActuales) {
@@ -1122,68 +1157,95 @@ export default function Configuracion() {
             </>
           )}
 
-          {seccion === 'sucursales' && (
-            <>
-              <div className="report-toolbar">
-                <h3 style={{ margin: 0 }}>Sucursales</h3>
-                <button
-                  className="btn-primary"
-                  style={{ width: 'auto' }}
-                  onClick={openNewSucursal}
-                  disabled={limiteSucursales?.max != null && limiteSucursales.actual >= limiteSucursales.max}
-                  title={limiteSucursales?.max != null && limiteSucursales.actual >= limiteSucursales.max
-                    ? `Llegaste al máximo de sedes de tu plan (${limiteSucursales.max}).`
-                    : undefined}
-                >
-                  + Nueva sede
-                </button>
-              </div>
-              <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -8 }}>
-                Cada sede tiene su propio stock, ventas, compras y caja — como negocios independientes bajo la misma
-                empresa. Al iniciar sesión, quien tenga acceso a más de una elige con cuál trabajar.
-                {limiteSucursales?.max != null && (
-                  <> Tu plan permite hasta <strong>{limiteSucursales.max}</strong> sede(s) — llevas usadas{' '}
-                    <strong>{limiteSucursales.actual}</strong> de {limiteSucursales.max}.</>
-                )}
-              </p>
-              {limiteSucursales?.max != null && limiteSucursales.actual >= limiteSucursales.max && (
-                <p style={{ fontSize: 12, color: 'var(--danger, #c0392b)', marginTop: -6 }}>
-                  Llegaste al máximo de sedes de tu plan. Contacta a tu proveedor para ampliarlo.
-                </p>
-              )}
-              <table className="data-table">
-                <thead>
-                  <tr><th>Nombre</th><th>Dirección</th><th>Estado</th><th></th></tr>
-                </thead>
-                <tbody>
-                  {sucursales.map((s) => (
-                    <tr key={s.id}>
-                      <td>{s.nombre}{s.es_principal ? ' (principal)' : ''}</td>
-                      <td>{s.direccion || '—'}</td>
-                      <td>
-                        <span className={'badge ' + (s.activo ? 'badge-good' : 'badge-critical')}>
-                          {s.activo ? 'Activa' : 'Desactivada'}
-                        </span>
-                      </td>
-                      <td className="row-actions">
-                        <button className="btn-link" onClick={() => openEditSucursal(s)}>Editar</button>
-                        {s.es_principal ? (
-                          <span className="icon-link muted" title="No puedes desactivar la sede principal">—</span>
-                        ) : (
-                          <button className={'btn-link' + (s.activo ? ' danger' : '')} onClick={() => handleToggleSucursalEstado(s)}>
-                            {s.activo ? 'Desactivar' : 'Activar'}
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                  {sucursales.length === 0 && (
-                    <tr><td colSpan={4} className="empty-row">No hay sedes registradas.</td></tr>
+          {seccion === 'sucursales' && (() => {
+            const alcanzoLibres = limiteSucursales?.libres != null && limiteSucursales.actual >= limiteSucursales.libres;
+            return (
+              <>
+                <div className="report-toolbar">
+                  <h3 style={{ margin: 0 }}>Sucursales</h3>
+                  {alcanzoLibres ? (
+                    <button className="btn-primary" style={{ width: 'auto' }} onClick={openNuevaSolicitudSede}>
+                      Solicitar nueva sede
+                    </button>
+                  ) : (
+                    <button className="btn-primary" style={{ width: 'auto' }} onClick={openNewSucursal}>
+                      + Nueva sede
+                    </button>
                   )}
-                </tbody>
-              </table>
-            </>
-          )}
+                </div>
+                <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -8 }}>
+                  Cada sede tiene su propio stock, ventas, compras y caja — como negocios independientes bajo la misma
+                  empresa. Al iniciar sesión, quien tenga acceso a más de una elige con cuál trabajar.
+                  {limiteSucursales?.libres != null && (
+                    <> Puedes crear hasta <strong>{limiteSucursales.libres}</strong> sede(s) sin aprobación — llevas{' '}
+                      <strong>{limiteSucursales.actual}</strong> de {limiteSucursales.libres}.</>
+                  )}
+                </p>
+                {alcanzoLibres && (
+                  <p style={{ fontSize: 12, color: 'var(--danger, #c0392b)', marginTop: -6 }}>
+                    Ya usaste tus sedes libres. Para crear una sede adicional, envía una solicitud — la aprueba tu proveedor.
+                  </p>
+                )}
+                <table className="data-table">
+                  <thead>
+                    <tr><th>Nombre</th><th>Dirección</th><th>Estado</th><th></th></tr>
+                  </thead>
+                  <tbody>
+                    {sucursales.map((s) => (
+                      <tr key={s.id}>
+                        <td>{s.nombre}{s.es_principal ? ' (principal)' : ''}</td>
+                        <td>{s.direccion || '—'}</td>
+                        <td>
+                          <span className={'badge ' + (s.activo ? 'badge-good' : 'badge-critical')}>
+                            {s.activo ? 'Activa' : 'Desactivada'}
+                          </span>
+                        </td>
+                        <td className="row-actions">
+                          <button className="btn-link" onClick={() => openEditSucursal(s)}>Editar</button>
+                          {s.es_principal ? (
+                            <span className="icon-link muted" title="No puedes desactivar la sede principal">—</span>
+                          ) : (
+                            <button className={'btn-link' + (s.activo ? ' danger' : '')} onClick={() => handleToggleSucursalEstado(s)}>
+                              {s.activo ? 'Desactivar' : 'Activar'}
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                    {sucursales.length === 0 && (
+                      <tr><td colSpan={4} className="empty-row">No hay sedes registradas.</td></tr>
+                    )}
+                  </tbody>
+                </table>
+
+                {solicitudesSede.length > 0 && (
+                  <>
+                    <h4 style={{ marginTop: 24 }}>Mis solicitudes de sede</h4>
+                    <table className="data-table">
+                      <thead>
+                        <tr><th>Fecha</th><th>Sede solicitada</th><th>Dirección</th><th>Estado</th><th>Respuesta</th></tr>
+                      </thead>
+                      <tbody>
+                        {solicitudesSede.map((s) => (
+                          <tr key={s.id}>
+                            <td>{(s.created_at || '').slice(0, 10)}</td>
+                            <td>{s.nombre}</td>
+                            <td>{s.direccion || '—'}</td>
+                            <td>
+                              <span className={'badge ' + (ESTADO_SOLICITUD_BADGE[s.estado] || 'badge-neutral')}>
+                                {ESTADO_SOLICITUD_LABEL[s.estado] || s.estado}
+                              </span>
+                            </td>
+                            <td style={{ fontSize: 12, color: 'var(--ink-muted)' }}>{s.respuesta || '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </>
+                )}
+              </>
+            );
+          })()}
 
           {seccion === 'series' && (
             <>
@@ -1898,6 +1960,30 @@ export default function Configuracion() {
               <div className="modal-actions">
                 <button type="button" className="btn-secondary" onClick={() => setShowSucursalForm(false)}>Cancelar</button>
                 <button type="submit" className="btn-primary">{editingSucursalId ? 'Guardar cambios' : 'Crear sede'}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showSolicitudSedeForm && (
+        <div className="modal-overlay" onClick={() => setShowSolicitudSedeForm(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h2>Solicitar nueva sede</h2>
+            <p style={{ fontSize: 12, color: 'var(--ink-muted)' }}>
+              Ya usaste tus sedes libres. Esta solicitud la revisa tu proveedor — te avisamos cuando quede lista.
+            </p>
+            <form onSubmit={handleSubmitSolicitudSede}>
+              <label>Nombre</label>
+              <input required value={solicitudSedeForm.nombre} onChange={(e) => setSolicitudSedeForm({ ...solicitudSedeForm, nombre: e.target.value })} />
+              <label>Dirección</label>
+              <input value={solicitudSedeForm.direccion} onChange={(e) => setSolicitudSedeForm({ ...solicitudSedeForm, direccion: e.target.value })} />
+              <label>Motivo (opcional)</label>
+              <input value={solicitudSedeForm.motivo} onChange={(e) => setSolicitudSedeForm({ ...solicitudSedeForm, motivo: e.target.value })} placeholder="Ej. Abrimos un local nuevo en..." />
+              {errorSolicitudSede && <div className="form-error">{errorSolicitudSede}</div>}
+              <div className="modal-actions">
+                <button type="button" className="btn-secondary" onClick={() => setShowSolicitudSedeForm(false)}>Cancelar</button>
+                <button type="submit" className="btn-primary">Enviar solicitud</button>
               </div>
             </form>
           </div>

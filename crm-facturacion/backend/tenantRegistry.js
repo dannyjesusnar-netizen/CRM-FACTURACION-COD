@@ -63,6 +63,11 @@ const TENANT_SUSCRIPCION_COLUMNS = [
   // facturable como cualquier otro, solo que su db_file es la de siempre
   // (DEFAULT_DB_PATH) en vez de un archivo nuevo en /tenants.
   ['es_instalacion_base', 'INTEGER NOT NULL DEFAULT 0'],
+  // Cuántas sedes puede crear esta empresa sin pedir permiso (ver
+  // routes/sucursales.js del CRM). Al llegar a este número, la siguiente
+  // sede queda como solicitud pendiente hasta que el dueño de la plataforma
+  // la apruebe desde panel-central (ver setSedesLibres más abajo).
+  ['sedes_libres', 'INTEGER NOT NULL DEFAULT 1'],
 ];
 for (const [col, def] of TENANT_SUSCRIPCION_COLUMNS) {
   if (!tenantColumns.includes(col)) {
@@ -169,6 +174,16 @@ function setCosto(ruc, { costo_mensual, fecha_inicio_suscripcion }) {
   return findTenant(ruc);
 }
 
+// Cuántas sedes puede crear esta empresa sin pedir permiso — lo decide el
+// dueño de la plataforma desde panel-central (Companies.jsx), igual que
+// setCosto. No tiene tope superior propio: una empresa puede tener más
+// sedes que sedes_libres (las que se le aprobaron a mano vía solicitud),
+// solo que la siguiente por encima de este número vuelve a pedir permiso.
+function setSedesLibres(ruc, cantidad) {
+  registryDb.prepare('UPDATE tenants SET sedes_libres = ? WHERE ruc = ?').run(cantidad, ruc);
+  return findTenant(ruc);
+}
+
 function guardarTarjeta(ruc, { izipay_token, tarjeta_marca, tarjeta_ultimos4 }) {
   const tenant = findTenant(ruc);
   if (!tenant) return null;
@@ -229,6 +244,6 @@ function tenantsConCobroVencido() {
 
 module.exports = {
   tenantDbPath, findTenant, listPendientes, listTodos, crearTenant, adoptarInstanciaBase, aprobarTenant,
-  rechazarTenant, activarTenant, desactivarTenant, setCosto, guardarTarjeta, quitarTarjeta, registrarPago,
-  listarPagos, ingresoTotal, tenantsConCobroVencido,
+  rechazarTenant, activarTenant, desactivarTenant, setCosto, setSedesLibres, guardarTarjeta, quitarTarjeta,
+  registrarPago, listarPagos, ingresoTotal, tenantsConCobroVencido,
 };
