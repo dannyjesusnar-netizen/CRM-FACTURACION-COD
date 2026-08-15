@@ -23,6 +23,7 @@ export default function Caja() {
   const [empleados, setEmpleados] = useState([]);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
 
   const [showSaldoForm, setShowSaldoForm] = useState(false);
   const [saldoInput, setSaldoInput] = useState('');
@@ -35,10 +36,14 @@ export default function Caja() {
 
   function load() {
     setLoading(true);
+    setLoadError('');
     const params = { fecha };
     if (empleadoId) params.empleado_id = empleadoId;
     if (moneda) params.moneda = moneda;
-    api.get('/caja', { params }).then((res) => setData(res.data)).finally(() => setLoading(false));
+    api.get('/caja', { params })
+      .then((res) => setData(res.data))
+      .catch((err) => setLoadError(err.response?.data?.error || 'No se pudo cargar el arqueo de caja.'))
+      .finally(() => setLoading(false));
   }
 
   useEffect(() => { load(); }, [fecha, empleadoId, moneda]);
@@ -158,7 +163,12 @@ export default function Caja() {
         </p>
       )}
 
-      {loading || !data ? (
+      {loadError ? (
+        <div className="panel">
+          <p className="form-error">{loadError}</p>
+          <button className="btn-secondary" onClick={load}>Reintentar</button>
+        </div>
+      ) : loading || !data ? (
         <div className="panel"><span className="spinner" /> Cargando arqueo de caja...</div>
       ) : (
         <div className="caja-metodos-grid">
