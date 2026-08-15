@@ -331,80 +331,82 @@ export default function Dashboard() {
             <div className="page-loading"><span className="spinner" /> Cargando tablero de ventas...</div>
           ) : (
             <>
-              <div className="panel">
-                <PanelHeader color={colorTablero}>Ranking Trainers</PanelHeader>
-                <table className="data-table">
-                  <thead>
-                    <tr><th>Trainer</th><th>Sede</th><th>Turno</th><th style={{ textAlign: 'right' }}>Venta</th><th style={{ textAlign: 'right' }}>Meta</th><th>%</th></tr>
-                  </thead>
-                  <tbody>
-                    {rankingTrainers.map((r) => (
-                      <tr key={r.user_id} style={r.faltante ? { color: 'var(--ink-muted)', fontStyle: 'italic' } : undefined}>
-                        <td>{r.nombre}</td>
-                        <td>{r.sede || '—'}</td>
-                        <td>{r.turno === 'manana' ? 'Mañana' : r.turno === 'tarde' ? 'Tarde' : '—'}</td>
-                        <td style={{ textAlign: 'right' }}>{money(r.venta)}</td>
-                        <td style={{ textAlign: 'right' }}>{money(r.meta)}</td>
-                        <td>{pctBadge(r.porcentaje)}</td>
-                      </tr>
-                    ))}
-                    {rankingTrainers.length === 0 && (
-                      <tr><td colSpan={6} className="empty-row">No hay trainers con ventas en el período.</td></tr>
-                    )}
-                  </tbody>
-                  {rankingTrainers.length > 0 && (() => {
-                    const t = totalesRanking(rankingTrainers);
-                    return (
-                      <tfoot>
-                        <tr className="totals-footer">
-                          <td>Total</td>
-                          <td></td>
-                          <td></td>
-                          <td style={{ textAlign: 'right' }}>{money(t.venta)}</td>
-                          <td style={{ textAlign: 'right' }}>{money(t.meta)}</td>
-                          <td>{pctBadge(t.porcentaje)}</td>
+              <div className="chart-grid">
+                <div className="panel">
+                  <PanelHeader color={colorTablero}>Ranking Trainers</PanelHeader>
+                  <table className="data-table">
+                    <thead>
+                      <tr><th>Trainer</th><th>Sede</th><th>Turno</th><th style={{ textAlign: 'right' }}>Venta</th><th style={{ textAlign: 'right' }}>Meta</th><th>%</th></tr>
+                    </thead>
+                    <tbody>
+                      {rankingTrainers.map((r) => (
+                        <tr key={r.user_id} style={r.faltante ? { color: 'var(--ink-muted)', fontStyle: 'italic' } : undefined}>
+                          <td>{r.nombre}</td>
+                          <td>{r.sede || '—'}</td>
+                          <td>{r.turno === 'manana' ? 'Mañana' : r.turno === 'tarde' ? 'Tarde' : '—'}</td>
+                          <td style={{ textAlign: 'right' }}>{money(r.venta)}</td>
+                          <td style={{ textAlign: 'right' }}>{money(r.meta)}</td>
+                          <td>{pctBadge(r.porcentaje)}</td>
                         </tr>
-                      </tfoot>
-                    );
-                  })()}
-                </table>
-              </div>
+                      ))}
+                      {rankingTrainers.length === 0 && (
+                        <tr><td colSpan={6} className="empty-row">No hay trainers con ventas en el período.</td></tr>
+                      )}
+                    </tbody>
+                    {rankingTrainers.length > 0 && (() => {
+                      const t = totalesRanking(rankingTrainers);
+                      return (
+                        <tfoot>
+                          <tr className="totals-footer">
+                            <td>Total</td>
+                            <td></td>
+                            <td></td>
+                            <td style={{ textAlign: 'right' }}>{money(t.venta)}</td>
+                            <td style={{ textAlign: 'right' }}>{money(t.meta)}</td>
+                            <td>{pctBadge(t.porcentaje)}</td>
+                          </tr>
+                        </tfoot>
+                      );
+                    })()}
+                  </table>
+                </div>
 
-              <div className="panel">
-                <PanelHeader color={colorTablero}>Ranking Vendedores</PanelHeader>
-                <table className="data-table">
-                  <thead>
-                    <tr><th>Vendedor</th><th>Sede</th><th style={{ textAlign: 'right' }}>Venta</th><th style={{ textAlign: 'right' }}>Meta</th><th>%</th></tr>
-                  </thead>
-                  <tbody>
-                    {rankingVendedores.map((r) => (
-                      <tr key={r.user_id} style={r.faltante ? { color: 'var(--ink-muted)', fontStyle: 'italic' } : undefined}>
-                        <td>{r.nombre}</td>
-                        <td>{r.sede || '—'}</td>
-                        <td style={{ textAlign: 'right' }}>{money(r.venta)}</td>
-                        <td style={{ textAlign: 'right' }}>{money(r.meta)}</td>
-                        <td>{pctBadge(r.porcentaje)}</td>
-                      </tr>
-                    ))}
-                    {rankingVendedores.length === 0 && (
-                      <tr><td colSpan={5} className="empty-row">No hay vendedores con ventas en el período.</td></tr>
-                    )}
-                  </tbody>
-                  {rankingVendedores.length > 0 && (() => {
-                    const t = totalesRanking(rankingVendedores);
-                    return (
-                      <tfoot>
-                        <tr className="totals-footer">
-                          <td>Total</td>
-                          <td></td>
-                          <td style={{ textAlign: 'right' }}>{money(t.venta)}</td>
-                          <td style={{ textAlign: 'right' }}>{money(t.meta)}</td>
-                          <td>{pctBadge(t.porcentaje)}</td>
+                <div className="panel">
+                  <PanelHeader color={colorTablero}>Ranking Vendedores</PanelHeader>
+                  <table className="data-table">
+                    <thead>
+                      <tr><th>Vendedor</th><th>Sede</th><th style={{ textAlign: 'right' }}>Venta</th><th style={{ textAlign: 'right' }}>Meta</th><th>%</th></tr>
+                    </thead>
+                    <tbody>
+                      {rankingVendedores.map((r) => (
+                        <tr key={r.user_id} style={r.faltante ? { color: 'var(--ink-muted)', fontStyle: 'italic' } : undefined}>
+                          <td>{r.nombre}</td>
+                          <td>{r.sede || '—'}</td>
+                          <td style={{ textAlign: 'right' }}>{money(r.venta)}</td>
+                          <td style={{ textAlign: 'right' }}>{money(r.meta)}</td>
+                          <td>{pctBadge(r.porcentaje)}</td>
                         </tr>
-                      </tfoot>
-                    );
-                  })()}
-                </table>
+                      ))}
+                      {rankingVendedores.length === 0 && (
+                        <tr><td colSpan={5} className="empty-row">No hay vendedores con ventas en el período.</td></tr>
+                      )}
+                    </tbody>
+                    {rankingVendedores.length > 0 && (() => {
+                      const t = totalesRanking(rankingVendedores);
+                      return (
+                        <tfoot>
+                          <tr className="totals-footer">
+                            <td>Total</td>
+                            <td></td>
+                            <td style={{ textAlign: 'right' }}>{money(t.venta)}</td>
+                            <td style={{ textAlign: 'right' }}>{money(t.meta)}</td>
+                            <td>{pctBadge(t.porcentaje)}</td>
+                          </tr>
+                        </tfoot>
+                      );
+                    })()}
+                  </table>
+                </div>
               </div>
 
               <div className="chart-grid">
