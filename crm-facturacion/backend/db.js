@@ -1133,6 +1133,30 @@ CREATE TABLE IF NOT EXISTS promocion_items (
     db.exec('ALTER TABLE invoice_items ADD COLUMN promocion_id INTEGER REFERENCES promociones(id)');
   }
 
+  // Descuentos con nombre (Configuración → Descuentos): a diferencia de las
+  // Promociones de Inventario (atadas a productos), estos son un % que se
+  // aplica sobre el total de la venta completa (mismo campo
+  // invoices.descuento_global_pct que ya existía), con nombre y vigencia
+  // propios (ej. "Descuento Gimnasio" 10%) para que el vendedor lo elija de
+  // una lista en vez de escribir el % a mano cada vez. sucursal_id NULL =
+  // todas las sedes, mismo criterio que metas_venta_sede/promociones.
+  db.exec(`
+CREATE TABLE IF NOT EXISTS descuentos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  nombre TEXT NOT NULL,
+  porcentaje REAL NOT NULL,
+  sucursal_id INTEGER REFERENCES sucursales(id),
+  fecha_inicio TEXT NOT NULL,
+  fecha_fin TEXT NOT NULL,
+  activo INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+`);
+  const invoiceColumnsDescuento = db.prepare("PRAGMA table_info(invoices)").all().map((c) => c.name);
+  if (!invoiceColumnsDescuento.includes('descuento_id')) {
+    db.exec('ALTER TABLE invoices ADD COLUMN descuento_id INTEGER REFERENCES descuentos(id)');
+  }
+
   // Backfill: todo producto con stock que aun no tenga su propia fila en
   // sucursal_stock para la sede principal la recibe con su stock agregado
   // actual. Sin esto, esos productos aparecerian con stock cero en la sede

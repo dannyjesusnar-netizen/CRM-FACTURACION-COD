@@ -203,7 +203,7 @@ function esMetodoPagoValido(codigo) {
 router.post('/', async (req, res) => {
   const {
     tipo_comprobante, client_id, items, moneda, observaciones, fecha_emision, forma_pago,
-    numero: numeroManual, descuento_global_pct,
+    numero: numeroManual, descuento_global_pct, descuento_id,
     modifica_tipo, modifica_serie, modifica_numero, tipo_nota,
     monto_pagado: montoPagadoBody, medio_abono, pagos, atribuido_a_id,
   } = req.body || {};
@@ -404,8 +404,8 @@ router.post('/', async (req, res) => {
       `INSERT INTO invoices (
          tipo_comprobante, serie, numero, client_id, created_by, fecha_emision, moneda,
          subtotal, igv, descuento_global_pct, total, estado, observaciones, forma_pago, monto_pagado,
-         modifica_tipo, modifica_serie, modifica_numero, tipo_nota, sucursal_id, atribuido_a
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'emitido', ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         modifica_tipo, modifica_serie, modifica_numero, tipo_nota, sucursal_id, atribuido_a, descuento_id
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'emitido', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       tipo_comprobante,
       serie,
@@ -426,7 +426,8 @@ router.post('/', async (req, res) => {
       tipo_comprobante === 'nota_credito' && modifica_numero ? Number(modifica_numero) : null,
       tipo_comprobante === 'nota_credito' ? (tipo_nota || null) : null,
       req.sucursalId,
-      atribuidoA
+      atribuidoA,
+      descuento_id || null
     );
     const invoiceId = info.lastInsertRowid;
     const insertItem = db.prepare(

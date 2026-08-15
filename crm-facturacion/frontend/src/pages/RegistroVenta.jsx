@@ -32,6 +32,12 @@ export default function RegistroVenta() {
   const [items, setItems] = useState([]);
   const [observaciones, setObservaciones] = useState('');
   const [descuentoGlobal, setDescuentoGlobal] = useState(0);
+  // Descuento con nombre elegido de Configuración → Descuentos (ver
+  // routes/descuentos.js) — autocompleta el % de arriba; si el vendedor lo
+  // vuelve a editar a mano, se desvincula del nombre para no etiquetar mal
+  // un % que ya no corresponde al descuento elegido.
+  const [descuentosActivos, setDescuentosActivos] = useState([]);
+  const [descuentoId, setDescuentoId] = useState('');
   const [cuenta, setCuenta] = useState(modoAbonado ? 'abonado' : 'efectivo');
   const [pago, setPago] = useState('');
   const [medioAbono, setMedioAbono] = useState('efectivo');
@@ -77,6 +83,7 @@ export default function RegistroVenta() {
       api.get('/invoices/entrenadores').then((res) => setEntrenadores(res.data)).catch(() => {});
     }
     api.get('/promociones/activas').then((res) => setPromosActivas(res.data)).catch(() => {});
+    api.get('/descuentos/activos').then((res) => setDescuentosActivos(res.data)).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -117,6 +124,17 @@ export default function RegistroVenta() {
     return m;
   }, [promosActivas]);
   const combosActivos = useMemo(() => promosActivas.filter((p) => p.tipo === 'combo'), [promosActivas]);
+
+  function seleccionarDescuento(id) {
+    setDescuentoId(id);
+    const d = descuentosActivos.find((x) => String(x.id) === String(id));
+    setDescuentoGlobal(d ? d.porcentaje : 0);
+  }
+
+  function editarDescuentoGlobalManual(valor) {
+    setDescuentoGlobal(valor);
+    setDescuentoId('');
+  }
 
   function addProducto(p) {
     const oferta = ofertaPorProducto.get(p.id);
@@ -262,6 +280,7 @@ export default function RegistroVenta() {
       observaciones,
       fecha_emision: fecha,
       descuento_global_pct: Number(descuentoGlobal || 0),
+      descuento_id: descuentoId || null,
       numero: numero || undefined,
       serie,
     };
@@ -450,9 +469,20 @@ export default function RegistroVenta() {
               <input value={observaciones} onChange={(e) => setObservaciones(e.target.value)} />
             </div>
             <div className="venta-bottom-right">
+              {descuentosActivos.length > 0 && (
+                <div className="venta-totals-row">
+                  <span>Descuento:</span>
+                  <select value={descuentoId} onChange={(e) => seleccionarDescuento(e.target.value)}>
+                    <option value="">Sin descuento con nombre</option>
+                    {descuentosActivos.map((d) => (
+                      <option key={d.id} value={d.id}>{d.nombre} ({d.porcentaje}%)</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div className="venta-totals-row">
                 <span>Desc. Global %:</span>
-                <input type="number" min="0" max="100" value={descuentoGlobal} onChange={(e) => setDescuentoGlobal(e.target.value)} />
+                <input type="number" min="0" max="100" value={descuentoGlobal} onChange={(e) => editarDescuentoGlobalManual(e.target.value)} />
               </div>
               <div className="venta-totals-row">
                 <span>Ganancia:</span>
