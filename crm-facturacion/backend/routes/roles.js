@@ -20,13 +20,18 @@ function conPermisos(role) {
   });
 
   const permisos = MODULOS.map((m) => {
-    const acciones = (ACCIONES_POR_MODULO[m.key] || []).map((a) => ({
-      accion: a.key,
-      label: a.label,
-      grupo: a.grupo,
-      // Sin fila guardada todavía = habilitada por defecto (mismo criterio que tieneAccion()).
-      habilitado: accionesPorModulo[m.key]?.[a.key] ?? true,
-    }));
+    const acciones = (ACCIONES_POR_MODULO[m.key] || []).map((a) => {
+      // Sin fila guardada todavía: habilitada por defecto (mismo criterio
+      // que tieneAccion()) salvo que la acción declare default:false — hoy
+      // solo "tablero_ventas" lo hace (ver utils/permisos.js).
+      const porDefecto = a.default === false ? false : true;
+      return {
+        accion: a.key,
+        label: a.label,
+        grupo: a.grupo,
+        habilitado: accionesPorModulo[m.key]?.[a.key] ?? porDefecto,
+      };
+    });
     return { modulo: m.key, label: m.label, habilitado: !!porModulo[m.key], acciones };
   });
   return { ...role, permisos };

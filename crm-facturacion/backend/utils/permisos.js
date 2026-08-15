@@ -1,9 +1,10 @@
 const db = require('../db');
 
 // Módulos reales del sistema que se pueden habilitar/deshabilitar por rol.
-// "dashboard" solo se aplica en el frontend (la pantalla de Inicio comparte
-// los mismos endpoints de /api/reports que Reportes, así que no tiene un
-// candado propio en el backend).
+// "dashboard" en sí (la pantalla de Inicio) solo se aplica en el frontend —
+// comparte los mismos endpoints de /api/reports que Reportes — pero su
+// acción "tablero_ventas" sí tiene candado propio en el backend (ver
+// puedeVerTableroVentas más abajo).
 const MODULOS = [
   { key: 'dashboard', label: 'Inicio' },
   { key: 'ventas', label: 'Ventas' },
@@ -19,7 +20,15 @@ const MODULOS = [
 // Si un módulo está deshabilitado, ninguna de sus acciones aplica sin
 // importar lo que diga esta tabla.
 const ACCIONES_POR_MODULO = {
-  dashboard: [],
+  // "tablero_ventas" es la única acción de todo este archivo cuyo "sin fila
+  // guardada" significa NO tiene acceso (default: false) en vez del
+  // default-true del resto del sistema — es una vista ejecutiva que cruza
+  // todas las sedes, así que cada rol debe ganarla explícitamente desde
+  // Configuración → Roles → Inicio, nunca solo por tener "Inicio" prendido.
+  // Ver puedeVerTableroVentas() más abajo y su uso en routes/roles.js.
+  dashboard: [
+    { key: 'tablero_ventas', label: 'Tablero de Ventas (rankings, metas y totales entre sedes)', grupo: 'Inicio', default: false },
+  ],
   ventas: [
     { key: 'factura', label: 'Facturas', grupo: 'Comprobantes' },
     { key: 'boleta', label: 'Boletas', grupo: 'Comprobantes' },
@@ -110,11 +119,9 @@ function tieneAccion(user, modulo, accion) {
   return !!fila.habilitado;
 }
 
-// Acceso al Tablero de Ventas ejecutivo (cross-sede, en Dashboard): solo
-// Gerencia o un empleado con el rol personalizado "Supervisor" — a
-// diferencia de tienePermiso/tieneAccion, aquí NO aplica la compatibilidad
-// "sin custom_role_id = acceso total": un Cajero (o cualquier otro rol) no
-// debe ver las cifras de todas las sedes solo por no tener rol asignado.
+// Reatribuir una venta a otro Trainer/Supervisor desde Facturas (distinto de
+// ver el Tablero de Ventas): sigue reservado a Gerencia o al rol
+// personalizado "Supervisor", sin pasar por Configuración → Roles.
 function esGerenciaOSupervisor(user) {
   if (!user) return false;
   if (user.role === 'gerencia') return true;
@@ -127,7 +134,32 @@ function esGerenciaOSupervisor(user) {
 function requireGerenciaOSupervisor(req, res, next) {
   if (!req.user) return res.status(401).json({ error: 'No autenticado.' });
   if (esGerenciaOSupervisor(req.user)) return next();
-  return res.status(403).json({ error: 'Solo Gerencia o un Supervisor puede acceder al Tablero de Ventas.' });
+  return res.status(403).json({ error: 'Solo Gerencia o un Supervisor puede reatribuir esta venta.' });
+}
+
+// Acceso al Tablero de Ventas ejecutivo (cross-sede, en Dashboard): Gerencia
+// siempre; cualquier otro rol solo si Configuración → Roles → Inicio →
+// "Tablero de Ventas" está prendido explícitamente para ese rol
+// (role_acciones), sin el default-true ni la compatibilidad "sin
+// custom_role_id = acceso total" que sí aplican al resto de tienePermiso/
+// tieneAccion — un Cajero (o cualquier otro rol sin ese toggle) no debe ver
+// las cifras de todas las sedes solo por tener "Inicio" prendido.
+function puedeVerTableroVentas(user) {
+  if (!user) return false;
+  if (user.role === 'gerencia') return true;
+  const userRow = db.prepare('SELECT custom_role_id FROM users WHERE id = ?').get(user.id);
+  if (!userRow || !userRow.custom_role_id) return false;
+  if (!tienePermiso(user, 'dashboard')) return false;
+  const fila = db.prepare(
+    'SELECT habilitado FROM role_acciones WHERE role_id = ? AND modulo = ? AND accion = ?'
+  ).get(userRow.custom_role_id, 'dashboard', 'tablero_ventas');
+  return !!(fila && fila.habilitado);
+}
+
+function requireTableroVentas(req, res, next) {
+  if (!req.user) return res.status(401).json({ error: 'No autenticado.' });
+  if (puedeVerTableroVentas(req.user)) return next();
+  return res.status(403).json({ error: 'No tienes permiso para ver el Tablero de Ventas.' });
 }
 
 function requirePermiso(modulo) {
@@ -171,4 +203,6 @@ module.exports = {
   requireAccion,
   esGerenciaOSupervisor,
   requireGerenciaOSupervisor,
+  puedeVerTableroVentas,
+  requireTableroVentas,
 };

@@ -31,7 +31,7 @@ export default function Invoices() {
   const toast = useToast();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const puedeReatribuir = !!user?.puede_ver_tablero;
+  const puedeReatribuir = !!user?.puede_reatribuir_venta;
   const [invoices, setInvoices] = useState([]);
   const [metodosPago, setMetodosPago] = useState([]);
   const [entrenadores, setEntrenadores] = useState([]);

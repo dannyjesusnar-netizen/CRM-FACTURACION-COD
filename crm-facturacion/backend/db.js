@@ -1157,6 +1157,25 @@ CREATE TABLE IF NOT EXISTS descuentos (
     db.exec('ALTER TABLE invoices ADD COLUMN descuento_id INTEGER REFERENCES descuentos(id)');
   }
 
+  // Backfill: el toggle "Tablero de Ventas" (Configuración → Roles →
+  // Inicio) es nuevo — antes de que existiera, cualquier rol llamado
+  // "Supervisor" ya veía el Tablero de Ventas del Dashboard de forma
+  // automática por su nombre (ver utils/permisos.js:puedeVerTableroVentas).
+  // Para no quitarle ese acceso a nadie de golpe, se deja guardada aquí una
+  // sola vez la fila explícita equivalente; de ahí en adelante Gerencia
+  // decide todo desde Configuración → Roles, sin casos especiales por
+  // nombre de rol.
+  const rolesSupervisorBackfill = db.prepare("SELECT id FROM roles WHERE nombre = 'Supervisor'").all();
+  const tieneAccionTableroBackfill = db.prepare(
+    "SELECT 1 FROM role_acciones WHERE role_id = ? AND modulo = 'dashboard' AND accion = 'tablero_ventas'"
+  );
+  const insertarAccionTableroBackfill = db.prepare(
+    "INSERT INTO role_acciones (role_id, modulo, accion, habilitado) VALUES (?, 'dashboard', 'tablero_ventas', 1)"
+  );
+  for (const r of rolesSupervisorBackfill) {
+    if (!tieneAccionTableroBackfill.get(r.id)) insertarAccionTableroBackfill.run(r.id);
+  }
+
   // Backfill: todo producto con stock que aun no tenga su propia fila en
   // sucursal_stock para la sede principal la recibe con su stock agregado
   // actual. Sin esto, esos productos aparecerian con stock cero en la sede
