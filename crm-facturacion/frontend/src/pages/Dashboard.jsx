@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Line, Bar } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
@@ -11,7 +11,7 @@ import {
   Legend,
   Filler,
 } from 'chart.js';
-import { Circle, Triangle, Diamond } from 'lucide-react';
+import { Circle, Triangle, Diamond, Camera } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
@@ -64,12 +64,60 @@ function pctBadge(pct) {
 
 // Franja de color centrada en la parte superior de cada panel del Tablero
 // de Ventas — el color lo elige Gerencia (empresa.color_tablero_ventas).
-function PanelHeader({ children, color }) {
+// onCopiar (opcional) agrega un botón de cámara para copiar/descargar el
+// panel completo como imagen (ver copiarPanelComoImagen).
+function PanelHeader({ children, color, onCopiar }) {
   return (
     <div className="panel-banda" style={{ background: color }}>
       <h3>{children}</h3>
+      {onCopiar && (
+        <button type="button" className="panel-banda-copy-btn" onClick={onCopiar} title="Copiar como imagen (para enviar por WhatsApp)">
+          <Camera size={14} />
+        </button>
+      )}
     </div>
   );
+}
+
+// Convierte un panel completo (incluida la franja de color y todas las
+// filas de la tabla, aunque no quepan en pantalla) en una imagen PNG:
+// primero intenta copiarla directo al portapapeles para pegarla en
+// WhatsApp Web con Ctrl+V; si el navegador no lo soporta, la descarga
+// como archivo para adjuntarla manualmente.
+async function copiarPanelComoImagen(ref, nombreArchivo, toast) {
+  if (!ref.current) return;
+  try {
+    const { default: html2canvas } = await import('html2canvas');
+    const canvas = await html2canvas(ref.current, {
+      scale: 2,
+      logging: false,
+      ignoreElements: (el) => el.classList?.contains('panel-banda-copy-btn'),
+    });
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+    if (!blob) throw new Error('sin blob');
+
+    if (navigator.clipboard && window.ClipboardItem) {
+      try {
+        await navigator.clipboard.write([new window.ClipboardItem({ 'image/png': blob })]);
+        toast.success('Imagen copiada — pégala directo en WhatsApp con Ctrl+V (o Cmd+V).');
+        return;
+      } catch {
+        // El navegador no dejó copiar al portapapeles (falta de permiso o
+        // sin soporte) — sigue al respaldo de descarga.
+      }
+    }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = nombreArchivo;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    toast.success('Imagen descargada — ya puedes enviarla por WhatsApp.');
+  } catch {
+    toast.error('No se pudo generar la imagen de este panel.');
+  }
 }
 
 export default function Dashboard() {
@@ -77,6 +125,8 @@ export default function Dashboard() {
   const toast = useToast();
   const puedeVerTablero = !!user?.puede_ver_tablero;
   const colorTablero = empresa?.color_tablero_ventas || '#16a34a';
+  const rankingTrainersRef = useRef(null);
+  const rankingVendedoresRef = useRef(null);
 
   async function guardarColorTablero(nuevoColor) {
     if (!empresa) return;
@@ -332,8 +382,8 @@ export default function Dashboard() {
           ) : (
             <>
               <div className="chart-grid">
-                <div className="panel">
-                  <PanelHeader color={colorTablero}>Ranking Trainers</PanelHeader>
+                <div className="panel" ref={rankingTrainersRef}>
+                  <PanelHeader color={colorTablero} onCopiar={() => copiarPanelComoImagen(rankingTrainersRef, 'ranking-trainers.png', toast)}>Ranking Trainers</PanelHeader>
                   <table className="data-table">
                     <thead>
                       <tr><th>Trainer</th><th>Sede</th><th>Turno</th><th style={{ textAlign: 'right' }}>Venta</th><th style={{ textAlign: 'right' }}>Meta</th><th>%</th></tr>
@@ -371,8 +421,8 @@ export default function Dashboard() {
                   </table>
                 </div>
 
-                <div className="panel">
-                  <PanelHeader color={colorTablero}>Ranking Vendedores</PanelHeader>
+                <div className="panel" ref={rankingVendedoresRef}>
+                  <PanelHeader color={colorTablero} onCopiar={() => copiarPanelComoImagen(rankingVendedoresRef, 'ranking-vendedores.png', toast)}>Ranking Vendedores</PanelHeader>
                   <table className="data-table">
                     <thead>
                       <tr><th>Vendedor</th><th>Sede</th><th style={{ textAlign: 'right' }}>Venta</th><th style={{ textAlign: 'right' }}>Meta</th><th>%</th></tr>
