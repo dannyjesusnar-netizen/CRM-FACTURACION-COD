@@ -666,6 +666,16 @@ CREATE TABLE IF NOT EXISTS metas_venta_sede (
 );
 `);
 
+  // dotacion: cantidad de personas sobre la que Gerencia quiere repartir el
+  // pool, asignada a mano (no siempre coincide con los empleados activos
+  // registrados hoy — puede ser la dotación planeada del equipo). En 0
+  // (sin asignar), routes/tablero.js sigue repartiendo entre los empleados
+  // activos reales, igual que antes de que existiera este campo.
+  const metasVentaSedeColumns = db.prepare("PRAGMA table_info(metas_venta_sede)").all().map((c) => c.name);
+  if (!metasVentaSedeColumns.includes('dotacion')) {
+    db.exec('ALTER TABLE metas_venta_sede ADD COLUMN dotacion INTEGER NOT NULL DEFAULT 0');
+  }
+
   const empresaColumns = db.prepare("PRAGMA table_info(empresa_config)").all().map((c) => c.name);
   const EMPRESA_NEW_COLUMNS = [
     // Texto libre: no fabricamos el catálogo oficial CIIU/MCC de SUNAT.

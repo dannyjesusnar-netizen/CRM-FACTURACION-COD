@@ -62,8 +62,11 @@ const MARCA_EXPR = `COALESCE(${PROVEEDOR_SUBQUERY}, 'Sin marca')`;
 // atribuye a invoices.atribuido_a si el vendedor eligió esa opción al
 // emitir el comprobante (ver routes/invoices.js), o a created_by (quien lo
 // registró) si no. La meta no se asigna persona por persona: Gerencia
-// asigna un pool por sede+categoría (metas_venta_sede) que se reparte en
-// partes iguales entre los empleados activos de esa categoría en esa sede.
+// asigna un pool por sede+categoría (metas_venta_sede) que se reparte entre
+// la dotación asignada a mano para ese equipo (metas_venta_sede.dotacion);
+// si no se asignó ninguna dotación (0), se reparte entre los empleados
+// activos de esa categoría en esa sede, como antes de que existiera ese
+// campo.
 router.get('/ranking-personal', (req, res) => {
   const categoria = req.query.categoria;
   if (!['trainer', 'vendedor', 'supervisor'].includes(categoria)) {
@@ -84,9 +87,10 @@ router.get('/ranking-personal', (req, res) => {
   `).all(String(anio), mesPad, categoria, sucursalId, sucursalId);
 
   const pools = db.prepare(
-    'SELECT sucursal_id, monto_meta FROM metas_venta_sede WHERE categoria_staff = ? AND anio = ? AND mes = ?'
+    'SELECT sucursal_id, monto_meta, dotacion FROM metas_venta_sede WHERE categoria_staff = ? AND anio = ? AND mes = ?'
   ).all(categoria, anio, mes);
   const poolMap = new Map(pools.map((p) => [p.sucursal_id, p.monto_meta]));
+  const dotacionMap = new Map(pools.map((p) => [p.sucursal_id, p.dotacion]));
   const conteos = db.prepare(
     `SELECT sucursal_id, COUNT(*) AS cantidad FROM users
      WHERE categoria_staff = ? AND activo = 1 AND sucursal_id IS NOT NULL GROUP BY sucursal_id`
@@ -94,7 +98,7 @@ router.get('/ranking-personal', (req, res) => {
   const conteoMap = new Map(conteos.map((c) => [c.sucursal_id, c.cantidad]));
 
   const withPct = rows.map((r) => {
-    const cantidad = conteoMap.get(r.sucursal_id) || 0;
+    const cantidad = dotacionMap.get(r.sucursal_id) || conteoMap.get(r.sucursal_id) || 0;
     const pool = poolMap.get(r.sucursal_id) || 0;
     const meta = cantidad > 0 ? pool / cantidad : 0;
     return {

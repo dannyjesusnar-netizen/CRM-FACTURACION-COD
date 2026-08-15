@@ -182,10 +182,11 @@ export default function Configuracion() {
 
   // --- Metas de venta (Tablero de Ventas) ---
   // Gerencia asigna un monto "pool" por sede y categoría (Vendedores /
-  // Trainers) cada mes; el backend lo reparte en partes iguales entre los
-  // empleados activos de esa categoría en esa sede (no hay meta individual
-  // manual). filasMetas: [{ sucursal_id, sede_nombre, categoria_staff,
-  // cantidad_empleados, monto_meta }] — una fila por sede x categoría.
+  // Trainers) cada mes; el backend lo reparte entre la dotación asignada a
+  // mano para ese equipo (o entre los empleados activos si no se asignó
+  // ninguna dotación). filasMetas: [{ sucursal_id, sede_nombre,
+  // categoria_staff, cantidad_empleados, monto_meta, dotacion }] — una fila
+  // por sede x categoría.
   const hoy = new Date();
   const [metasAnio, setMetasAnio] = useState(hoy.getFullYear());
   const [metasMes, setMetasMes] = useState(hoy.getMonth() + 1);
@@ -292,6 +293,21 @@ export default function Configuracion() {
       )));
     } catch (err) {
       toast.error(err.response?.data?.error || 'No se pudo guardar la meta.');
+    } finally {
+      setMetasGuardando(null);
+    }
+  }
+
+  async function guardarDotacion(sucursalId, categoriaStaff, dotacion) {
+    const key = `${sucursalId}:${categoriaStaff}`;
+    setMetasGuardando(key);
+    try {
+      await api.put('/metas-venta', { sucursal_id: sucursalId, categoria_staff: categoriaStaff, anio: metasAnio, mes: metasMes, dotacion });
+      setFilasMetas((filas) => filas.map((f) => (
+        f.sucursal_id === sucursalId && f.categoria_staff === categoriaStaff ? { ...f, dotacion } : f
+      )));
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'No se pudo guardar la dotación.');
     } finally {
       setMetasGuardando(null);
     }
@@ -1313,9 +1329,10 @@ export default function Configuracion() {
                 <h3 style={{ margin: 0 }}>Metas de venta</h3>
               </div>
               <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -8 }}>
-                Asigna una meta mensual (S/) por sede para Vendedores y para Trainers — el sistema la
-                reparte en partes iguales entre los empleados activos de esa categoría en esa sede.
-                Alimenta el Ranking Trainers/Vendedores y el Resumen de sedes del Dashboard.
+                Asigna una meta mensual (S/) por sede para Vendedores y para Trainers, y opcionalmente la
+                dotación de ese equipo (cuántas personas la reparten) — si no la asignas, se reparte entre
+                los empleados activos de esa categoría en esa sede. Alimenta el Ranking Trainers/Vendedores
+                y el Resumen de sedes del Dashboard.
               </p>
               <div className="filter-panel">
                 <div className="filter-field">
@@ -1335,6 +1352,7 @@ export default function Configuracion() {
                 <thead>
                   <tr>
                     <th>Sede</th><th>Categoría</th><th style={{ textAlign: 'right' }}>Empleados activos</th>
+                    <th style={{ textAlign: 'right' }}>Dotación</th>
                     <th style={{ textAlign: 'right' }}>Meta total del pool (S/)</th>
                     <th style={{ textAlign: 'right' }}>Meta individual aprox.</th>
                   </tr>
@@ -1342,12 +1360,33 @@ export default function Configuracion() {
                 <tbody>
                   {filasMetas.map((f) => {
                     const key = `${f.sucursal_id}:${f.categoria_staff}`;
-                    const individual = f.cantidad_empleados > 0 ? f.monto_meta / f.cantidad_empleados : 0;
+                    const dotacionEfectiva = f.dotacion > 0 ? f.dotacion : f.cantidad_empleados;
+                    const individual = dotacionEfectiva > 0 ? f.monto_meta / dotacionEfectiva : 0;
                     return (
                       <tr key={key}>
                         <td>{f.sede_nombre}</td>
                         <td>{CATEGORIA_STAFF_LABEL[f.categoria_staff] || f.categoria_staff}</td>
                         <td style={{ textAlign: 'right' }}>{f.cantidad_empleados}</td>
+                        <td style={{ textAlign: 'right' }}>
+                          <input
+                            type="number"
+                            min="0"
+                            step="1"
+                            style={{ width: 80, textAlign: 'right' }}
+                            disabled={metasGuardando === key}
+                            placeholder={String(f.cantidad_empleados)}
+                            value={f.dotacion || ''}
+                            onChange={(e) => {
+                              const valor = e.target.value;
+                              setFilasMetas((filas) => filas.map((fila) => (
+                                fila.sucursal_id === f.sucursal_id && fila.categoria_staff === f.categoria_staff
+                                  ? { ...fila, dotacion: valor === '' ? '' : Number(valor) }
+                                  : fila
+                              )));
+                            }}
+                            onBlur={(e) => guardarDotacion(f.sucursal_id, f.categoria_staff, Number(e.target.value) || 0)}
+                          />
+                        </td>
                         <td style={{ textAlign: 'right' }}>
                           <input
                             type="number"
@@ -1368,13 +1407,13 @@ export default function Configuracion() {
                           />
                         </td>
                         <td style={{ textAlign: 'right', color: 'var(--ink-muted)' }}>
-                          {f.cantidad_empleados > 0 ? `S/ ${individual.toFixed(2)}` : '—'}
+                          {dotacionEfectiva > 0 ? `S/ ${individual.toFixed(2)}` : '—'}
                         </td>
                       </tr>
                     );
                   })}
                   {filasMetas.length === 0 && (
-                    <tr><td colSpan={5} className="empty-row">No hay sedes activas.</td></tr>
+                    <tr><td colSpan={6} className="empty-row">No hay sedes activas.</td></tr>
                   )}
                 </tbody>
               </table>
