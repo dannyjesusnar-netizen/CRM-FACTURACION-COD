@@ -313,6 +313,7 @@ export default function Products() {
 
       <div className="ventas-actions">
         <button className="ventas-action-btn">Productos</button>
+        <button className="ventas-action-btn" onClick={() => navigate('/promociones')}>Promociones</button>
         <button className="ventas-action-btn" onClick={() => navigate('/movimientos')}>Movimientos</button>
         <button className="ventas-action-btn" onClick={() => navigate('/lotes')}>Lotes y Series</button>
         <button className="ventas-action-btn" onClick={handleExportar}>Lista de Precios</button>

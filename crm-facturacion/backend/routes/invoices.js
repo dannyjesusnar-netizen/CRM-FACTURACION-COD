@@ -344,6 +344,7 @@ router.post('/', async (req, res) => {
       descuento_pct: descuentoPct,
       subtotal: lineNeta,
       igv_item: igvLinea,
+      promocion_id: it.promocion_id || null,
     };
   });
 
@@ -429,14 +430,14 @@ router.post('/', async (req, res) => {
     );
     const invoiceId = info.lastInsertRowid;
     const insertItem = db.prepare(
-      `INSERT INTO invoice_items (invoice_id, product_id, descripcion, cantidad, precio_unitario, descuento_pct, subtotal, igv_item)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO invoice_items (invoice_id, product_id, descripcion, cantidad, precio_unitario, descuento_pct, subtotal, igv_item, promocion_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
     );
     const referenciaComprobante = `${serie}-${String(numero).padStart(6, '0')}`;
 
     for (const it of preparedItems) {
       const itemInfo = insertItem.run(
-        invoiceId, it.product_id, it.descripcion, it.cantidad, it.precio_unitario, it.descuento_pct, it.subtotal, it.igv_item
+        invoiceId, it.product_id, it.descripcion, it.cantidad, it.precio_unitario, it.descuento_pct, it.subtotal, it.igv_item, it.promocion_id
       );
       const invoiceItemId = itemInfo.lastInsertRowid;
 
