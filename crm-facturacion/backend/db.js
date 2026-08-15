@@ -1095,6 +1095,44 @@ CREATE TABLE IF NOT EXISTS metas_venta_sede (
     }
   }
 
+  // Promociones: se crean desde Inventario y se vinculan a productos que ya
+  // existen (no a productos nuevos "inventados" para la promo). Dos tipos:
+  // 'oferta' (un solo producto con precio o % especial, product_id +
+  // tipo_descuento + precio_promocional/descuento_pct en la fila) y 'combo'
+  // (2+ productos vendidos juntos a un precio_combo fijo, cada uno con su
+  // cantidad en promocion_items) — mismo patrón cabecera+detalle que
+  // recetas/receta_items. sucursal_id NULL = aplica en todas las sedes
+  // (mismo criterio que metas_venta_sede/dotacion). Se aplican de forma
+  // automática al registrar la venta (ver routes/invoices.js y
+  // RegistroVenta.jsx) mientras estén activas y dentro de fecha_inicio/fin.
+  db.exec(`
+CREATE TABLE IF NOT EXISTS promociones (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  nombre TEXT NOT NULL,
+  tipo TEXT NOT NULL,
+  sucursal_id INTEGER REFERENCES sucursales(id),
+  fecha_inicio TEXT NOT NULL,
+  fecha_fin TEXT NOT NULL,
+  activo INTEGER NOT NULL DEFAULT 1,
+  product_id INTEGER REFERENCES products(id),
+  tipo_descuento TEXT,
+  precio_promocional REAL,
+  descuento_pct REAL,
+  precio_combo REAL,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS promocion_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  promocion_id INTEGER NOT NULL REFERENCES promociones(id) ON DELETE CASCADE,
+  product_id INTEGER NOT NULL REFERENCES products(id),
+  cantidad REAL NOT NULL DEFAULT 1
+);
+`);
+  const invoiceItemColumnsPromo = db.prepare("PRAGMA table_info(invoice_items)").all().map((c) => c.name);
+  if (!invoiceItemColumnsPromo.includes('promocion_id')) {
+    db.exec('ALTER TABLE invoice_items ADD COLUMN promocion_id INTEGER REFERENCES promociones(id)');
+  }
+
   // Backfill: todo producto con stock que aun no tenga su propia fila en
   // sucursal_stock para la sede principal la recibe con su stock agregado
   // actual. Sin esto, esos productos aparecerian con stock cero en la sede

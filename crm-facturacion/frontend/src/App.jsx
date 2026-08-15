@@ -14,6 +14,7 @@ import Menu from './pages/Menu';
 import Dashboard from './pages/Dashboard';
 import Clients from './pages/Clients';
 import Products from './pages/Products';
+import Promociones from './pages/Promociones';
 import Movements from './pages/Movements';
 import CargarStockFotos from './pages/CargarStockFotos';
 import Lotes from './pages/Lotes';
@@ -70,6 +71,7 @@ export default function App() {
             <Route path="/dashboard" element={<RequirePermiso modulo="dashboard"><Dashboard /></RequirePermiso>} />
             <Route path="/clientes" element={<RequirePermiso modulo="clientes"><Clients /></RequirePermiso>} />
             <Route path="/productos" element={<RequirePermiso modulo="inventario"><Products /></RequirePermiso>} />
+            <Route path="/promociones" element={<RequirePermiso modulo="inventario"><Promociones /></RequirePermiso>} />
             <Route path="/movimientos" element={<RequirePermiso modulo="inventario"><Movements /></RequirePermiso>} />
             <Route path="/movimientos/fotos" element={<RequirePermiso modulo="inventario"><CargarStockFotos /></RequirePermiso>} />
             <Route path="/lotes" element={<RequirePermiso modulo="inventario"><Lotes /></RequirePermiso>} />

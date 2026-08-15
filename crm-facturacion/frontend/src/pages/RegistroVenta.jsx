@@ -44,6 +44,12 @@ export default function RegistroVenta() {
   const [entrenadores, setEntrenadores] = useState([]);
   const [atribuidoAId, setAtribuidoAId] = useState('');
 
+  // Promociones vigentes en la sede activa (ver routes/promociones.js). Las
+  // ofertas de un solo producto se aplican solas al agregarlo con el
+  // buscador; los combos necesitan un clic explícito (agregan varias líneas
+  // a la vez) — ver addProducto/addCombo más abajo.
+  const [promosActivas, setPromosActivas] = useState([]);
+
   // Vista previa: se genera el PDF real (el mismo diseño del comprobante
   // emitido) antes de confirmar — así "Enter"/"Emitir" ya no dispara la
   // emisión directamente, primero hay que revisar y confirmar.
@@ -70,6 +76,7 @@ export default function RegistroVenta() {
     if (tipo !== 'cotizacion') {
       api.get('/invoices/entrenadores').then((res) => setEntrenadores(res.data)).catch(() => {});
     }
+    api.get('/promociones/activas').then((res) => setPromosActivas(res.data)).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -102,7 +109,17 @@ export default function RegistroVenta() {
     return () => { if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current); };
   }, []);
 
+  // Ofertas de un solo producto: se aplican solas al agregar el producto,
+  // mientras estén vigentes en la sede activa (ver GET /promociones/activas).
+  const ofertaPorProducto = useMemo(() => {
+    const m = new Map();
+    promosActivas.filter((p) => p.tipo === 'oferta').forEach((p) => m.set(p.product_id, p));
+    return m;
+  }, [promosActivas]);
+  const combosActivos = useMemo(() => promosActivas.filter((p) => p.tipo === 'combo'), [promosActivas]);
+
   function addProducto(p) {
+    const oferta = ofertaPorProducto.get(p.id);
     setItems((prev) => [...prev, {
       product_id: p.id,
       descripcion: p.nombre,
@@ -110,10 +127,38 @@ export default function RegistroVenta() {
       unidad: p.unidad,
       cantidad: 1,
       precio_unitario: p.precio_unitario,
-      descuento_pct: 0,
+      descuento_pct: oferta ? oferta.descuento_pct_aplicado : 0,
       costo: p.precio_compra || 0,
       afectacion_igv: p.afectacion_igv,
+      promocion_id: oferta ? oferta.id : null,
+      promocion_nombre: oferta ? oferta.nombre : null,
     }]);
+    if (oferta) toast.success(`Promoción aplicada: ${oferta.nombre}`);
+  }
+
+  // Combo: agrega de una sola vez una línea por cada producto del combo,
+  // con el mismo % de descuento en todas (calculado por el backend para que
+  // la suma dé exacto el precio del combo) — así cada producto sigue
+  // consumiendo su propio stock real al emitir, como si se hubieran
+  // agregado uno por uno.
+  function addCombo(promo) {
+    setItems((prev) => [
+      ...prev,
+      ...promo.items.map((it) => ({
+        product_id: it.product_id,
+        descripcion: it.nombre,
+        stock: undefined,
+        unidad: it.unidad,
+        cantidad: it.cantidad,
+        precio_unitario: it.precio_unitario,
+        descuento_pct: promo.descuento_pct_aplicado,
+        costo: it.precio_compra || 0,
+        afectacion_igv: it.afectacion_igv,
+        promocion_id: promo.id,
+        promocion_nombre: promo.nombre,
+      })),
+    ]);
+    toast.success(`Combo agregado: ${promo.nombre}`);
   }
 
   function updateItem(idx, patch) {
@@ -211,6 +256,7 @@ export default function RegistroVenta() {
         cantidad: Number(it.cantidad),
         precio_unitario: Number(it.precio_unitario),
         descuento_pct: Number(it.descuento_pct || 0),
+        promocion_id: it.promocion_id || null,
       })),
       moneda,
       observaciones,
@@ -336,6 +382,16 @@ export default function RegistroVenta() {
             <ProductSearchBar onSelect={addProducto} />
           </div>
 
+          {combosActivos.length > 0 && (
+            <div className="venta-fields-row" style={{ flexWrap: 'wrap', gap: 8 }}>
+              {combosActivos.map((c) => (
+                <button type="button" key={c.id} className="ventas-action-btn" onClick={() => addCombo(c)} title={c.items.map((it) => `${it.cantidad} x ${it.nombre}`).join(', ')}>
+                  🏷 Agregar combo: {c.nombre} — S/ {Number(c.precio_combo).toFixed(2)}
+                </button>
+              ))}
+            </div>
+          )}
+
           <div className="table-scroll">
             <table className="venta-table">
               <thead>
@@ -355,7 +411,12 @@ export default function RegistroVenta() {
               <tbody>
                 {computed.rows.map((it, idx) => (
                   <tr key={idx}>
-                    <td className="col-desc">{it.descripcion}</td>
+                    <td className="col-desc">
+                      {it.descripcion}
+                      {it.promocion_nombre && (
+                        <div style={{ fontSize: 11, color: 'var(--good)' }}>🏷 {it.promocion_nombre}</div>
+                      )}
+                    </td>
                     <td className="num">{it.stock ?? '—'}</td>
                     <td>
                       <input type="number" min="0.01" step="0.01" value={it.cantidad}
