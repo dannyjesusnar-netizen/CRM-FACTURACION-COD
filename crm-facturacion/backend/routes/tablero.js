@@ -32,7 +32,7 @@ function sedeFiltro(req) {
   return raw ? Number(raw) : null;
 }
 
-const CATEGORIA_LABEL = { trainer: 'Trainer', vendedor: 'Vendedor', supervisor: 'Supervisor' };
+const CATEGORIA_LABEL = { trainer: 'Entrenador', vendedor: 'Vendedor', supervisor: 'Supervisor' };
 
 function conPorcentaje(rows) {
   const total = rows.reduce((acc, r) => acc + r.venta, 0);
