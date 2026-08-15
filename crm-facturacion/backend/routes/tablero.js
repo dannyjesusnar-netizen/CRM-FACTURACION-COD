@@ -1,11 +1,11 @@
 const express = require('express');
 const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
-const { requireGerenciaOSupervisor } = require('../utils/permisos');
+const { requireTableroVentas } = require('../utils/permisos');
 
 const router = express.Router();
 router.use(requireAuth);
-router.use(requireGerenciaOSupervisor);
+router.use(requireTableroVentas);
 
 function round2(n) {
   return Math.round((n + Number.EPSILON) * 100) / 100;
@@ -22,7 +22,7 @@ function anioMes(req) {
 // particular. Un Supervisor, en cambio, siempre queda pegado a la sede a la
 // que está asignado — sin importar qué sucursal_id le pase al query param —
 // para que no pueda ver la facturación de otras sedes que no le
-// corresponden (requireGerenciaOSupervisor solo valida el rol, no la sede).
+// corresponden (requireTableroVentas solo valida el permiso, no la sede).
 function sedeFiltro(req) {
   if (req.user.role !== 'gerencia') {
     const row = db.prepare('SELECT sucursal_id FROM users WHERE id = ?').get(req.user.id);

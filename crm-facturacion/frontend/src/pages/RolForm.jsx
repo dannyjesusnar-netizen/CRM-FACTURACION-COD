@@ -108,7 +108,7 @@ export default function RolForm() {
     if (!modulo) return {};
     const guardadas = acciones[moduloKey] || {};
     const mapa = {};
-    (modulo.acciones || []).forEach((a) => { mapa[a.key] = guardadas[a.key] ?? true; });
+    (modulo.acciones || []).forEach((a) => { mapa[a.key] = guardadas[a.key] ?? (a.default !== false); });
     return mapa;
   }
 
@@ -116,7 +116,7 @@ export default function RolForm() {
     setAcciones((prev) => {
       const modulo = modulos.find((m) => m.key === moduloKey);
       const base = {};
-      (modulo?.acciones || []).forEach((a) => { base[a.key] = true; });
+      (modulo?.acciones || []).forEach((a) => { base[a.key] = a.default !== false; });
       const actuales = { ...base, ...(prev[moduloKey] || {}) };
       return { ...prev, [moduloKey]: { ...actuales, [accionKey]: !actuales[accionKey] } };
     });

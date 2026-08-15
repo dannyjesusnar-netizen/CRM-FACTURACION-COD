@@ -7,7 +7,7 @@ const { resolveTenantDb } = require('../utils/tenant');
 const { consultarRuc } = require('../utils/rucLookup');
 const { JWT_SECRET, requireAuth } = require('../middleware/auth');
 const { passwordError } = require('../utils/password');
-const { permisosDeUsuario, esGerenciaOSupervisor } = require('../utils/permisos');
+const { permisosDeUsuario, esGerenciaOSupervisor, puedeVerTableroVentas } = require('../utils/permisos');
 
 const router = express.Router();
 
@@ -27,7 +27,12 @@ function emitirToken(res, user, ruc) {
       sucursal_id: sucursalFija?.id || null, sucursal_nombre: sucursalFija?.nombre || null,
       custom_role_id: user.custom_role_id || null,
       permisos: permisosDeUsuario(user),
-      puede_ver_tablero: esGerenciaOSupervisor(user),
+      // Ver el Tablero de Ventas: config-driven, ver Configuración → Roles →
+      // Inicio → "Tablero de Ventas" (puedeVerTableroVentas). Reatribuir una
+      // venta a otro Trainer/Supervisor desde Facturas es un permiso aparte,
+      // que sigue reservado a Gerencia/Supervisor sin pasar por ese toggle.
+      puede_ver_tablero: puedeVerTableroVentas(user),
+      puede_reatribuir_venta: esGerenciaOSupervisor(user),
     }
   });
 }
