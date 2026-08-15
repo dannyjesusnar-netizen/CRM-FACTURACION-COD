@@ -127,6 +127,10 @@ export default function Dashboard() {
   const colorTablero = empresa?.color_tablero_ventas || '#16a34a';
   const rankingTrainersRef = useRef(null);
   const rankingVendedoresRef = useRef(null);
+  const totalMarcaRef = useRef(null);
+  const totalProductoRef = useRef(null);
+  const resumenSedesRef = useRef(null);
+  const ventasTotalesRef = useRef(null);
 
   async function guardarColorTablero(nuevoColor) {
     if (!empresa) return;
@@ -460,8 +464,8 @@ export default function Dashboard() {
               </div>
 
               <div className="chart-grid">
-                <div className="panel">
-                  <PanelHeader color={colorTablero}>Total por Marca</PanelHeader>
+                <div className="panel" ref={totalMarcaRef}>
+                  <PanelHeader color={colorTablero} onCopiar={() => copiarPanelComoImagen(totalMarcaRef, 'total-por-marca.png', toast)}>Total por Marca</PanelHeader>
                   <table className="data-table">
                     <thead>
                       <tr><th>Marca</th><th style={{ textAlign: 'right' }}>Cantidad</th><th style={{ textAlign: 'right' }}>Venta</th><th style={{ textAlign: 'right' }}>% Venta</th></tr>
@@ -481,8 +485,8 @@ export default function Dashboard() {
                     </tbody>
                   </table>
                 </div>
-                <div className="panel">
-                  <PanelHeader color={colorTablero}>Total por Producto</PanelHeader>
+                <div className="panel" ref={totalProductoRef}>
+                  <PanelHeader color={colorTablero} onCopiar={() => copiarPanelComoImagen(totalProductoRef, 'total-por-producto.png', toast)}>Total por Producto</PanelHeader>
                   <table className="data-table">
                     <thead>
                       <tr><th>Categoría</th><th style={{ textAlign: 'right' }}>Cantidad</th><th style={{ textAlign: 'right' }}>Venta</th><th style={{ textAlign: 'right' }}>% Venta</th></tr>
@@ -505,8 +509,8 @@ export default function Dashboard() {
               </div>
 
               <div className="chart-grid">
-                <div className="panel">
-                  <PanelHeader color={colorTablero}>Resumen Sedes</PanelHeader>
+                <div className="panel" ref={resumenSedesRef}>
+                  <PanelHeader color={colorTablero} onCopiar={() => copiarPanelComoImagen(resumenSedesRef, 'resumen-sedes.png', toast)}>Resumen Sedes</PanelHeader>
                   <table className="data-table">
                     <thead>
                       <tr><th>Sede</th><th style={{ textAlign: 'right' }}>Venta</th><th style={{ textAlign: 'right' }}>Meta</th><th>% Meta</th></tr>
@@ -536,8 +540,18 @@ export default function Dashboard() {
                     )}
                   </table>
                 </div>
-                <div className="stat-card" style={{ alignSelf: 'start' }}>
-                  <div className="stat-card-banda" style={{ background: colorTablero }}>Ventas Totales</div>
+                <div className="stat-card" style={{ alignSelf: 'start' }} ref={ventasTotalesRef}>
+                  <div className="stat-card-banda" style={{ background: colorTablero }}>
+                    Ventas Totales
+                    <button
+                      type="button"
+                      className="panel-banda-copy-btn"
+                      onClick={() => copiarPanelComoImagen(ventasTotalesRef, 'ventas-totales.png', toast)}
+                      title="Copiar como imagen (para enviar por WhatsApp)"
+                    >
+                      <Camera size={14} />
+                    </button>
+                  </div>
                   <div className="stat-value" style={{ textAlign: 'center' }}>{money(resumenSedes.ventas_totales)}</div>
                   <div className="stat-sub">
                     {MESES[tableroMes - 1]} {tableroAnio} — {tableroSedeId
