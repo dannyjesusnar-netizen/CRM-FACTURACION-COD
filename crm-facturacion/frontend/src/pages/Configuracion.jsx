@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Building2, Users as UsersIcon, Store, ShieldCheck, FileText, Wallet, Hash } from 'lucide-react';
+import { ArrowLeft, Building2, Users as UsersIcon, Store, ShieldCheck, FileText, Wallet, Hash, Percent } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
@@ -75,6 +75,14 @@ function nivelDesdeForm(f, roles) {
 
 function emptySucursalForm() {
   return { nombre: '', direccion: '' };
+}
+
+function todayStr() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function emptyDescuentoForm() {
+  return { nombre: '', porcentaje: '', sucursal_id: '', fecha_inicio: todayStr(), fecha_fin: todayStr() };
 }
 
 const TIPOS_METODO_PAGO = [
@@ -193,6 +201,18 @@ export default function Configuracion() {
   const [filasMetas, setFilasMetas] = useState([]);
   const [metasGuardando, setMetasGuardando] = useState(null);
 
+  // --- Descuentos (Registrar Venta) ---
+  // Un % con nombre y vigencia que el vendedor elige de una lista al
+  // registrar una venta, en vez de escribir el % a mano (ver
+  // routes/descuentos.js y el selector en RegistroVenta.jsx). A diferencia
+  // de las Promociones de Inventario, este descuento aplica sobre el total
+  // de toda la venta, no sobre un producto puntual.
+  const [descuentos, setDescuentos] = useState([]);
+  const [showDescuentoForm, setShowDescuentoForm] = useState(false);
+  const [editingDescuentoId, setEditingDescuentoId] = useState(null);
+  const [descuentoForm, setDescuentoForm] = useState(emptyDescuentoForm());
+  const [errorDescuentoForm, setErrorDescuentoForm] = useState('');
+
   // --- Sucursales ---
   const [sucursales, setSucursales] = useState([]);
   const [limiteSucursales, setLimiteSucursales] = useState(null);
@@ -310,6 +330,60 @@ export default function Configuracion() {
       toast.error(err.response?.data?.error || 'No se pudo guardar la dotación.');
     } finally {
       setMetasGuardando(null);
+    }
+  }
+
+  function loadDescuentos() {
+    api.get('/descuentos').then((res) => setDescuentos(res.data));
+  }
+
+  useEffect(() => {
+    if (seccion === 'descuentos') loadDescuentos();
+  }, [seccion]);
+
+  function openNuevoDescuento() {
+    setEditingDescuentoId(null);
+    setDescuentoForm(emptyDescuentoForm());
+    setErrorDescuentoForm('');
+    setShowDescuentoForm(true);
+  }
+
+  function openEditDescuento(d) {
+    setEditingDescuentoId(d.id);
+    setDescuentoForm({
+      nombre: d.nombre, porcentaje: d.porcentaje, sucursal_id: d.sucursal_id || '',
+      fecha_inicio: d.fecha_inicio, fecha_fin: d.fecha_fin,
+    });
+    setErrorDescuentoForm('');
+    setShowDescuentoForm(true);
+  }
+
+  async function handleSubmitDescuento(e) {
+    e.preventDefault();
+    setErrorDescuentoForm('');
+    try {
+      const payload = {
+        nombre: descuentoForm.nombre, porcentaje: Number(descuentoForm.porcentaje),
+        sucursal_id: descuentoForm.sucursal_id || null,
+        fecha_inicio: descuentoForm.fecha_inicio, fecha_fin: descuentoForm.fecha_fin,
+      };
+      if (editingDescuentoId) await api.put(`/descuentos/${editingDescuentoId}`, payload);
+      else await api.post('/descuentos', payload);
+      toast.success(editingDescuentoId ? 'Descuento actualizado.' : 'Descuento creado.');
+      setShowDescuentoForm(false);
+      loadDescuentos();
+    } catch (err) {
+      setErrorDescuentoForm(err.response?.data?.error || 'No se pudo guardar el descuento.');
+    }
+  }
+
+  async function handleToggleEstadoDescuento(d) {
+    try {
+      await api.put(`/descuentos/${d.id}/estado`, { activo: !d.activo });
+      toast.success(d.activo ? 'Descuento desactivado.' : 'Descuento activado.');
+      loadDescuentos();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'No se pudo cambiar el estado.');
     }
   }
 
@@ -842,6 +916,9 @@ export default function Configuracion() {
           </div>
           <div className={'reports-sidebar-item' + (seccion === 'metas' ? ' active' : '')} onClick={() => setSeccion('metas')} role="button" tabIndex={0}>
             <Wallet size={16} /><span>Metas de venta</span>
+          </div>
+          <div className={'reports-sidebar-item' + (seccion === 'descuentos' ? ' active' : '')} onClick={() => setSeccion('descuentos')} role="button" tabIndex={0}>
+            <Percent size={16} /><span>Descuentos</span>
           </div>
           <div className={'reports-sidebar-item' + (seccion === 'roles' ? ' active' : '')} onClick={() => setSeccion('roles')} role="button" tabIndex={0}>
             <ShieldCheck size={16} /><span>Roles de usuario</span>
@@ -1420,6 +1497,47 @@ export default function Configuracion() {
             </>
           )}
 
+          {seccion === 'descuentos' && (
+            <>
+              <div className="report-toolbar">
+                <h3 style={{ margin: 0 }}>Descuentos</h3>
+                <button className="btn-primary" style={{ width: 'auto' }} onClick={openNuevoDescuento}>Nuevo descuento</button>
+              </div>
+              <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -8 }}>
+                Un % con nombre y vigencia (ej. "Descuento Gimnasio" 10%) que el vendedor elige de una lista al
+                registrar una venta, en vez de escribir el % a mano. Aplica sobre el total de toda la venta.
+              </p>
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Nombre</th><th style={{ textAlign: 'right' }}>Porcentaje</th><th>Sede</th>
+                    <th>Vigencia</th><th>Estado</th><th>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {descuentos.map((d) => (
+                    <tr key={d.id}>
+                      <td>{d.nombre}</td>
+                      <td style={{ textAlign: 'right' }}>{d.porcentaje}%</td>
+                      <td>{d.sede_nombre || 'Todas las sedes'}</td>
+                      <td>{d.fecha_inicio} → {d.fecha_fin}</td>
+                      <td><span className={`badge ${d.activo ? 'badge-good' : 'badge-neutral'}`}>{d.activo ? 'Activo' : 'Desactivado'}</span></td>
+                      <td>
+                        <button className="btn-link" onClick={() => openEditDescuento(d)}>Editar</button>{' '}
+                        <button className="btn-link danger" onClick={() => handleToggleEstadoDescuento(d)}>
+                          {d.activo ? 'Desactivar' : 'Activar'}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {descuentos.length === 0 && (
+                    <tr><td colSpan={6} className="empty-row">No hay descuentos creados todavía.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </>
+          )}
+
           {seccion === 'roles' && (
             <>
               <div className="report-toolbar">
@@ -1722,6 +1840,45 @@ export default function Configuracion() {
               <div className="modal-actions">
                 <button type="button" className="btn-secondary" onClick={() => setShowOperativoForm(false)}>Cancelar</button>
                 <button type="submit" className="btn-primary">{editingOperativoId ? 'Guardar cambios' : 'Guardar registro'}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showDescuentoForm && (
+        <div className="modal-overlay" onClick={() => setShowDescuentoForm(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h2>{editingDescuentoId ? 'Editar descuento' : 'Nuevo descuento'}</h2>
+            <form onSubmit={handleSubmitDescuento}>
+              <label>Nombre *</label>
+              <input required value={descuentoForm.nombre} onChange={(e) => setDescuentoForm({ ...descuentoForm, nombre: e.target.value })} placeholder="Ej. Descuento Gimnasio" />
+
+              <label>Porcentaje (%) *</label>
+              <input required type="number" min="0.01" max="100" step="0.01" value={descuentoForm.porcentaje}
+                onChange={(e) => setDescuentoForm({ ...descuentoForm, porcentaje: e.target.value })} />
+
+              <label>Sede</label>
+              <select value={descuentoForm.sucursal_id} onChange={(e) => setDescuentoForm({ ...descuentoForm, sucursal_id: e.target.value })}>
+                <option value="">Todas las sedes</option>
+                {sucursales.filter((s) => s.activo).map((s) => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+              </select>
+
+              <div className="form-row">
+                <div>
+                  <label>Vigencia desde *</label>
+                  <input required type="date" value={descuentoForm.fecha_inicio} onChange={(e) => setDescuentoForm({ ...descuentoForm, fecha_inicio: e.target.value })} />
+                </div>
+                <div>
+                  <label>Vigencia hasta *</label>
+                  <input required type="date" value={descuentoForm.fecha_fin} min={descuentoForm.fecha_inicio} onChange={(e) => setDescuentoForm({ ...descuentoForm, fecha_fin: e.target.value })} />
+                </div>
+              </div>
+
+              {errorDescuentoForm && <div className="form-error">{errorDescuentoForm}</div>}
+              <div className="modal-actions">
+                <button type="button" className="btn-secondary" onClick={() => setShowDescuentoForm(false)}>Cancelar</button>
+                <button type="submit" className="btn-primary">{editingDescuentoId ? 'Guardar cambios' : 'Crear descuento'}</button>
               </div>
             </form>
           </div>
