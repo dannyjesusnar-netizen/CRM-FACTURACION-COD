@@ -177,6 +177,24 @@ CREATE TABLE IF NOT EXISTS sucursales (
   created_at TEXT DEFAULT (datetime('now'))
 );
 
+-- Cuando Gerencia llega al número de sedes que puede crear libremente (ver
+-- tenants.sedes_libres en tenantRegistry.js, panel-central), pedir una sede
+-- adicional queda registrado acá en vez de crearla directo: el proveedor la
+-- aprueba o rechaza desde panel-central (ver localTenants.js:
+-- resolverSolicitudSede) — al aprobarla, crea la sede tal cual fue pedida.
+CREATE TABLE IF NOT EXISTS solicitudes_sede (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER REFERENCES users(id),
+  nombre_usuario TEXT,
+  nombre TEXT NOT NULL,
+  direccion TEXT,
+  motivo TEXT,
+  estado TEXT NOT NULL DEFAULT 'pendiente', -- pendiente | aprobada | rechazada
+  respuesta TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  resuelto_at TEXT
+);
+
 -- Catálogo de métodos de pago configurable por Gerencia (Configuración ->
 -- Métodos de pago). "codigo" es el valor real que se guarda en
 -- invoices.forma_pago / cobros.medio / caja_movimientos.medio — por eso es

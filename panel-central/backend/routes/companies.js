@@ -57,6 +57,46 @@ router.put('/locales/:ruc/costo', (req, res) => {
   }));
 });
 
+// PUT /api/companies/locales/:ruc/sedes-libres { cantidad }
+router.put('/locales/:ruc/sedes-libres', (req, res) => {
+  if (!getLocalTenantOr404(req, res)) return;
+  const cantidad = Number(req.body?.cantidad);
+  if (!Number.isInteger(cantidad) || cantidad < 0) {
+    return res.status(400).json({ error: 'cantidad debe ser un número entero mayor o igual a 0.' });
+  }
+  res.json(localTenants.setSedesLibres(req.params.ruc, cantidad));
+});
+
+// GET /api/companies/locales/:ruc/solicitudes-sede — solicitudes de sede
+// de esa empresa (pendientes y ya resueltas).
+router.get('/locales/:ruc/solicitudes-sede', (req, res) => {
+  if (!getLocalTenantOr404(req, res)) return;
+  res.json(localTenants.listarSolicitudesSede(req.params.ruc));
+});
+
+// PUT /api/companies/locales/:ruc/solicitudes-sede/:id/aprobar { respuesta? }
+// Crea la sede pedida y marca la solicitud como aprobada.
+router.put('/locales/:ruc/solicitudes-sede/:id/aprobar', (req, res) => {
+  if (!getLocalTenantOr404(req, res)) return;
+  const resultado = localTenants.resolverSolicitudSede(req.params.ruc, req.params.id, {
+    aprobar: true,
+    respuesta: req.body?.respuesta,
+  });
+  if (resultado.error) return res.status(400).json({ error: resultado.error });
+  res.json(resultado.solicitud);
+});
+
+// PUT /api/companies/locales/:ruc/solicitudes-sede/:id/rechazar { respuesta? }
+router.put('/locales/:ruc/solicitudes-sede/:id/rechazar', (req, res) => {
+  if (!getLocalTenantOr404(req, res)) return;
+  const resultado = localTenants.resolverSolicitudSede(req.params.ruc, req.params.id, {
+    aprobar: false,
+    respuesta: req.body?.respuesta,
+  });
+  if (resultado.error) return res.status(400).json({ error: resultado.error });
+  res.json(resultado.solicitud);
+});
+
 // GET /api/companies/locales/:ruc/pagos — historial de cobros de la
 // suscripción de esa empresa.
 router.get('/locales/:ruc/pagos', (req, res) => {

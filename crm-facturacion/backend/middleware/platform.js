@@ -3,7 +3,7 @@ const crypto = require('crypto');
 // Puerta de entrada para el panel central (herramienta propia del dueño del
 // producto, fuera de esta app). Se autentica con un secreto por-despliegue
 // (PLATFORM_TOKEN, configurado solo por variable de entorno en Render — igual
-// que NUBEFACT_TOKEN/MAX_SUCURSALES) en vez de con la sesión de un empleado.
+// que NUBEFACT_TOKEN) en vez de con la sesión de un empleado.
 // Sin la variable configurada, /api/platform/* no existe (404): nunca un
 // "abierto por accidente" con token vacío.
 const PLATFORM_TOKEN = process.env.PLATFORM_TOKEN || null;
