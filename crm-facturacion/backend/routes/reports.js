@@ -2,6 +2,7 @@ const express = require('express');
 const db = require('../db');
 const { requireAuth, resolveSucursal } = require('../middleware/auth');
 const { requirePermiso, requireAlgunPermiso, requireAccion } = require('../utils/permisos');
+const { buildResumen } = require('../utils/cajaCalculos');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -187,6 +188,101 @@ router.get('/productos-mas-vendidos', requireReportes, requireAccion('reportes',
   sql += ' GROUP BY ii.product_id ORDER BY total_vendido DESC';
   const rows = db.prepare(sql).all(...params);
   res.json(rows);
+});
+
+// Cierre de Caja: Efectivo (arqueo del día) + Ventas por Documento + Ventas
+// por Forma de Pago + Resultado de Turno (bruto/descuento/devoluciones/
+// anulaciones/neto). "Turno" se aproxima como (fecha + empleado opcional),
+// ya que el sistema no tiene un concepto de sesión/turno propio — es la
+// misma granularidad que ya ofrece Caja y Bancos.
+router.get('/cierre-caja', requireAlgunPermiso(['caja', 'reportes']), (req, res) => {
+  const fecha = req.query.fecha || new Date().toISOString().slice(0, 10);
+  const empleadoId = req.query.empleado_id ? Number(req.query.empleado_id) : null;
+  const empleadoFiltro = empleadoId ? 'AND created_by = ?' : '';
+  const baseParams = empleadoId ? [fecha, req.sucursalId, empleadoId] : [fecha, req.sucursalId];
+
+  const efectivo = buildResumen(fecha, req.sucursalId, { moneda: 'PEN', empleadoId }).find((r) => r.codigo === 'efectivo') || null;
+
+  // Boleta / Nota de Venta (boleta con forma_pago='abonado', ver rename de
+  // "Abonado" a "Nota de Venta") / Factura — solo comprobantes emitidos.
+  const docRows = db.prepare(`
+    SELECT
+      CASE
+        WHEN tipo_comprobante = 'factura' THEN 'factura'
+        WHEN forma_pago = 'abonado' THEN 'nota_venta'
+        ELSE 'boleta'
+      END AS doc,
+      COUNT(*) AS cantidad, COALESCE(SUM(total), 0) AS total
+    FROM invoices
+    WHERE estado = 'emitido' AND tipo_comprobante IN ('boleta', 'factura')
+      AND date(fecha_emision) = date(?) AND sucursal_id = ? ${empleadoFiltro}
+    GROUP BY doc
+  `).all(...baseParams);
+  const docByKey = {};
+  docRows.forEach((r) => { docByKey[r.doc] = { cantidad: r.cantidad, total: round2(r.total) }; });
+  const ventas_por_documento = [
+    { doc: 'boleta', label: 'Boleta', ...(docByKey.boleta || { cantidad: 0, total: 0 }) },
+    { doc: 'nota_venta', label: 'Nota de Venta', ...(docByKey.nota_venta || { cantidad: 0, total: 0 }) },
+    { doc: 'factura', label: 'Factura', ...(docByKey.factura || { cantidad: 0, total: 0 }) },
+  ];
+
+  const formaPagoRows = db.prepare(`
+    SELECT forma_pago, COUNT(*) AS cantidad, COALESCE(SUM(total), 0) AS total
+    FROM invoices
+    WHERE estado = 'emitido' AND tipo_comprobante IN ('boleta', 'factura')
+      AND date(fecha_emision) = date(?) AND sucursal_id = ? ${empleadoFiltro}
+    GROUP BY forma_pago
+    ORDER BY total DESC
+  `).all(...baseParams);
+  const metodosPago = db.prepare('SELECT codigo, nombre, icono FROM metodos_pago').all();
+  const ventas_por_forma_pago = formaPagoRows.map((r) => {
+    if (r.forma_pago === 'abonado') return { forma_pago: r.forma_pago, label: '🧾 Nota de Venta (crédito)', cantidad: r.cantidad, total: round2(r.total) };
+    if (r.forma_pago === 'mixto') return { forma_pago: r.forma_pago, label: '🔀 Pago mixto', cantidad: r.cantidad, total: round2(r.total) };
+    const metodo = metodosPago.find((m) => m.codigo === r.forma_pago);
+    return { forma_pago: r.forma_pago, label: metodo ? `${metodo.icono} ${metodo.nombre}` : (r.forma_pago || 'Sin especificar'), cantidad: r.cantidad, total: round2(r.total) };
+  });
+
+  // Resultado de turno: bruto (antes de cualquier descuento, todas las
+  // líneas de boleta/factura sin importar el estado), descuento (bruto -
+  // total facturado, incluye anuladas), anulaciones (boleta/factura
+  // anuladas) y devoluciones (notas de crédito emitidas) — el mismo patrón
+  // de "netear NC" que usa el resto de reports.js.
+  const brutoRow = db.prepare(`
+    SELECT COALESCE(SUM(ii.cantidad * ii.precio_unitario), 0) AS bruto
+    FROM invoice_items ii
+    JOIN invoices i ON i.id = ii.invoice_id
+    WHERE i.tipo_comprobante IN ('boleta', 'factura')
+      AND date(i.fecha_emision) = date(?) AND i.sucursal_id = ? ${empleadoId ? 'AND i.created_by = ?' : ''}
+  `).get(...baseParams);
+  const totalTodosRow = db.prepare(`
+    SELECT COALESCE(SUM(total), 0) AS total FROM invoices
+    WHERE tipo_comprobante IN ('boleta', 'factura')
+      AND date(fecha_emision) = date(?) AND sucursal_id = ? ${empleadoFiltro}
+  `).get(...baseParams);
+  const anulacionesRow = db.prepare(`
+    SELECT COALESCE(SUM(total), 0) AS total FROM invoices
+    WHERE tipo_comprobante IN ('boleta', 'factura') AND estado = 'anulado'
+      AND date(fecha_emision) = date(?) AND sucursal_id = ? ${empleadoFiltro}
+  `).get(...baseParams);
+  const devolucionesRow = db.prepare(`
+    SELECT COALESCE(SUM(total), 0) AS total FROM invoices
+    WHERE tipo_comprobante = 'nota_credito' AND estado = 'emitido'
+      AND date(fecha_emision) = date(?) AND sucursal_id = ? ${empleadoFiltro}
+  `).get(...baseParams);
+
+  const bruto = round2(brutoRow.bruto);
+  const descuento = round2(bruto - totalTodosRow.total);
+  const anulaciones = round2(anulacionesRow.total);
+  const devoluciones = round2(devolucionesRow.total);
+  const neto = round2(bruto - descuento - anulaciones - devoluciones);
+
+  res.json({
+    fecha,
+    efectivo,
+    ventas_por_documento,
+    ventas_por_forma_pago,
+    turno: { bruto, descuento, devoluciones, anulaciones, neto },
+  });
 });
 
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
