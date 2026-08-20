@@ -155,7 +155,7 @@ router.get('/buscar', (req, res) => {
 
 // GET /api/invoices?tipo=&estado=&client_id=&from=&to=&q=
 router.get('/', (req, res) => {
-  const { tipo, estado, client_id, from, to, q } = req.query;
+  const { tipo, estado, client_id, from, to, q, forma_pago } = req.query;
   let sql = `
     SELECT i.*, c.nombre AS cliente_nombre, c.numero_documento AS cliente_documento,
            u.full_name AS vendedor_nombre, au.full_name AS atribuido_nombre
@@ -166,11 +166,22 @@ router.get('/', (req, res) => {
     WHERE i.sucursal_id = ?
   `;
   const params = [req.sucursalId];
-  if (tipo) { sql += ' AND i.tipo_comprobante = ?'; params.push(tipo); }
+  // "nota_venta" no es un tipo_comprobante propio en la base — es una boleta
+  // con forma_pago='abonado' (ver rename de "Abonado" a "Nota de Venta").
+  // Al filtrar por "boleta" en el listado, se excluyen esas para que cada
+  // fila del filtro Documento muestre exactamente lo que dice mostrar.
+  if (tipo === 'nota_venta') {
+    sql += " AND i.tipo_comprobante = 'boleta' AND i.forma_pago = 'abonado'";
+  } else if (tipo === 'boleta') {
+    sql += " AND i.tipo_comprobante = 'boleta' AND i.forma_pago != 'abonado'";
+  } else if (tipo) {
+    sql += ' AND i.tipo_comprobante = ?'; params.push(tipo);
+  }
   if (estado) { sql += ' AND i.estado = ?'; params.push(estado); }
   if (client_id) { sql += ' AND i.client_id = ?'; params.push(client_id); }
   if (from) { sql += ' AND date(i.fecha_emision) >= date(?)'; params.push(from); }
   if (to) { sql += ' AND date(i.fecha_emision) <= date(?)'; params.push(to); }
+  if (forma_pago) { sql += ' AND i.forma_pago = ?'; params.push(forma_pago); }
   if (q) {
     sql += ' AND (c.nombre LIKE ? OR c.numero_documento LIKE ? OR i.serie LIKE ? OR CAST(i.numero AS TEXT) LIKE ?)';
     params.push(`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`);
