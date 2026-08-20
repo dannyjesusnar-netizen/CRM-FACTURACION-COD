@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Bar } from 'react-chartjs-2';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Tooltip, Legend } from 'chart.js';
 import {
-  Download, ShoppingCart, Calculator, User, TrendingUp, Package, BarChart3, Users,
+  Download, ShoppingCart, Calculator, User, TrendingUp, Package, BarChart3, Users, Wallet,
 } from 'lucide-react';
 import api from '../api';
 import { useToast } from '../context/ToastContext';
@@ -24,7 +24,12 @@ const SECCIONES = [
   { key: 'ingreso_gastos', label: 'Ingreso vs gastos', Icon: BarChart3 },
   { key: 'top_clientes', label: 'Top clientes', Icon: Users },
   { key: 'resumen_comprobante', label: 'Resumen por comprobante', Icon: BarChart3 },
+  { key: 'cierre_caja', label: 'Cierre de Caja', Icon: Wallet },
 ];
+
+function todayStr() {
+  return new Date().toISOString().slice(0, 10);
+}
 
 function money(n) {
   return `S/ ${Number(n || 0).toFixed(2)}`;
@@ -88,6 +93,11 @@ export default function Reports() {
   const [inventariosAnio, setInventariosAnio] = useState(CURRENT_YEAR);
   const [evolucionInventarios, setEvolucionInventarios] = useState([]);
 
+  const [cierreFecha, setCierreFecha] = useState(todayStr());
+  const [cierreEmpleadoId, setCierreEmpleadoId] = useState('');
+  const [cierreEmpleados, setCierreEmpleados] = useState([]);
+  const [cierreCaja, setCierreCaja] = useState(null);
+
   useEffect(() => {
     api.get('/reports/top-clientes').then((res) => setTopClientes(res.data));
     api.get('/reports/ventas-por-tipo').then((res) => setVentasPorTipo(res.data));
@@ -124,6 +134,18 @@ export default function Reports() {
   useEffect(() => {
     api.get('/reports/evolucion-inventarios', { params: { year: inventariosAnio } }).then((res) => setEvolucionInventarios(res.data));
   }, [inventariosAnio]);
+
+  useEffect(() => {
+    // Sin permiso de Caja no se puede pedir la lista de empleados — el
+    // selector queda solo con "Todos los empleados", el reporte igual funciona.
+    api.get('/caja/empleados').then((res) => setCierreEmpleados(res.data)).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const params = { fecha: cierreFecha };
+    if (cierreEmpleadoId) params.empleado_id = cierreEmpleadoId;
+    api.get('/reports/cierre-caja', { params }).then((res) => setCierreCaja(res.data)).catch(() => setCierreCaja(null));
+  }, [cierreFecha, cierreEmpleadoId]);
 
   const barOptionsV = {
     responsive: true, plugins: { legend: { display: false } },
@@ -474,6 +496,100 @@ export default function Reports() {
                   ))}
                 </tbody>
               </table>
+            </>
+          )}
+
+          {seccion === 'cierre_caja' && (
+            <>
+              <div className="report-toolbar">
+                <h3 style={{ margin: 0 }}>Cierre de Caja</h3>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <div className="filter-field">
+                    <label>Fecha</label>
+                    <input type="date" value={cierreFecha} onChange={(e) => setCierreFecha(e.target.value)} />
+                  </div>
+                  <div className="filter-field">
+                    <label>Empleado</label>
+                    <select value={cierreEmpleadoId} onChange={(e) => setCierreEmpleadoId(e.target.value)}>
+                      <option value="">Todos los empleados</option>
+                      {cierreEmpleados.map((e) => <option key={e.id} value={e.id}>{e.full_name}</option>)}
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {cierreCaja && (
+                <>
+                  <h4 style={{ marginBottom: 8 }}>Efectivo</h4>
+                  {cierreCaja.efectivo ? (
+                    <table className="data-table compact">
+                      <tbody>
+                        <tr><td>Saldo inicial</td><td style={{ textAlign: 'right' }}>{money(cierreCaja.efectivo.saldo_inicial)}</td></tr>
+                        <tr><td>Ingresos</td><td style={{ textAlign: 'right' }}>{money(cierreCaja.efectivo.ingresos.total)}</td></tr>
+                        <tr><td>Egresos</td><td style={{ textAlign: 'right' }}>{money(cierreCaja.efectivo.egresos.total)}</td></tr>
+                        <tr className="totals-footer"><td>Saldo final</td><td style={{ textAlign: 'right' }}>{money(cierreCaja.efectivo.saldo_final)}</td></tr>
+                      </tbody>
+                    </table>
+                  ) : <p className="empty-row">El método Efectivo no está activo.</p>}
+
+                  <h4 style={{ marginTop: 24, marginBottom: 8 }}>Ventas por Documento</h4>
+                  <table className="data-table">
+                    <thead>
+                      <tr><th>Documento</th><th style={{ textAlign: 'right' }}>Cantidad</th><th style={{ textAlign: 'right' }}>Total</th></tr>
+                    </thead>
+                    <tbody>
+                      {cierreCaja.ventas_por_documento.map((d) => (
+                        <tr key={d.doc}>
+                          <td>{d.label}</td>
+                          <td style={{ textAlign: 'right' }}>{d.cantidad}</td>
+                          <td style={{ textAlign: 'right' }}>{money(d.total)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="totals-footer">
+                        <td>Total</td>
+                        <td style={{ textAlign: 'right' }}>{cierreCaja.ventas_por_documento.reduce((s, d) => s + d.cantidad, 0)}</td>
+                        <td style={{ textAlign: 'right' }}>{money(cierreCaja.ventas_por_documento.reduce((s, d) => s + d.total, 0))}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+
+                  <h4 style={{ marginTop: 24, marginBottom: 8 }}>Ventas por Forma de Pago</h4>
+                  <table className="data-table">
+                    <thead>
+                      <tr><th>Forma de pago</th><th style={{ textAlign: 'right' }}>Cantidad</th><th style={{ textAlign: 'right' }}>Total</th></tr>
+                    </thead>
+                    <tbody>
+                      {cierreCaja.ventas_por_forma_pago.map((f) => (
+                        <tr key={f.forma_pago}>
+                          <td>{f.label}</td>
+                          <td style={{ textAlign: 'right' }}>{f.cantidad}</td>
+                          <td style={{ textAlign: 'right' }}>{money(f.total)}</td>
+                        </tr>
+                      ))}
+                      {cierreCaja.ventas_por_forma_pago.length === 0 && (
+                        <tr><td colSpan={3} className="empty-row">Sin ventas en la fecha seleccionada.</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+
+                  <h4 style={{ marginTop: 24, marginBottom: 8 }}>Resultado de Turno</h4>
+                  <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -6 }}>
+                    El sistema no maneja turnos/sesiones de caja independientes — el resultado corresponde al día
+                    completo (y al empleado, si se filtró uno).
+                  </p>
+                  <table className="data-table compact">
+                    <tbody>
+                      <tr><td>Total de ventas bruto</td><td style={{ textAlign: 'right' }}>{money(cierreCaja.turno.bruto)}</td></tr>
+                      <tr><td>Descuento</td><td style={{ textAlign: 'right' }}>-{money(cierreCaja.turno.descuento)}</td></tr>
+                      <tr><td>Devoluciones</td><td style={{ textAlign: 'right' }}>-{money(cierreCaja.turno.devoluciones)}</td></tr>
+                      <tr><td>Anulaciones</td><td style={{ textAlign: 'right' }}>-{money(cierreCaja.turno.anulaciones)}</td></tr>
+                      <tr className="totals-footer"><td>Total de ventas neto</td><td style={{ textAlign: 'right' }}>{money(cierreCaja.turno.neto)}</td></tr>
+                    </tbody>
+                  </table>
+                </>
+              )}
             </>
           )}
         </div>
