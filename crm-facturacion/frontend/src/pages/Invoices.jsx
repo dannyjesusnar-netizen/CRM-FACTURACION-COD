@@ -62,7 +62,7 @@ export default function Invoices() {
 
   function formaPagoLabel(codigo) {
     if (!codigo) return 'Efectivo';
-    if (codigo === 'abonado') return '🧾 Abonado (crédito)';
+    if (codigo === 'abonado') return '🧾 Nota de Venta (crédito)';
     const metodo = metodosPago.find((m) => m.codigo === codigo);
     return metodo ? `${metodo.icono} ${metodo.nombre}` : codigo;
   }
@@ -133,7 +133,7 @@ export default function Invoices() {
         <button className="ventas-action-btn" onClick={() => navigate('/ventas/nota-credito/nueva')}>Nota de Crédito</button>
         <button className="ventas-action-btn" onClick={() => navigate('/ventas/guia-remitente/nueva')}>Guía Remitente</button>
         <button className="ventas-action-btn" onClick={() => navigate('/ventas/nuevo/cotizacion')}>Cotización</button>
-        <button className="ventas-action-btn" onClick={() => navigate('/ventas/nuevo/boleta?abonado=1')}>Abonado</button>
+        <button className="ventas-action-btn" onClick={() => navigate('/ventas/nuevo/boleta?abonado=1')}>Nota de Venta</button>
       </div>
 
       <form className="filter-panel" onSubmit={handleBuscar}>
