@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Line, Bar } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
@@ -123,6 +124,7 @@ async function copiarPanelComoImagen(ref, nombreArchivo, toast) {
 export default function Dashboard() {
   const { user, empresa, setEmpresa } = useAuth();
   const toast = useToast();
+  const navigate = useNavigate();
   const puedeVerTablero = !!user?.puede_ver_tablero;
   const colorTablero = empresa?.color_tablero_ventas || '#16a34a';
   const rankingTrainersRef = useRef(null);
@@ -289,7 +291,10 @@ export default function Dashboard() {
         </div>
 
         <div className="panel">
-          <h3>Últimas ventas</h3>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <h3 style={{ margin: 0 }}>Últimas ventas</h3>
+            <button className="btn-secondary" onClick={() => navigate('/ventas')}>Documentos Emitidos</button>
+          </div>
           <table className="data-table">
             <thead>
               <tr>

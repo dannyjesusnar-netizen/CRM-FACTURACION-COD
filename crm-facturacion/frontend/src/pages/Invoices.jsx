@@ -6,6 +6,11 @@ import { useAuth } from '../context/AuthContext';
 
 const TIPO_LABEL = { factura: 'Factura', boleta: 'Boleta', nota_credito: 'Nota de crédito' };
 
+function tipoLabel(inv) {
+  if (inv.tipo_comprobante === 'boleta' && inv.forma_pago === 'abonado') return 'Nota de Venta';
+  return TIPO_LABEL[inv.tipo_comprobante] || inv.tipo_comprobante;
+}
+
 function envioBadgeLabel(inv) {
   if (inv.estado === 'anulado') return 'Anulado';
   if (inv.modo_emision !== 'real') return 'Simulado';
@@ -41,10 +46,12 @@ export default function Invoices() {
   const [desde, setDesde] = useState(todayStr().slice(0, 8) + '01');
   const [hasta, setHasta] = useState(todayStr());
   const [documento, setDocumento] = useState('');
+  const [formaPago, setFormaPago] = useState('');
 
   function load() {
     const params = {};
     if (documento) params.tipo = documento;
+    if (formaPago) params.forma_pago = formaPago;
     if (desde) params.from = desde;
     if (hasta) params.to = hasta;
     if (q) params.q = q;
@@ -78,7 +85,7 @@ export default function Invoices() {
       inv.fecha_emision,
       inv.serie,
       String(inv.numero).padStart(6, '0'),
-      TIPO_LABEL[inv.tipo_comprobante] || inv.tipo_comprobante,
+      tipoLabel(inv),
       inv.cliente_documento,
       inv.cliente_nombre,
       inv.subtotal,
@@ -155,7 +162,17 @@ export default function Invoices() {
             <option value="">Comprobantes</option>
             <option value="factura">Factura</option>
             <option value="boleta">Boleta</option>
+            <option value="nota_venta">Nota de Venta</option>
             <option value="nota_credito">Nota de crédito</option>
+          </select>
+        </div>
+        <div className="filter-field">
+          <label>Forma de pago</label>
+          <select value={formaPago} onChange={(e) => setFormaPago(e.target.value)}>
+            <option value="">Todas</option>
+            <option value="abonado">🧾 Nota de Venta (crédito)</option>
+            <option value="mixto">🔀 Pago mixto</option>
+            {metodosPago.map((m) => <option key={m.codigo} value={m.codigo}>{m.icono} {m.nombre}</option>)}
           </select>
         </div>
         <div className="filter-actions">
@@ -194,7 +211,7 @@ export default function Invoices() {
                   <td>{inv.fecha_emision}</td>
                   <td>{inv.serie}</td>
                   <td>{String(inv.numero).padStart(6, '0')}</td>
-                  <td>{TIPO_LABEL[inv.tipo_comprobante] || inv.tipo_comprobante}</td>
+                  <td>{tipoLabel(inv)}</td>
                   <td>{inv.cliente_documento}</td>
                   <td>{inv.cliente_nombre}</td>
                   <td>
