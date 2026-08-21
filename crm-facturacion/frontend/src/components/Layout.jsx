@@ -10,7 +10,7 @@ import OdinWidget from './OdinWidget';
 import {
   TrendingUp, ShoppingCart, Bike, Wallet, Users, Calculator, ClipboardList, FileText,
   Moon, Sun, Settings, ChevronDown, Phone, FileSignature, Lock, Video, BarChart3, LogOut,
-  CreditCard, Sparkles, Smartphone,
+  CreditCard, Smartphone,
 } from 'lucide-react';
 import { canInstallPwa, isIosDevice, isRunningStandalone, promptPwaInstall, subscribePwaInstall } from '../utils/pwaInstall';
 
@@ -103,16 +103,6 @@ export default function Layout() {
         </div>
         <div className="topbar-actions">
           <SedeSwitcher />
-          {user?.role === 'gerencia' && (
-            <button
-              type="button"
-              className="topbar-planes-btn disabled"
-              title="Próximamente"
-              onClick={() => toast.info('Planes estará disponible próximamente.')}
-            >
-              <Sparkles size={14} /> PRÓXIMAMENTE
-            </button>
-          )}
           <button
             type="button"
             className="icon-btn"
