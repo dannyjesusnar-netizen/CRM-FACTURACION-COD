@@ -9,14 +9,14 @@ const PLANES = [
   {
     id: 'basico',
     nombre: 'Plan Básico',
-    precio: 59.90,
+    precio: 99,
     resumen: 'Para negocios que solo necesitan facturar.',
     features: ['Facturación completa'],
   },
   {
     id: 'control',
     nombre: 'Plan Control',
-    precio: 139.90,
+    precio: 199,
     resumen: 'Para negocios que quieren controlar todo su equipo.',
     features: [
       'Facturación',
@@ -30,7 +30,7 @@ const PLANES = [
   {
     id: 'premium',
     nombre: 'Plan Premium',
-    precio: 199.90,
+    precio: 279,
     destacado: true,
     resumen: 'Para negocios que quieren crecer sin límites.',
     features: [
