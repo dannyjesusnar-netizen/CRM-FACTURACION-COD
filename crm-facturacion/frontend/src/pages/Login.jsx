@@ -166,9 +166,14 @@ export default function Login() {
           <Receipt size={18} />
           <span>QORIA <span className="brand-suffix">Facturación</span></span>
         </div>
-        <Link to="/planes" className="auth-planes-btn">
-          <Sparkles size={14} /> PLANES
-        </Link>
+        <button
+          type="button"
+          className="auth-planes-btn disabled"
+          title="Próximamente"
+          onClick={() => toast.info('Planes estará disponible próximamente.')}
+        >
+          <Sparkles size={14} /> PRÓXIMAMENTE
+        </button>
         <LoginIllustration />
       </div>
 

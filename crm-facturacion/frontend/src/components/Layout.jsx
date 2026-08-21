@@ -104,8 +104,13 @@ export default function Layout() {
         <div className="topbar-actions">
           <SedeSwitcher />
           {user?.role === 'gerencia' && (
-            <button type="button" className="topbar-planes-btn" onClick={() => navigate('/planes')}>
-              <Sparkles size={14} /> PLANES
+            <button
+              type="button"
+              className="topbar-planes-btn disabled"
+              title="Próximamente"
+              onClick={() => toast.info('Planes estará disponible próximamente.')}
+            >
+              <Sparkles size={14} /> PRÓXIMAMENTE
             </button>
           )}
           <button
