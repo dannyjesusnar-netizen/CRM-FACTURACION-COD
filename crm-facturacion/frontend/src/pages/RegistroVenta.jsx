@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import api from '../api';
 import { useToast } from '../context/ToastContext';
 import ProductSearchBar from '../components/ProductSearchBar';
@@ -20,8 +20,6 @@ export default function RegistroVenta() {
   const { tipo } = useParams(); // 'factura' | 'boleta' | 'cotizacion'
   const navigate = useNavigate();
   const toast = useToast();
-  const [searchParams] = useSearchParams();
-  const modoAbonado = searchParams.get('abonado') === '1';
 
   const [serie, setSerie] = useState('');
   const [numero, setNumero] = useState('');
@@ -38,9 +36,8 @@ export default function RegistroVenta() {
   // un % que ya no corresponde al descuento elegido.
   const [descuentosActivos, setDescuentosActivos] = useState([]);
   const [descuentoId, setDescuentoId] = useState('');
-  const [cuenta, setCuenta] = useState(modoAbonado ? 'abonado' : 'efectivo');
+  const [cuenta, setCuenta] = useState('efectivo');
   const [pago, setPago] = useState('');
-  const [medioAbono, setMedioAbono] = useState('efectivo');
   const [pagosMixto, setPagosMixto] = useState([{ medio: 'efectivo', monto: '' }, { medio: '', monto: '' }]);
   const [error, setError] = useState('');
   const [metodosPago, setMetodosPago] = useState([]);
@@ -72,7 +69,7 @@ export default function RegistroVenta() {
     api.get('/metodos-pago').then((res) => {
       setMetodosPago(res.data);
       if (res.data.length && !res.data.some((m) => m.codigo === 'efectivo')) {
-        setCuenta((prev) => (prev === 'abonado' || prev === 'mixto' ? prev : res.data[0].codigo));
+        setCuenta((prev) => (prev === 'mixto' ? prev : res.data[0].codigo));
         setMedioAbono(res.data[0].codigo);
       }
     });
@@ -97,10 +94,7 @@ export default function RegistroVenta() {
     setShowPreview(false);
     if (previewUrlRef.current) { URL.revokeObjectURL(previewUrlRef.current); previewUrlRef.current = ''; }
     setPreviewUrl('');
-    // En modo Abonado el cliente tiene que ser real (no "Clientes Varios" —
-    // sin saber quién es, no hay a quién cobrarle), así que no lo
-    // preseleccionamos como en una boleta normal.
-    if (tipo === 'boleta' && !modoAbonado) {
+    if (tipo === 'boleta') {
       api.get('/clients', { params: { q: '10000000' } }).then((res) => {
         const clientesVarios = res.data.find((c) => c.numero_documento === '10000000');
         setCliente(clientesVarios || null);
@@ -108,7 +102,6 @@ export default function RegistroVenta() {
     } else {
       setCliente(null);
     }
-    if (modoAbonado) setCuenta('abonado');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tipo]);
 
@@ -245,12 +238,6 @@ export default function RegistroVenta() {
     if (tipo !== 'cotizacion' && !cliente) {
       return 'Selecciona un cliente.';
     }
-    if (tipo !== 'cotizacion' && cuenta === 'abonado' && cliente?.numero_documento === '10000000') {
-      return 'Para una venta abonada selecciona un cliente real — no puede quedar a nombre de "Clientes Varios".';
-    }
-    if (tipo !== 'cotizacion' && cuenta === 'abonado' && Number(pago || 0) > computed.total) {
-      return 'El abono no puede ser mayor al total de la venta.';
-    }
     if (tipo !== 'cotizacion' && cuenta === 'mixto') {
       if (pagosMixto.some((p) => !p.medio || !(Number(p.monto) > 0))) {
         return 'Completa el método y el monto de cada pago del pago mixto.';
@@ -287,10 +274,6 @@ export default function RegistroVenta() {
     if (tipo !== 'cotizacion') {
       payload.tipo_comprobante = tipo;
       payload.forma_pago = cuenta;
-      if (cuenta === 'abonado') {
-        payload.monto_pagado = Number(pago || 0);
-        if (Number(pago || 0) > 0) payload.medio_abono = medioAbono;
-      }
       if (cuenta === 'mixto') {
         payload.pagos = pagosMixto.map((p) => ({ medio: p.medio, monto: Number(p.monto) }));
       }
@@ -347,7 +330,7 @@ export default function RegistroVenta() {
 
   return (
     <div className="venta-page">
-      <h1 className="page-title">Registro de {modoAbonado ? 'Boleta a crédito (Abonado)' : (TITULOS[tipo] || tipo)}</h1>
+      <h1 className="page-title">Registro de {TITULOS[tipo] || tipo}</h1>
 
       <form onSubmit={abrirVistaPrevia}>
         <div className="venta-panel">
@@ -503,7 +486,6 @@ export default function RegistroVenta() {
                   {metodosPago.map((m) => (
                     <option key={m.codigo} value={m.codigo}>{m.icono} {m.nombre}</option>
                   ))}
-                  <option value="abonado">Abonado (crédito)</option>
                   <option value="mixto">🔀 Pago mixto (2 o más medios)</option>
                 </select>
               </div>
@@ -518,30 +500,7 @@ export default function RegistroVenta() {
                   </select>
                 </div>
               )}
-              {cuenta === 'abonado' && (
-                <>
-                  <div className="filter-field">
-                    <label>Abono inicial (opcional)</label>
-                    <input type="number" min="0" step="0.01" value={pago} onChange={(e) => setPago(e.target.value)} />
-                  </div>
-                  {Number(pago || 0) > 0 && (
-                    <div className="filter-field">
-                      <label>Medio del abono</label>
-                      <select value={medioAbono} onChange={(e) => setMedioAbono(e.target.value)}>
-                        {metodosPago.map((m) => (
-                          <option key={m.codigo} value={m.codigo}>{m.icono} {m.nombre}</option>
-                        ))}
-                      </select>
-                      <MetodoPagoQr metodo={metodosPago.find((m) => m.codigo === medioAbono)} monto={Number(pago || 0)} />
-                    </div>
-                  )}
-                  <div className="filter-field">
-                    <label>Saldo pendiente</label>
-                    <input readOnly value={computed.saldoPendiente.toFixed(2)} />
-                  </div>
-                </>
-              )}
-              {cuenta !== 'abonado' && cuenta !== 'mixto' && (
+              {cuenta !== 'mixto' && (
                 <>
                   <div className="filter-field">
                     <label>Pago</label>
@@ -555,12 +514,6 @@ export default function RegistroVenta() {
                 </>
               )}
             </div>
-          )}
-          {cuenta === 'abonado' && tipo !== 'cotizacion' && (
-            <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -8 }}>
-              El cliente debe ser real (no "Clientes Varios") — esta venta va a aparecer en Cuentas por Cobrar
-              hasta que se salde el saldo pendiente.
-            </p>
           )}
 
           {cuenta === 'mixto' && tipo !== 'cotizacion' && (

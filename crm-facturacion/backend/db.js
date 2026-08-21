@@ -475,6 +475,20 @@ CREATE TABLE IF NOT EXISTS nota_venta_items (
   subtotal REAL NOT NULL DEFAULT 0
 );
 
+-- Historial de cobros contra una Nota de Venta Interna "abonado" (crédito):
+-- mismo patrón que la tabla "cobros" de invoices, pero separada porque
+-- notas_venta es una tabla propia (no fiscal). Cada abono actualiza
+-- notas_venta.monto_pagado y se refleja en Caja (categoria 'cuentas_cobrar').
+CREATE TABLE IF NOT EXISTS nota_venta_cobros (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  nota_venta_id INTEGER NOT NULL REFERENCES notas_venta(id),
+  monto REAL NOT NULL,
+  medio TEXT NOT NULL,
+  observacion TEXT,
+  created_by INTEGER REFERENCES users(id),
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
 -- Datos legales del negocio que usa esta instancia del CRM (emisor de los
 -- comprobantes). Tabla singleton: siempre existe una única fila con id = 1.
 CREATE TABLE IF NOT EXISTS empresa_config (
@@ -612,6 +626,14 @@ CREATE TABLE IF NOT EXISTS qr_unico_medios (
   if (!invoiceColumns.includes('monto_pagado')) {
     db.exec('ALTER TABLE invoices ADD COLUMN monto_pagado REAL');
     db.exec('UPDATE invoices SET monto_pagado = total WHERE monto_pagado IS NULL');
+  }
+  // Las ventas a crédito (fiado) ahora se registran únicamente como Nota de
+  // Venta Interna (sin IGV) — mismo mecanismo de monto_pagado que invoices,
+  // ver nota_venta_cobros más abajo.
+  const notaVentaColumns = db.prepare("PRAGMA table_info(notas_venta)").all().map((c) => c.name);
+  if (!notaVentaColumns.includes('monto_pagado')) {
+    db.exec('ALTER TABLE notas_venta ADD COLUMN monto_pagado REAL');
+    db.exec('UPDATE notas_venta SET monto_pagado = total WHERE monto_pagado IS NULL');
   }
   const PRODUCT_NEW_COLUMNS = [
     ['codigo_barras', "TEXT"],
@@ -791,6 +813,11 @@ CREATE TABLE IF NOT EXISTS metas_venta_sede (
   // lo que el arqueo muestra (ver DELETE /movimientos/:id).
   if (!cajaMovimientoColumns.includes('invoice_id')) {
     db.exec('ALTER TABLE caja_movimientos ADD COLUMN invoice_id INTEGER REFERENCES invoices(id)');
+  }
+  // Mismo mecanismo que invoice_id, para los cobros de una Nota de Venta
+  // Interna a crédito (ver POST /api/notas-venta/:id/cobros).
+  if (!cajaMovimientoColumns.includes('nota_venta_id')) {
+    db.exec('ALTER TABLE caja_movimientos ADD COLUMN nota_venta_id INTEGER REFERENCES notas_venta(id)');
   }
   // cotizaciones/guias_remitentes nacieron antes que el multi-sede real y
   // nunca quedaron scoped a una sucursal — a diferencia de invoices/purchases,

@@ -1,19 +1,110 @@
 const express = require('express');
 const db = require('../db');
 const { requireAuth, resolveSucursal } = require('../middleware/auth');
-const { requirePermiso, requireAccion } = require('../utils/permisos');
+const { requirePermiso, requireAccion, tieneAccion, tienePermiso } = require('../utils/permisos');
 const { siguienteNumero } = require('../utils/series');
 const { consumirStock, incrementarStock, StockInsuficienteError } = require('../utils/stock');
 const { buildNotaVentaPdf } = require('../utils/pdf');
 
 const router = express.Router();
 router.use(requireAuth);
-router.use(requirePermiso('ventas'));
 router.use(resolveSucursal);
 
 function round2(n) {
   return Math.round((n + Number.EPSILON) * 100) / 100;
 }
+
+const CLIENTE_GENERICO_DOCUMENTO = '10000000'; // "CLIENTES VARIOS", sembrado en db.js
+
+// El único valor "especial" que no es un método de pago real (venta a
+// crédito). Todo lo demás sale del catálogo dinámico de metodos_pago.
+function esMetodoPagoValido(codigo) {
+  if (!codigo) return false;
+  return !!db.prepare('SELECT 1 FROM metodos_pago WHERE codigo = ? AND activo = 1').get(codigo);
+}
+
+// Cuentas por cobrar es visible tanto desde Ventas como desde Caja y Bancos,
+// así que estos tres endpoints se registran ANTES del candado general
+// `requirePermiso('ventas')` de más abajo — mismo patrón que invoices.js.
+function requireVerCuentasPorCobrar(req, res, next) {
+  if (!req.user) return res.status(401).json({ error: 'No autenticado.' });
+  if (tienePermiso(req.user, 'caja') || tieneAccion(req.user, 'ventas', 'cuentas_por_cobrar')) return next();
+  return res.status(403).json({ error: 'No tienes permiso para ver cuentas por cobrar.' });
+}
+function requireRegistrarCobro(req, res, next) {
+  if (!req.user) return res.status(401).json({ error: 'No autenticado.' });
+  if (tienePermiso(req.user, 'caja') || tieneAccion(req.user, 'ventas', 'registrar_cobro')) return next();
+  return res.status(403).json({ error: 'No tienes permiso para registrar cobros.' });
+}
+
+// GET /api/notas-venta/deudas -> notas de venta "abonado" con saldo pendiente
+router.get('/deudas', requireVerCuentasPorCobrar, (req, res) => {
+  const rows = db.prepare(`
+    SELECT nv.id, nv.serie, nv.numero, nv.fecha_emision, nv.moneda, nv.total, nv.monto_pagado,
+           (nv.total - nv.monto_pagado) AS saldo,
+           c.id AS client_id, c.nombre AS cliente_nombre, c.numero_documento AS cliente_documento,
+           c.tipo_documento AS cliente_tipo_documento, c.telefono AS cliente_telefono
+    FROM notas_venta nv JOIN clients c ON c.id = nv.client_id
+    WHERE nv.sucursal_id = ? AND nv.forma_pago = 'abonado' AND nv.estado = 'emitido'
+      AND (nv.total - nv.monto_pagado) > 0.005
+    ORDER BY nv.fecha_emision ASC, nv.id ASC
+  `).all(req.sucursalId);
+  res.json(rows.map((r) => ({ ...r, saldo: round2(r.saldo) })));
+});
+
+// GET /api/notas-venta/:id/cobros -> historial de abonos de una nota de venta "abonado"
+router.get('/:id/cobros', requireVerCuentasPorCobrar, (req, res) => {
+  const nv = db.prepare('SELECT id FROM notas_venta WHERE id = ? AND sucursal_id = ?').get(req.params.id, req.sucursalId);
+  if (!nv) return res.status(404).json({ error: 'Nota de venta interna no encontrada.' });
+  const rows = db.prepare(
+    `SELECT nvc.*, u.full_name AS usuario_nombre FROM nota_venta_cobros nvc
+     LEFT JOIN users u ON u.id = nvc.created_by
+     WHERE nvc.nota_venta_id = ? ORDER BY nvc.id DESC`
+  ).all(req.params.id);
+  res.json(rows);
+});
+
+// POST /api/notas-venta/:id/cobros { monto, medio, observacion } -> registra un cobro contra el saldo pendiente
+router.post('/:id/cobros', requireRegistrarCobro, (req, res) => {
+  const nv = db.prepare('SELECT * FROM notas_venta WHERE id = ? AND sucursal_id = ?').get(req.params.id, req.sucursalId);
+  if (!nv) return res.status(404).json({ error: 'Nota de venta interna no encontrada.' });
+  if (nv.forma_pago !== 'abonado') {
+    return res.status(400).json({ error: 'Esta nota de venta no es a crédito (abonado).' });
+  }
+  if (nv.estado !== 'emitido') {
+    return res.status(400).json({ error: 'La nota de venta está anulada.' });
+  }
+  const { monto, medio, observacion } = req.body || {};
+  if (!esMetodoPagoValido(medio)) {
+    return res.status(400).json({ error: 'Selecciona un método de pago válido.' });
+  }
+  const saldoActual = round2(nv.total - nv.monto_pagado);
+  const montoNum = round2(Number(monto || 0));
+  if (montoNum <= 0) return res.status(400).json({ error: 'El monto debe ser mayor a 0.' });
+  if (montoNum > saldoActual + 0.005) {
+    return res.status(400).json({ error: `El monto no puede superar el saldo pendiente (S/ ${saldoActual.toFixed(2)}).` });
+  }
+  const client = db.prepare('SELECT nombre FROM clients WHERE id = ?').get(nv.client_id);
+  const referencia = `${nv.serie}-${String(nv.numero).padStart(6, '0')}`;
+  const hoy = new Date().toISOString().slice(0, 10);
+
+  const registrar = db.transaction(() => {
+    db.prepare('UPDATE notas_venta SET monto_pagado = monto_pagado + ? WHERE id = ?').run(montoNum, nv.id);
+    db.prepare(
+      `INSERT INTO nota_venta_cobros (nota_venta_id, monto, medio, observacion, created_by) VALUES (?, ?, ?, ?, ?)`
+    ).run(nv.id, montoNum, medio, observacion || null, req.user?.id || null);
+    db.prepare(
+      `INSERT INTO caja_movimientos (fecha, tipo, medio, categoria, monto, descripcion, created_by, sucursal_id, nota_venta_id)
+       VALUES (?, 'ingreso', ?, 'cuentas_cobrar', ?, ?, ?, ?, ?)`
+    ).run(hoy, medio, montoNum, `Cobro - ${referencia} - ${client?.nombre || ''}`, req.user?.id || null, req.sucursalId, nv.id);
+  });
+  registrar();
+
+  const updated = db.prepare('SELECT * FROM notas_venta WHERE id = ?').get(nv.id);
+  res.json({ ...updated, saldo: round2(updated.total - updated.monto_pagado) });
+});
+
+router.use(requirePermiso('ventas'));
 
 router.get('/siguiente-numero', (req, res) => {
   res.json(siguienteNumero('nota_venta', req.sucursalId));
@@ -65,6 +156,7 @@ router.post('/', requireAccion('ventas', 'nota_venta'), (req, res) => {
   const {
     client_id, items, moneda, observaciones, fecha_emision,
     descuento_global_pct, numero: numeroManual, forma_pago,
+    monto_pagado: montoPagadoBody, medio_abono,
   } = req.body || {};
 
   if (!client_id) return res.status(400).json({ error: 'client_id es requerido.' });
@@ -78,6 +170,21 @@ router.post('/', requireAccion('ventas', 'nota_venta'), (req, res) => {
     const precio = Number(it.precio_unitario);
     if (!Number.isFinite(cantidad) || cantidad <= 0) return res.status(400).json({ error: 'Cantidad inválida en un item.' });
     if (!Number.isFinite(precio) || precio < 0) return res.status(400).json({ error: 'Precio unitario inválido en un item.' });
+  }
+
+  const esAbonado = forma_pago === 'abonado';
+  if (forma_pago && forma_pago !== 'abonado' && !esMetodoPagoValido(forma_pago)) {
+    return res.status(400).json({ error: 'forma_pago invalida. Debe ser un método de pago activo o "abonado".' });
+  }
+  if (esAbonado && !tieneAccion(req.user, 'ventas', 'abonado')) {
+    return res.status(403).json({ error: 'No tienes permiso para registrar notas de venta a crédito (abonado).' });
+  }
+  if (esAbonado && client.numero_documento === CLIENTE_GENERICO_DOCUMENTO) {
+    return res.status(400).json({ error: 'Para una nota de venta abonada selecciona un cliente real — no puede quedar a nombre de "Clientes Varios".' });
+  }
+  const medioAbono = esAbonado && Number(montoPagadoBody || 0) > 0 ? medio_abono : null;
+  if (esAbonado && Number(montoPagadoBody || 0) > 0 && !esMetodoPagoValido(medioAbono)) {
+    return res.status(400).json({ error: 'Selecciona un método de pago válido para el abono inicial.' });
   }
 
   const descuentoGlobalPct = Math.min(100, Math.max(0, Number(descuento_global_pct || 0)));
@@ -105,26 +212,32 @@ router.post('/', requireAccion('ventas', 'nota_venta'), (req, res) => {
 
   totalBruto = round2(totalBruto);
   const total = round2(totalBruto * (1 - descuentoGlobalPct / 100));
+  // Para efectivo/tarjeta/banco se asume pagado por completo. Para "abonado"
+  // es lo que el cliente entregó ahora (puede ser 0 hasta el total) — el
+  // resto queda como saldo pendiente en /notas-venta/deudas.
+  const montoPagado = esAbonado ? Math.min(total, Math.max(0, round2(Number(montoPagadoBody || 0)))) : total;
 
   const { serie, numero: numeroSugerido } = siguienteNumero('nota_venta', req.sucursalId);
+  const fechaEmisionFinal = fecha_emision || new Date().toISOString().slice(0, 10);
   const referencia = `${serie}-${String(numeroManual || numeroSugerido).padStart(6, '0')}`;
 
   const insertAll = db.transaction(() => {
     const numero = numeroManual ? Number(numeroManual) : numeroSugerido;
     const info = db.prepare(
-      `INSERT INTO notas_venta (serie, numero, client_id, created_by, sucursal_id, fecha_emision, moneda, descuento_global_pct, total, forma_pago, estado, observaciones)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'emitido', ?)`
+      `INSERT INTO notas_venta (serie, numero, client_id, created_by, sucursal_id, fecha_emision, moneda, descuento_global_pct, total, forma_pago, monto_pagado, estado, observaciones)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'emitido', ?)`
     ).run(
       serie,
       numero,
       client_id,
       req.user?.id || null,
       req.sucursalId,
-      fecha_emision || new Date().toISOString().slice(0, 10),
+      fechaEmisionFinal,
       moneda || 'PEN',
       descuentoGlobalPct,
       total,
       forma_pago || 'efectivo',
+      montoPagado,
       observaciones || null
     );
     const notaVentaId = info.lastInsertRowid;
@@ -143,6 +256,19 @@ router.post('/', requireAccion('ventas', 'nota_venta'), (req, res) => {
           sucursalId: req.sucursalId,
         });
       }
+    }
+
+    // Abono inicial de una nota de venta "abonado": queda registrado en el
+    // historial de cobros y como ingreso real en Caja (cuentas_cobrar) — el
+    // resto del total queda pendiente en /notas-venta/deudas.
+    if (esAbonado && montoPagado > 0) {
+      db.prepare(
+        `INSERT INTO nota_venta_cobros (nota_venta_id, monto, medio, observacion, created_by) VALUES (?, ?, ?, ?, ?)`
+      ).run(notaVentaId, montoPagado, medioAbono, 'Abono al emitir la nota de venta', req.user?.id || null);
+      db.prepare(
+        `INSERT INTO caja_movimientos (fecha, tipo, medio, categoria, monto, descripcion, created_by, sucursal_id, nota_venta_id)
+         VALUES (?, 'ingreso', ?, 'cuentas_cobrar', ?, ?, ?, ?, ?)`
+      ).run(fechaEmisionFinal, medioAbono, montoPagado, `Abono - ${referencia} - ${client.nombre}`, req.user?.id || null, req.sucursalId, notaVentaId);
     }
     return notaVentaId;
   });

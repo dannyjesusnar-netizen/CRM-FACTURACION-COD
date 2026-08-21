@@ -9,6 +9,12 @@ function round2(n) {
   return Math.round((n + Number.EPSILON) * 100) / 100;
 }
 
+function tipoLabel(d) {
+  if (d._source === 'nota_venta') return 'Nota de Venta Interna';
+  if (d.tipo_comprobante === 'factura') return 'Factura';
+  return 'Boleta';
+}
+
 export default function CuentasPorCobrar() {
   const navigate = useNavigate();
   const toast = useToast();
@@ -26,7 +32,15 @@ export default function CuentasPorCobrar() {
   }, []);
 
   function load() {
-    api.get('/invoices/deudas').then((res) => setDeudas(res.data));
+    Promise.all([
+      api.get('/invoices/deudas'),
+      api.get('/notas-venta/deudas'),
+    ]).then(([invRes, nvRes]) => {
+      const invRows = invRes.data.map((r) => ({ ...r, _source: 'invoice' }));
+      const nvRows = nvRes.data.map((r) => ({ ...r, _source: 'nota_venta' }));
+      const merged = [...invRows, ...nvRows].sort((a, b) => (a.fecha_emision < b.fecha_emision ? -1 : 1));
+      setDeudas(merged);
+    });
   }
 
   function openCobro(d) {
@@ -40,7 +54,8 @@ export default function CuentasPorCobrar() {
     e.preventDefault();
     setError('');
     try {
-      await api.post(`/invoices/${cobrando.id}/cobros`, { monto: Number(monto), medio, observacion });
+      const base = cobrando._source === 'nota_venta' ? '/notas-venta' : '/invoices';
+      await api.post(`${base}/${cobrando.id}/cobros`, { monto: Number(monto), medio, observacion });
       toast.success('Cobro registrado.');
       setCobrando(null);
       load();
@@ -62,19 +77,20 @@ export default function CuentasPorCobrar() {
         CUENTAS POR COBRAR
       </h1>
       <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -8 }}>
-        Ventas emitidas como "Abonado" (crédito) con saldo pendiente. Total adeudado: <strong>S/ {totalAdeudadoPEN.toFixed(2)}</strong>
+        Ventas y notas de venta interna emitidas como "Abonado" (crédito) con saldo pendiente. Total adeudado: <strong>S/ {totalAdeudadoPEN.toFixed(2)}</strong>
         {totalAdeudadoUSD > 0 && <> + <strong>$ {totalAdeudadoUSD.toFixed(2)}</strong></>}
       </p>
 
       <table className="data-table">
         <thead>
-          <tr><th>Fecha</th><th>Comprobante</th><th>Cliente</th><th>Documento</th><th>Total</th><th>Pagado</th><th>Saldo</th><th></th></tr>
+          <tr><th>Fecha</th><th>Comprobante</th><th>Tipo</th><th>Cliente</th><th>Documento</th><th>Total</th><th>Pagado</th><th>Saldo</th><th></th></tr>
         </thead>
         <tbody>
           {deudas.map((d) => (
-            <tr key={d.id}>
+            <tr key={`${d._source}-${d.id}`}>
               <td>{d.fecha_emision}</td>
               <td>{d.serie}-{String(d.numero).padStart(6, '0')}</td>
+              <td>{tipoLabel(d)}</td>
               <td>{d.cliente_nombre}</td>
               <td>{d.cliente_tipo_documento} {d.cliente_documento}</td>
               <td>S/ {d.total.toFixed(2)}</td>
@@ -86,7 +102,7 @@ export default function CuentasPorCobrar() {
             </tr>
           ))}
           {deudas.length === 0 && (
-            <tr><td colSpan={8} className="empty-row">No hay cuentas por cobrar pendientes.</td></tr>
+            <tr><td colSpan={9} className="empty-row">No hay cuentas por cobrar pendientes.</td></tr>
           )}
         </tbody>
       </table>
