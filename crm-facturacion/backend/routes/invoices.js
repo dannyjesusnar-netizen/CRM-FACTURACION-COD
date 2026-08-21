@@ -231,12 +231,16 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'El precio unitario de cada ítem no puede ser negativo.' });
     }
   }
-  const esMixto = forma_pago === 'mixto';
-  if (forma_pago && forma_pago !== 'abonado' && forma_pago !== 'mixto' && !esMetodoPagoValido(forma_pago)) {
-    return res.status(400).json({ error: 'forma_pago invalida. Debe ser un método de pago activo, "abonado" o "mixto".' });
+  // Las ventas a crédito (fiado) ya no se registran como Factura/Boleta —
+  // solo existen como Nota de Venta Interna (sin IGV), ver routes/notasVenta.js.
+  // Se mantienen /deudas y /cobros de más arriba para servir las ventas
+  // "abonado" que ya existían antes de este cambio.
+  if (forma_pago === 'abonado') {
+    return res.status(400).json({ error: 'Las ventas a crédito (fiado) ya no se registran como Factura/Boleta — usa "Nota de Venta Interna".' });
   }
-  if (forma_pago === 'abonado' && !tieneAccion(req.user, 'ventas', 'abonado')) {
-    return res.status(403).json({ error: 'No tienes permiso para registrar ventas abonadas.' });
+  const esMixto = forma_pago === 'mixto';
+  if (forma_pago && forma_pago !== 'mixto' && !esMetodoPagoValido(forma_pago)) {
+    return res.status(400).json({ error: 'forma_pago invalida. Debe ser un método de pago activo o "mixto".' });
   }
   // Pago mixto: la venta queda pagada por completo (no es crédito), solo que
   // repartida entre 2+ métodos reales (ej. S/ 50 en efectivo + el resto por

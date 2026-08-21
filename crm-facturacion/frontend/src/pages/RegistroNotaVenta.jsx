@@ -27,6 +27,8 @@ export default function RegistroNotaVenta() {
   const [observaciones, setObservaciones] = useState('');
   const [descuentoGlobal, setDescuentoGlobal] = useState(0);
   const [cuenta, setCuenta] = useState('efectivo');
+  const [pago, setPago] = useState('');
+  const [medioAbono, setMedioAbono] = useState('efectivo');
   const [metodosPago, setMetodosPago] = useState([]);
   const [error, setError] = useState('');
   const [emitiendo, setEmitiendo] = useState(false);
@@ -75,12 +77,19 @@ export default function RegistroNotaVenta() {
     });
     totalBruto = round2(totalBruto);
     const total = round2(totalBruto * (1 - Number(descuentoGlobal || 0) / 100));
-    return { rows, total };
-  }, [items, descuentoGlobal]);
+    const saldoPendiente = round2(Math.max(0, total - Number(pago || 0)));
+    return { rows, total, saldoPendiente };
+  }, [items, descuentoGlobal, pago]);
 
   function validar() {
     if (!cliente) return 'Selecciona un cliente.';
     if (items.length === 0) return 'Agrega al menos un producto.';
+    if (cuenta === 'abonado' && cliente?.numero_documento === '10000000') {
+      return 'Para una nota de venta abonada selecciona un cliente real — no puede quedar a nombre de "Clientes Varios".';
+    }
+    if (cuenta === 'abonado' && Number(pago || 0) > computed.total) {
+      return 'El abono no puede ser mayor al total de la nota de venta.';
+    }
     return '';
   }
 
@@ -91,7 +100,7 @@ export default function RegistroNotaVenta() {
     if (msg) { setError(msg); return; }
     setEmitiendo(true);
     try {
-      await api.post('/notas-venta', {
+      const payload = {
         client_id: cliente.id,
         items: computed.rows.map((it) => ({
           product_id: it.product_id,
@@ -107,7 +116,12 @@ export default function RegistroNotaVenta() {
         forma_pago: cuenta,
         numero: numero || undefined,
         serie,
-      });
+      };
+      if (cuenta === 'abonado') {
+        payload.monto_pagado = Number(pago || 0);
+        if (Number(pago || 0) > 0) payload.medio_abono = medioAbono;
+      }
+      await api.post('/notas-venta', payload);
       toast.success('Nota de venta interna registrada correctamente.');
       navigate('/ventas');
     } catch (err) {
@@ -226,10 +240,41 @@ export default function RegistroNotaVenta() {
                 {metodosPago.map((m) => (
                   <option key={m.codigo} value={m.codigo}>{m.icono} {m.nombre}</option>
                 ))}
+                <option value="abonado">Abonado (crédito)</option>
               </select>
             </div>
-            <MetodoPagoQr metodo={metodosPago.find((m) => m.codigo === cuenta)} monto={computed.total} />
+            {cuenta === 'abonado' ? (
+              <>
+                <div className="filter-field">
+                  <label>Abono inicial (opcional)</label>
+                  <input type="number" min="0" step="0.01" value={pago} onChange={(e) => setPago(e.target.value)} />
+                </div>
+                {Number(pago || 0) > 0 && (
+                  <div className="filter-field">
+                    <label>Medio del abono</label>
+                    <select value={medioAbono} onChange={(e) => setMedioAbono(e.target.value)}>
+                      {metodosPago.map((m) => (
+                        <option key={m.codigo} value={m.codigo}>{m.icono} {m.nombre}</option>
+                      ))}
+                    </select>
+                    <MetodoPagoQr metodo={metodosPago.find((m) => m.codigo === medioAbono)} monto={Number(pago || 0)} />
+                  </div>
+                )}
+                <div className="filter-field">
+                  <label>Saldo pendiente</label>
+                  <input readOnly value={computed.saldoPendiente.toFixed(2)} />
+                </div>
+              </>
+            ) : (
+              <MetodoPagoQr metodo={metodosPago.find((m) => m.codigo === cuenta)} monto={computed.total} />
+            )}
           </div>
+          {cuenta === 'abonado' && (
+            <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -8 }}>
+              El cliente debe ser real (no "Clientes Varios") — esta nota de venta va a aparecer en Cuentas por Cobrar
+              hasta que se salde el saldo pendiente.
+            </p>
+          )}
 
           {error && <div className="form-error">{error}</div>}
 

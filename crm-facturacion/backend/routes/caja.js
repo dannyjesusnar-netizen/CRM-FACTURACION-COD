@@ -118,7 +118,7 @@ router.delete('/movimientos/:id', requireAccion('caja', 'eliminar_movimiento'), 
   // dinero ya quedó registrado también en invoices.monto_pagado/cobros, y
   // borrar solo el lado de Caja los desincroniza (el cliente queda "pagado"
   // sin que la caja lo refleje). Para revertirlo, anula el comprobante.
-  if (row.invoice_id) {
+  if (row.invoice_id || row.nota_venta_id) {
     return res.status(400).json({ error: 'Este movimiento proviene de un comprobante y no se puede eliminar directamente — anula el comprobante para revertirlo.' });
   }
   db.prepare('DELETE FROM caja_movimientos WHERE id = ?').run(req.params.id);

@@ -36,8 +36,10 @@ function movimientosSum(fecha, tipo, medio, categoria, sucursalId, moneda, emple
   if (moneda === 'USD') return 0;
   let sql = `SELECT COALESCE(SUM(cm.monto), 0) AS total FROM caja_movimientos cm
      LEFT JOIN invoices i ON i.id = cm.invoice_id
+     LEFT JOIN notas_venta nv ON nv.id = cm.nota_venta_id
      WHERE cm.fecha = ? AND cm.tipo = ? AND cm.medio = ? AND cm.categoria = ? AND cm.sucursal_id = ?
-       AND (cm.invoice_id IS NULL OR i.estado != 'anulado')`;
+       AND (cm.invoice_id IS NULL OR i.estado != 'anulado')
+       AND (cm.nota_venta_id IS NULL OR nv.estado != 'anulado')`;
   const params = [fecha, tipo, medio, categoria, sucursalId];
   if (empleadoId) { sql += ' AND cm.created_by = ?'; params.push(empleadoId); }
   const row = db.prepare(sql).get(...params);
