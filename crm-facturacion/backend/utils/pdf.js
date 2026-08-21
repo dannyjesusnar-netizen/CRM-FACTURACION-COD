@@ -336,6 +336,124 @@ function buildA4Pdf(invoice, items, empresa, acento, logo, qr, cobros) {
   return doc;
 }
 
+// Nota de Venta: documento SIN efectos tributarios (no es un comprobante de
+// pago reconocido por SUNAT, no lleva IGV) — a propósito NO reutiliza
+// buildA4Pdf/buildTicketPdf (esos están pensados para factura/boleta/nota de
+// crédito reales, con hash/QR SUNAT y desglose de IGV) para que este
+// documento se vea claramente distinto y nunca pueda confundirse con uno
+// fiscal. Layout simple: encabezado de empresa, aviso legal bien visible,
+// datos del cliente, tabla de items y un solo TOTAL (sin Op. gravada/IGV).
+async function buildNotaVentaPdf(notaVenta, items, empresa) {
+  const doc = new PDFDocument({ margin: 40, size: 'A4' });
+  const acento = /^#[0-9a-fA-F]{6}$/.test(empresa?.color_acento || '') ? empresa.color_acento : COLOR_ACENTO_DEFAULT;
+  const mostrarLogo = empresa?.mostrar_logo_pdf !== 0 && !!empresa?.logo_data_url;
+  const logo = mostrarLogo ? logoBuffer(empresa.logo_data_url) : null;
+
+  let textX = 40;
+  if (logo) {
+    const layout = logoLayout(doc, logo, 40, 40, 130, 64);
+    if (layout) {
+      try {
+        layout.dibujar();
+        textX = 40 + layout.anchoOcupado + 14;
+      } catch { /* logo corrupto, se ignora */ }
+    }
+  }
+  const nombreWidth = Math.max(150, 375 - textX);
+  const infoWidth = Math.max(140, 380 - (textX + 10));
+  const nombreEmpresa = empresa?.razon_social || 'CRM Facturacion';
+  doc.font('Helvetica-Bold').fontSize(17).fillColor(acento).text(nombreEmpresa, textX, 44, { width: nombreWidth });
+
+  let infoY = 44 + doc.heightOfString(nombreEmpresa, { width: nombreWidth }) + 6;
+  doc.font('Helvetica').fontSize(7.5).fillColor('#444');
+  if (empresa?.direccion_fiscal) {
+    doc.circle(textX + 3, infoY + 3, 2.5).fill(acento).fillColor('#444');
+    doc.text(empresa.direccion_fiscal, textX + 10, infoY, { width: infoWidth });
+    infoY += doc.heightOfString(empresa.direccion_fiscal, { width: infoWidth }) + 3;
+  }
+
+  doc.roundedRect(390, 38, 165, 78, 5).stroke(acento);
+  doc.font('Helvetica').fontSize(9).fillColor('#000').text(`RUC: ${empresa?.ruc || '-'}`, 398, 46, { width: 150, align: 'center' });
+  doc.font('Helvetica-Bold').fontSize(11).fillColor(acento).text('NOTA DE VENTA INTERNA', 398, 61, { width: 150, align: 'center' });
+  doc.font('Helvetica-Bold').fontSize(13).fillColor('#000').text(`${notaVenta.serie}-${String(notaVenta.numero).padStart(6, '0')}`, 398, 90, { width: 150, align: 'center' });
+
+  const avisoY = Math.max(infoY, 116);
+  doc.fontSize(7).fillColor('#b45309').text(
+    'Documento SIN efectos tributarios — no es un comprobante de pago (no válido ante SUNAT, no incluye IGV).',
+    40, avisoY, { width: 515 }
+  );
+
+  const panelTop = avisoY + 20;
+  const panelHeight = 90;
+  doc.roundedRect(40, panelTop, 515, panelHeight, 6).stroke('#ddd');
+  const leftX = 52;
+  const rightX = 310;
+  let ly = panelTop + 12;
+  bulletRow(doc, leftX, ly, 240, 'Cliente', notaVenta.cliente_nombre, acento);
+  bulletRow(doc, rightX, ly, 200, 'RUC/DNI', notaVenta.cliente_documento, acento);
+  ly += 26;
+  bulletRow(doc, leftX, ly, 240, 'Direccion', notaVenta.cliente_direccion, acento);
+  bulletRow(doc, rightX, ly, 200, 'Fecha', notaVenta.fecha_emision, acento);
+  ly += 26;
+  bulletRow(doc, leftX, ly, 240, 'Forma de Pago', formaPagoLabel(notaVenta.forma_pago), acento);
+  bulletRow(doc, rightX, ly, 200, 'Moneda', monedaLabel(notaVenta.moneda), acento);
+
+  let y = panelTop + panelHeight + 14;
+  const cols = [
+    { key: 'item', label: 'ITEM', x: 40, w: 25, align: 'center' },
+    { key: 'cant', label: 'CANT.', x: 65, w: 45, align: 'right' },
+    { key: 'desc', label: 'DESCRIPCION', x: 110, w: 260, align: 'left' },
+    { key: 'pu', label: 'P.U.', x: 370, w: 65, align: 'right' },
+    { key: 'dsc', label: 'DESC', x: 435, w: 40, align: 'right' },
+    { key: 'imp', label: 'IMPORTE', x: 475, w: 80, align: 'right' },
+  ];
+  doc.rect(40, y, 515, 18).fill(acento);
+  doc.font('Helvetica-Bold').fontSize(7.5).fillColor('#fff');
+  cols.forEach((c) => doc.text(c.label, c.x + 3, y + 5, { width: c.w - 6, align: c.align }));
+  y += 18;
+
+  doc.font('Helvetica').fontSize(8).fillColor('#000');
+  items.forEach((it, idx) => {
+    const rowStartY = y;
+    const descHeight = doc.heightOfString(it.descripcion || '', { width: cols[2].w - 6 });
+    const rowHeight = Math.max(16, descHeight + 6);
+    if (idx % 2 === 1) doc.rect(40, rowStartY, 515, rowHeight).fill('#f7f9fb').fillColor('#000');
+    doc.fillColor('#000');
+    doc.text(String(idx + 1), cols[0].x + 3, rowStartY + 4, { width: cols[0].w - 6, align: cols[0].align });
+    doc.text(String(it.cantidad), cols[1].x + 3, rowStartY + 4, { width: cols[1].w - 6, align: cols[1].align });
+    doc.text(it.descripcion || '', cols[2].x + 3, rowStartY + 4, { width: cols[2].w - 6, align: cols[2].align });
+    doc.text(money(it.precio_unitario, notaVenta.moneda), cols[3].x + 3, rowStartY + 4, { width: cols[3].w - 6, align: cols[3].align });
+    doc.text(it.descuento_pct ? `${it.descuento_pct}%` : '-', cols[4].x + 3, rowStartY + 4, { width: cols[4].w - 6, align: cols[4].align });
+    doc.text(money(it.subtotal, notaVenta.moneda), cols[5].x + 3, rowStartY + 4, { width: cols[5].w - 6, align: cols[5].align });
+    y = rowStartY + rowHeight;
+  });
+  doc.moveTo(40, y).lineTo(555, y).stroke('#ddd');
+  y += 10;
+
+  doc.font('Helvetica-Bold').fontSize(12).fillColor(acento);
+  doc.text('TOTAL:', 350, y, { width: 120, align: 'left' });
+  doc.text(money(notaVenta.total, notaVenta.moneda), 475, y, { width: 80, align: 'right' });
+  doc.font('Helvetica-Bold').fontSize(8).fillColor('#333');
+  doc.text(montoEnLetras(notaVenta.total, notaVenta.moneda), 40, y + 3, { width: 290 });
+  y += 40;
+
+  const obsBoxH = 50;
+  doc.roundedRect(40, y, 515, obsBoxH, 5).stroke('#ddd');
+  doc.font('Helvetica-Bold').fontSize(8).fillColor(acento).text('OBSERVACIONES:', 50, y + 8);
+  doc.font('Helvetica').fontSize(8).fillColor('#333').text(notaVenta.observaciones || 'Sin observaciones.', 50, y + 22, { width: 495 });
+  y += obsBoxH + 12;
+
+  const barY = y + 8;
+  doc.rect(0, barY, 595, 50).fill(acento);
+  doc.font('Helvetica-Bold').fontSize(10).fillColor('#fff').text('¡Gracias por su preferencia!', 40, barY + 12, { width: 515, align: 'center' });
+  doc.font('Helvetica').fontSize(6.5).fillColor('#fff').text(
+    'Documento sin efectos tributarios — no es un comprobante de pago, no tiene validez ante SUNAT.',
+    40, barY + 30, { width: 515, align: 'center' }
+  );
+
+  return doc;
+}
+
 // Formato ticket/recibo angosto (rollo térmico de 80mm), pensado para
 // impresoras de punto de venta. Al no tener el alto fijo de una hoja A4, se
 // estima según la cantidad de items para no dejar espacio de más ni cortar
@@ -485,4 +603,4 @@ function buildTicketPdf(invoice, items, empresa, acento, logo, qr, cobros) {
   return doc;
 }
 
-module.exports = { buildInvoicePdf };
+module.exports = { buildInvoicePdf, buildNotaVentaPdf };

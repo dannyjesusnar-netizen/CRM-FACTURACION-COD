@@ -62,7 +62,7 @@ export default function CuentasPorCobrar() {
         CUENTAS POR COBRAR
       </h1>
       <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -8 }}>
-        Ventas emitidas como "Nota de Venta" con saldo pendiente. Total adeudado: <strong>S/ {totalAdeudadoPEN.toFixed(2)}</strong>
+        Ventas emitidas como "Abonado" (crédito) con saldo pendiente. Total adeudado: <strong>S/ {totalAdeudadoPEN.toFixed(2)}</strong>
         {totalAdeudadoUSD > 0 && <> + <strong>$ {totalAdeudadoUSD.toFixed(2)}</strong></>}
       </p>
 

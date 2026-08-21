@@ -440,6 +440,41 @@ CREATE TABLE IF NOT EXISTS guia_items (
   peso_subtotal REAL NOT NULL DEFAULT 0
 );
 
+-- Documento de venta SIN efectos tributarios (no lo reconoce SUNAT como
+-- comprobante de pago, no lleva IGV) — distinto de una Boleta vendida al
+-- crédito (esa sigue siendo un comprobante fiscal real, ver invoices con
+-- forma_pago='abonado'). Serie propia "NV01" por sede (ver
+-- utils/serieCodegen.js / utils/series.js), sí descuenta stock real porque
+-- representa una venta real, solo que no fiscal.
+CREATE TABLE IF NOT EXISTS notas_venta (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  serie TEXT NOT NULL DEFAULT 'NV01',
+  numero INTEGER NOT NULL,
+  client_id INTEGER REFERENCES clients(id),
+  created_by INTEGER REFERENCES users(id),
+  sucursal_id INTEGER REFERENCES sucursales(id),
+  fecha_emision TEXT NOT NULL,
+  moneda TEXT NOT NULL DEFAULT 'PEN',
+  descuento_global_pct REAL NOT NULL DEFAULT 0,
+  total REAL NOT NULL DEFAULT 0,
+  forma_pago TEXT,
+  estado TEXT NOT NULL DEFAULT 'emitido',        -- emitido | anulado
+  observaciones TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  UNIQUE(serie, numero)
+);
+
+CREATE TABLE IF NOT EXISTS nota_venta_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  nota_venta_id INTEGER NOT NULL REFERENCES notas_venta(id) ON DELETE CASCADE,
+  product_id INTEGER REFERENCES products(id),
+  descripcion TEXT NOT NULL,
+  cantidad REAL NOT NULL DEFAULT 1,
+  precio_unitario REAL NOT NULL DEFAULT 0,
+  descuento_pct REAL NOT NULL DEFAULT 0,
+  subtotal REAL NOT NULL DEFAULT 0
+);
+
 -- Datos legales del negocio que usa esta instancia del CRM (emisor de los
 -- comprobantes). Tabla singleton: siempre existe una única fila con id = 1.
 CREATE TABLE IF NOT EXISTS empresa_config (

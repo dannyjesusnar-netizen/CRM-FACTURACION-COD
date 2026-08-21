@@ -347,7 +347,7 @@ export default function RegistroVenta() {
 
   return (
     <div className="venta-page">
-      <h1 className="page-title">Registro de {modoAbonado ? 'Nota de Venta' : (TITULOS[tipo] || tipo)}</h1>
+      <h1 className="page-title">Registro de {modoAbonado ? 'Boleta a crédito (Abonado)' : (TITULOS[tipo] || tipo)}</h1>
 
       <form onSubmit={abrirVistaPrevia}>
         <div className="venta-panel">
@@ -503,7 +503,7 @@ export default function RegistroVenta() {
                   {metodosPago.map((m) => (
                     <option key={m.codigo} value={m.codigo}>{m.icono} {m.nombre}</option>
                   ))}
-                  <option value="abonado">Nota de Venta (crédito)</option>
+                  <option value="abonado">Abonado (crédito)</option>
                   <option value="mixto">🔀 Pago mixto (2 o más medios)</option>
                 </select>
               </div>
