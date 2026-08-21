@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Eye, EyeOff, Receipt, Sparkles } from 'lucide-react';
+import { Eye, EyeOff, Receipt } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import FloatingShapes from '../components/FloatingShapes';
@@ -166,14 +166,6 @@ export default function Login() {
           <Receipt size={18} />
           <span>QORIA <span className="brand-suffix">Facturación</span></span>
         </div>
-        <button
-          type="button"
-          className="auth-planes-btn disabled"
-          title="Próximamente"
-          onClick={() => toast.info('Planes estará disponible próximamente.')}
-        >
-          <Sparkles size={14} /> PRÓXIMAMENTE
-        </button>
         <LoginIllustration />
       </div>
 
