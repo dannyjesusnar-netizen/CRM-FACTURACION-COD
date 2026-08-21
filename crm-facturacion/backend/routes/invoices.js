@@ -166,15 +166,7 @@ router.get('/', (req, res) => {
     WHERE i.sucursal_id = ?
   `;
   const params = [req.sucursalId];
-  // "nota_venta" no es un tipo_comprobante propio en la base — es una boleta
-  // con forma_pago='abonado' (ver rename de "Abonado" a "Nota de Venta").
-  // Al filtrar por "boleta" en el listado, se excluyen esas para que cada
-  // fila del filtro Documento muestre exactamente lo que dice mostrar.
-  if (tipo === 'nota_venta') {
-    sql += " AND i.tipo_comprobante = 'boleta' AND i.forma_pago = 'abonado'";
-  } else if (tipo === 'boleta') {
-    sql += " AND i.tipo_comprobante = 'boleta' AND i.forma_pago != 'abonado'";
-  } else if (tipo) {
+  if (tipo) {
     sql += ' AND i.tipo_comprobante = ?'; params.push(tipo);
   }
   if (estado) { sql += ' AND i.estado = ?'; params.push(estado); }

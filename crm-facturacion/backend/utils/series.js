@@ -8,6 +8,7 @@ const TABLA_POR_TIPO = {
   nota_credito: { tabla: 'invoices', where: "tipo_comprobante = 'nota_credito'", columnaNumero: 'numero' },
   cotizacion: { tabla: 'cotizaciones', where: '1 = 1', columnaNumero: 'numero' },
   guia_remitente: { tabla: 'guias_remitentes', where: '1 = 1', columnaNumero: 'numero' },
+  nota_venta: { tabla: 'notas_venta', where: '1 = 1', columnaNumero: 'numero' },
   // Órdenes de compra/servicio no tienen columna "numero" secuencial por serie
   // (esa columna es un correlativo interno compartido entre ambos tipos) —
   // usan "numero_doc", el mismo campo de texto que el formulario ya guarda.

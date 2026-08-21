@@ -222,7 +222,7 @@ router.get('/cierre-caja', requireAlgunPermiso(['caja', 'reportes']), (req, res)
   docRows.forEach((r) => { docByKey[r.doc] = { cantidad: r.cantidad, total: round2(r.total) }; });
   const ventas_por_documento = [
     { doc: 'boleta', label: 'Boleta', ...(docByKey.boleta || { cantidad: 0, total: 0 }) },
-    { doc: 'nota_venta', label: 'Nota de Venta', ...(docByKey.nota_venta || { cantidad: 0, total: 0 }) },
+    { doc: 'nota_venta', label: 'Abonado (crédito)', ...(docByKey.nota_venta || { cantidad: 0, total: 0 }) },
     { doc: 'factura', label: 'Factura', ...(docByKey.factura || { cantidad: 0, total: 0 }) },
   ];
 
@@ -236,7 +236,7 @@ router.get('/cierre-caja', requireAlgunPermiso(['caja', 'reportes']), (req, res)
   `).all(...baseParams);
   const metodosPago = db.prepare('SELECT codigo, nombre, icono FROM metodos_pago').all();
   const ventas_por_forma_pago = formaPagoRows.map((r) => {
-    if (r.forma_pago === 'abonado') return { forma_pago: r.forma_pago, label: '🧾 Nota de Venta (crédito)', cantidad: r.cantidad, total: round2(r.total) };
+    if (r.forma_pago === 'abonado') return { forma_pago: r.forma_pago, label: '🧾 Abonado (crédito)', cantidad: r.cantidad, total: round2(r.total) };
     if (r.forma_pago === 'mixto') return { forma_pago: r.forma_pago, label: '🔀 Pago mixto', cantidad: r.cantidad, total: round2(r.total) };
     const metodo = metodosPago.find((m) => m.codigo === r.forma_pago);
     return { forma_pago: r.forma_pago, label: metodo ? `${metodo.icono} ${metodo.nombre}` : (r.forma_pago || 'Sin especificar'), cantidad: r.cantidad, total: round2(r.total) };

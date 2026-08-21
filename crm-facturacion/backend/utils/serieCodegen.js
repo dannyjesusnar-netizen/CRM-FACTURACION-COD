@@ -10,6 +10,7 @@ const SERIE_BASE_POR_TIPO = {
   nota_credito: 'FC01',
   cotizacion: 'CL02',
   guia_remitente: 'TL02',
+  nota_venta: 'NV01',
   orden_compra: 'OC01',
   orden_servicio: 'OS01',
 };

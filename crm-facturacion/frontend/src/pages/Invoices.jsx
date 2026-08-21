@@ -7,7 +7,7 @@ import { useAuth } from '../context/AuthContext';
 const TIPO_LABEL = { factura: 'Factura', boleta: 'Boleta', nota_credito: 'Nota de crédito' };
 
 function tipoLabel(inv) {
-  if (inv.tipo_comprobante === 'boleta' && inv.forma_pago === 'abonado') return 'Nota de Venta';
+  if (inv._source === 'nota_venta') return 'Nota de Venta Interna';
   return TIPO_LABEL[inv.tipo_comprobante] || inv.tipo_comprobante;
 }
 
@@ -48,14 +48,40 @@ export default function Invoices() {
   const [documento, setDocumento] = useState('');
   const [formaPago, setFormaPago] = useState('');
 
+  // Las Notas de Venta (sin IGV) viven en una tabla/endpoint aparte de las
+  // facturas/boletas/notas de crédito — se traen en paralelo y se mezclan
+  // en una sola lista para que "Documentos Emitidos" muestre todo junto.
+  // Si el filtro Documento pide específicamente uno de los dos grupos, se
+  // omite la llamada al otro endpoint (evita traer datos que se van a
+  // descartar igual).
   function load() {
-    const params = {};
-    if (documento) params.tipo = documento;
-    if (formaPago) params.forma_pago = formaPago;
-    if (desde) params.from = desde;
-    if (hasta) params.to = hasta;
-    if (q) params.q = q;
-    api.get('/invoices', { params }).then((res) => setInvoices(res.data));
+    const commonParams = {};
+    if (desde) commonParams.from = desde;
+    if (hasta) commonParams.to = hasta;
+    if (q) commonParams.q = q;
+
+    const wantInvoices = documento !== 'nota_venta';
+    const wantNotasVenta = !documento || documento === 'nota_venta';
+
+    const invoiceParams = { ...commonParams };
+    if (documento) invoiceParams.tipo = documento;
+    if (formaPago) invoiceParams.forma_pago = formaPago;
+
+    const nvParams = { ...commonParams };
+    if (formaPago) nvParams.forma_pago = formaPago;
+
+    Promise.all([
+      wantInvoices ? api.get('/invoices', { params: invoiceParams }) : Promise.resolve({ data: [] }),
+      wantNotasVenta ? api.get('/notas-venta', { params: nvParams }) : Promise.resolve({ data: [] }),
+    ]).then(([invRes, nvRes]) => {
+      const invRows = invRes.data.map((r) => ({ ...r, _source: 'invoice' }));
+      const nvRows = nvRes.data.map((r) => ({ ...r, _source: 'nota_venta', tipo_comprobante: 'nota_venta' }));
+      const merged = [...invRows, ...nvRows].sort((a, b) => {
+        if (a.fecha_emision !== b.fecha_emision) return a.fecha_emision < b.fecha_emision ? 1 : -1;
+        return b.id - a.id;
+      });
+      setInvoices(merged);
+    });
   }
 
   useEffect(() => {
@@ -69,7 +95,7 @@ export default function Invoices() {
 
   function formaPagoLabel(codigo) {
     if (!codigo) return 'Efectivo';
-    if (codigo === 'abonado') return '🧾 Nota de Venta (crédito)';
+    if (codigo === 'abonado') return '🧾 Abonado (crédito)';
     const metodo = metodosPago.find((m) => m.codigo === codigo);
     return metodo ? `${metodo.icono} ${metodo.nombre}` : codigo;
   }
@@ -115,10 +141,11 @@ export default function Invoices() {
     }
   }
 
-  async function handleAnular(id) {
+  async function handleAnular(inv) {
     if (!window.confirm('¿Anular este comprobante? Esta acción no se puede revertir.')) return;
     try {
-      await api.post(`/invoices/${id}/anular`);
+      const base = inv._source === 'nota_venta' ? '/notas-venta' : '/invoices';
+      await api.post(`${base}/${inv.id}/anular`);
       toast.success('Comprobante anulado.');
       load();
     } catch (err) {
@@ -140,7 +167,7 @@ export default function Invoices() {
         <button className="ventas-action-btn" onClick={() => navigate('/ventas/nota-credito/nueva')}>Nota de Crédito</button>
         <button className="ventas-action-btn" onClick={() => navigate('/ventas/guia-remitente/nueva')}>Guía Remitente</button>
         <button className="ventas-action-btn" onClick={() => navigate('/ventas/nuevo/cotizacion')}>Cotización</button>
-        <button className="ventas-action-btn" onClick={() => navigate('/ventas/nuevo/boleta?abonado=1')}>Nota de Venta</button>
+        <button className="ventas-action-btn" onClick={() => navigate('/ventas/nota-venta/nueva')}>Nota de Venta Interna</button>
       </div>
 
       <form className="filter-panel" onSubmit={handleBuscar}>
@@ -162,7 +189,7 @@ export default function Invoices() {
             <option value="">Comprobantes</option>
             <option value="factura">Factura</option>
             <option value="boleta">Boleta</option>
-            <option value="nota_venta">Nota de Venta</option>
+            <option value="nota_venta">Nota de Venta Interna</option>
             <option value="nota_credito">Nota de crédito</option>
           </select>
         </div>
@@ -170,7 +197,7 @@ export default function Invoices() {
           <label>Forma de pago</label>
           <select value={formaPago} onChange={(e) => setFormaPago(e.target.value)}>
             <option value="">Todas</option>
-            <option value="abonado">🧾 Nota de Venta (crédito)</option>
+            <option value="abonado">🧾 Abonado (crédito)</option>
             <option value="mixto">🔀 Pago mixto</option>
             {metodosPago.map((m) => <option key={m.codigo} value={m.codigo}>{m.icono} {m.nombre}</option>)}
           </select>
@@ -207,7 +234,7 @@ export default function Invoices() {
             </thead>
             <tbody>
               {invoices.map((inv) => (
-                <tr key={inv.id}>
+                <tr key={`${inv._source}-${inv.id}`}>
                   <td>{inv.fecha_emision}</td>
                   <td>{inv.serie}</td>
                   <td>{String(inv.numero).padStart(6, '0')}</td>
@@ -215,7 +242,7 @@ export default function Invoices() {
                   <td>{inv.cliente_documento}</td>
                   <td>{inv.cliente_nombre}</td>
                   <td>
-                    {puedeReatribuir && entrenadores.length > 0 && inv.estado !== 'anulado' ? (
+                    {inv._source !== 'nota_venta' && puedeReatribuir && entrenadores.length > 0 && inv.estado !== 'anulado' ? (
                       <select
                         value={inv.atribuido_a || ''}
                         onChange={(e) => handleReatribuir(inv.id, e.target.value)}
@@ -234,32 +261,42 @@ export default function Invoices() {
                   <td style={{ textAlign: 'right' }}>S/ {Number(inv.total).toFixed(2)}</td>
                   <td>{formaPagoLabel(inv.forma_pago)}</td>
                   <td>
-                    <span className={'badge ' + envioBadgeClass(inv)} title={inv.sunat_mensaje || ''}>
-                      {envioBadgeLabel(inv)}
-                    </span>
+                    {inv._source === 'nota_venta' ? (
+                      <span className="badge badge-neutral" title="Documento sin efectos tributarios, no se envía a SUNAT">Sin IGV</span>
+                    ) : (
+                      <span className={'badge ' + envioBadgeClass(inv)} title={inv.sunat_mensaje || ''}>
+                        {envioBadgeLabel(inv)}
+                      </span>
+                    )}
                   </td>
                   <td>
-                    <a className="icon-link" href={inv.sunat_pdf_url || `/api/invoices/${inv.id}/pdf`} target="_blank" rel="noreferrer" title="Imprimir">🖨️</a>
+                    <a className="icon-link" href={inv._source === 'nota_venta' ? `/api/notas-venta/${inv.id}/pdf` : (inv.sunat_pdf_url || `/api/invoices/${inv.id}/pdf`)} target="_blank" rel="noreferrer" title="Imprimir">🖨️</a>
                   </td>
                   <td>
-                    <a className="icon-link" href={inv.sunat_pdf_url || `/api/invoices/${inv.id}/pdf`} target="_blank" rel="noreferrer" title="Ver PDF">📄</a>
+                    <a className="icon-link" href={inv._source === 'nota_venta' ? `/api/notas-venta/${inv.id}/pdf` : (inv.sunat_pdf_url || `/api/invoices/${inv.id}/pdf`)} target="_blank" rel="noreferrer" title="Ver PDF">📄</a>
                   </td>
                   <td>
-                    {inv.sunat_xml_url ? (
+                    {inv._source === 'nota_venta' ? (
+                      <span className="icon-link muted" title="No aplica — documento sin IGV, no fiscal">—</span>
+                    ) : inv.sunat_xml_url ? (
                       <a className="icon-link" href={inv.sunat_xml_url} target="_blank" rel="noreferrer">XML</a>
                     ) : (
                       <span className="icon-link muted" title="No disponible en modo simulado">XML</span>
                     )}
                   </td>
                   <td>
-                    {inv.sunat_cdr_url ? (
+                    {inv._source === 'nota_venta' ? (
+                      <span className="icon-link muted" title="No aplica — documento sin IGV, no fiscal">—</span>
+                    ) : inv.sunat_cdr_url ? (
                       <a className="icon-link" href={inv.sunat_cdr_url} target="_blank" rel="noreferrer">CDR</a>
                     ) : (
                       <span className="icon-link muted" title="No disponible en modo simulado">CDR</span>
                     )}
                   </td>
                   <td>
-                    {inv.modo_emision === 'real' ? (
+                    {inv._source === 'nota_venta' ? (
+                      <span className="icon-link muted" title="No aplica — documento sin IGV, no fiscal">—</span>
+                    ) : inv.modo_emision === 'real' ? (
                       <span className={'icon-link ' + (inv.sunat_estado === 'aceptado' ? '' : 'muted')} title={inv.sunat_mensaje || ''}>
                         {inv.sunat_estado || '—'}
                       </span>
@@ -269,7 +306,7 @@ export default function Invoices() {
                   </td>
                   <td>
                     {inv.estado === 'emitido' ? (
-                      <button className="btn-link danger" onClick={() => handleAnular(inv.id)}>Anular</button>
+                      <button className="btn-link danger" onClick={() => handleAnular(inv)}>Anular</button>
                     ) : (
                       <span className="icon-link muted">—</span>
                     )}
