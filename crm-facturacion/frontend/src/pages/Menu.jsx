@@ -27,7 +27,6 @@ const MENU_ICONS = [
 ];
 
 const ACTIVE_MODULES = [
-  { to: '/qr-unico', label: 'QR Único', Icon: QrCode, desc: 'Genera un QR único con tu Yape y Plin, e imprime tu cartel' },
   { to: '/ventas', label: 'Ventas', Icon: Receipt, desc: 'Emitir facturas, boletas y notas', modulo: 'ventas' },
   { to: '/compras', label: 'Compras', Icon: ShoppingCart, desc: 'Registrar compras a proveedores', modulo: 'compras' },
   { to: '/clientes', label: 'Clientes', Icon: Users, desc: 'Gestión de clientes', modulo: 'clientes' },
@@ -43,6 +42,7 @@ const COMING_SOON = [
   { label: 'Planillas', Icon: Briefcase },
   { label: 'Asistencias', Icon: Clock },
   { label: 'Configuración', Icon: Settings },
+  { label: 'QR Único', Icon: QrCode },
 ];
 
 export default function Menu() {
