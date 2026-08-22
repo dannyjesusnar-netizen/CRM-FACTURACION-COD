@@ -131,10 +131,15 @@ export default function Invoices() {
     toast.success('Archivo CSV exportado.');
   }
 
-  async function handleReatribuir(id, atribuidoAId) {
+  async function handleReatribuir(inv, atribuidoAId) {
     try {
-      const res = await api.put(`/invoices/${id}/atribuido-a`, { atribuido_a_id: atribuidoAId || null });
-      setInvoices((rows) => rows.map((r) => (r.id === id ? { ...r, atribuido_a: res.data.atribuido_a, atribuido_nombre: res.data.atribuido_nombre } : r)));
+      const base = inv._source === 'nota_venta' ? '/notas-venta' : '/invoices';
+      const res = await api.put(`${base}/${inv.id}/atribuido-a`, { atribuido_a_id: atribuidoAId || null });
+      setInvoices((rows) => rows.map((r) => (
+        r._source === inv._source && r.id === inv.id
+          ? { ...r, atribuido_a: res.data.atribuido_a, atribuido_nombre: res.data.atribuido_nombre }
+          : r
+      )));
       toast.success('Venta reatribuida.');
     } catch (err) {
       toast.error(err.response?.data?.error || 'No se pudo reatribuir la venta.');
@@ -242,10 +247,10 @@ export default function Invoices() {
                   <td>{inv.cliente_documento}</td>
                   <td>{inv.cliente_nombre}</td>
                   <td>
-                    {inv._source !== 'nota_venta' && puedeReatribuir && entrenadores.length > 0 && inv.estado !== 'anulado' ? (
+                    {puedeReatribuir && entrenadores.length > 0 && inv.estado !== 'anulado' ? (
                       <select
                         value={inv.atribuido_a || ''}
-                        onChange={(e) => handleReatribuir(inv.id, e.target.value)}
+                        onChange={(e) => handleReatribuir(inv, e.target.value)}
                         title="Cambiar a nombre de quién cuenta esta venta"
                       >
                         <option value="">{inv.vendedor_nombre || 'Vendedor'}</option>
