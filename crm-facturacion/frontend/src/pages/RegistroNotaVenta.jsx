@@ -104,6 +104,7 @@ export default function RegistroNotaVenta() {
     setError('');
     const msg = validar();
     if (msg) { setError(msg); return; }
+    if (!window.confirm(`¿Confirmas el registro de esta nota de venta por S/ ${computed.total.toFixed(2)}?`)) return;
     setEmitiendo(true);
     try {
       const payload = {
