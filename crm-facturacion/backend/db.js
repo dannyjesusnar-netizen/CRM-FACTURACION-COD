@@ -794,6 +794,11 @@ CREATE TABLE IF NOT EXISTS metas_venta_sede (
   if (!invoiceColumns.includes('atribuido_a')) {
     db.exec('ALTER TABLE invoices ADD COLUMN atribuido_a INTEGER REFERENCES users(id)');
   }
+  // Mismo mecanismo que invoices.atribuido_a, para que una Nota de Venta
+  // Interna también pueda contarle a un Trainer/Supervisor en el Ranking.
+  if (!notaVentaColumns.includes('atribuido_a')) {
+    db.exec('ALTER TABLE notas_venta ADD COLUMN atribuido_a INTEGER REFERENCES users(id)');
+  }
   const purchaseColumns = db.prepare("PRAGMA table_info(purchases)").all().map((c) => c.name);
   if (!purchaseColumns.includes('sucursal_id')) {
     db.exec('ALTER TABLE purchases ADD COLUMN sucursal_id INTEGER REFERENCES sucursales(id)');

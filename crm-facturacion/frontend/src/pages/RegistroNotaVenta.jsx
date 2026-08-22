@@ -32,6 +32,11 @@ export default function RegistroNotaVenta() {
   const [metodosPago, setMetodosPago] = useState([]);
   const [error, setError] = useState('');
   const [emitiendo, setEmitiendo] = useState(false);
+  // Quien registra la nota de venta puede elegir que cuente para un
+  // entrenador de su sede en vez de para él mismo, en el Ranking del
+  // Tablero de Ventas (mismo mecanismo que RegistroVenta.jsx).
+  const [entrenadores, setEntrenadores] = useState([]);
+  const [atribuidoAId, setAtribuidoAId] = useState('');
 
   useEffect(() => {
     api.get('/notas-venta/siguiente-numero').then((res) => {
@@ -39,6 +44,7 @@ export default function RegistroNotaVenta() {
       setNumero(res.data.numero);
     });
     api.get('/metodos-pago').then((res) => setMetodosPago(res.data));
+    api.get('/invoices/entrenadores').then((res) => setEntrenadores(res.data)).catch(() => {});
   }, []);
 
   function addProducto(p) {
@@ -121,6 +127,7 @@ export default function RegistroNotaVenta() {
         payload.monto_pagado = Number(pago || 0);
         if (Number(pago || 0) > 0) payload.medio_abono = medioAbono;
       }
+      if (atribuidoAId) payload.atribuido_a_id = Number(atribuidoAId);
       await api.post('/notas-venta', payload);
       toast.success('Nota de venta interna registrada correctamente.');
       navigate('/ventas');
@@ -243,6 +250,17 @@ export default function RegistroNotaVenta() {
                 <option value="abonado">Abonado (crédito)</option>
               </select>
             </div>
+            {entrenadores.length > 0 && (
+              <div className="filter-field">
+                <label>Atribuir venta a</label>
+                <select value={atribuidoAId} onChange={(e) => setAtribuidoAId(e.target.value)}>
+                  <option value="">Yo (vendedor)</option>
+                  {entrenadores.map((e) => (
+                    <option key={e.id} value={e.id}>{e.full_name} ({e.categoria_staff === 'trainer' ? 'Trainer' : 'Supervisor'})</option>
+                  ))}
+                </select>
+              </div>
+            )}
             {cuenta === 'abonado' ? (
               <>
                 <div className="filter-field">

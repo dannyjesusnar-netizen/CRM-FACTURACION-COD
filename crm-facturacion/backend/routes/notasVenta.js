@@ -1,7 +1,7 @@
 const express = require('express');
 const db = require('../db');
 const { requireAuth, resolveSucursal } = require('../middleware/auth');
-const { requirePermiso, requireAccion, tieneAccion, tienePermiso } = require('../utils/permisos');
+const { requirePermiso, requireAccion, tieneAccion, tienePermiso, requireGerenciaOSupervisor } = require('../utils/permisos');
 const { siguienteNumero } = require('../utils/series');
 const { consumirStock, incrementarStock, StockInsuficienteError } = require('../utils/stock');
 const { buildNotaVentaPdf } = require('../utils/pdf');
@@ -119,10 +119,11 @@ router.get('/', (req, res) => {
   let sql = `
     SELECT nv.*, nv.total AS subtotal, 0 AS igv,
            c.nombre AS cliente_nombre, c.numero_documento AS cliente_documento,
-           u.full_name AS vendedor_nombre
+           u.full_name AS vendedor_nombre, au.full_name AS atribuido_nombre
     FROM notas_venta nv
     LEFT JOIN clients c ON c.id = nv.client_id
     LEFT JOIN users u ON u.id = nv.created_by
+    LEFT JOIN users au ON au.id = nv.atribuido_a
     WHERE nv.sucursal_id = ?
   `;
   const params = [req.sucursalId];
@@ -143,8 +144,12 @@ router.get('/:id', (req, res) => {
   const nv = db.prepare(
     `SELECT nv.*, nv.total AS subtotal, 0 AS igv,
             c.nombre AS cliente_nombre, c.numero_documento AS cliente_documento, c.direccion AS cliente_direccion,
-            c.tipo_documento AS cliente_tipo_documento
-     FROM notas_venta nv LEFT JOIN clients c ON c.id = nv.client_id
+            c.tipo_documento AS cliente_tipo_documento,
+            u.full_name AS vendedor_nombre, au.full_name AS atribuido_nombre
+     FROM notas_venta nv
+     LEFT JOIN clients c ON c.id = nv.client_id
+     LEFT JOIN users u ON u.id = nv.created_by
+     LEFT JOIN users au ON au.id = nv.atribuido_a
      WHERE nv.id = ? AND nv.sucursal_id = ?`
   ).get(req.params.id, req.sucursalId);
   if (!nv) return res.status(404).json({ error: 'Nota de venta interna no encontrada.' });
@@ -156,7 +161,7 @@ router.post('/', requireAccion('ventas', 'nota_venta'), (req, res) => {
   const {
     client_id, items, moneda, observaciones, fecha_emision,
     descuento_global_pct, numero: numeroManual, forma_pago,
-    monto_pagado: montoPagadoBody, medio_abono,
+    monto_pagado: montoPagadoBody, medio_abono, atribuido_a_id,
   } = req.body || {};
 
   if (!client_id) return res.status(400).json({ error: 'client_id es requerido.' });
@@ -164,6 +169,21 @@ router.post('/', requireAccion('ventas', 'nota_venta'), (req, res) => {
   if (!client) return res.status(404).json({ error: 'Cliente no encontrado.' });
   if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: 'Debe incluir al menos un item.' });
+  }
+
+  // atribuido_a_id: igual que en invoices.js — quien registra la nota de
+  // venta puede elegir que cuente para un Trainer/Supervisor de su misma
+  // sede en el Ranking del Tablero de Ventas.
+  let atribuidoA = null;
+  if (atribuido_a_id) {
+    const entrenador = db.prepare(
+      `SELECT id FROM users WHERE id = ? AND activo = 1 AND categoria_staff IN ('trainer', 'supervisor')
+       AND (sucursal_id IS NULL OR sucursal_id = ?)`
+    ).get(atribuido_a_id, req.sucursalId);
+    if (!entrenador) {
+      return res.status(400).json({ error: 'La persona seleccionada no existe o no pertenece a esta sede.' });
+    }
+    atribuidoA = entrenador.id;
   }
   for (const it of items) {
     const cantidad = Number(it.cantidad);
@@ -224,8 +244,8 @@ router.post('/', requireAccion('ventas', 'nota_venta'), (req, res) => {
   const insertAll = db.transaction(() => {
     const numero = numeroManual ? Number(numeroManual) : numeroSugerido;
     const info = db.prepare(
-      `INSERT INTO notas_venta (serie, numero, client_id, created_by, sucursal_id, fecha_emision, moneda, descuento_global_pct, total, forma_pago, monto_pagado, estado, observaciones)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'emitido', ?)`
+      `INSERT INTO notas_venta (serie, numero, client_id, created_by, sucursal_id, fecha_emision, moneda, descuento_global_pct, total, forma_pago, monto_pagado, estado, observaciones, atribuido_a)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'emitido', ?, ?)`
     ).run(
       serie,
       numero,
@@ -238,7 +258,8 @@ router.post('/', requireAccion('ventas', 'nota_venta'), (req, res) => {
       total,
       forma_pago || 'efectivo',
       montoPagado,
-      observaciones || null
+      observaciones || null,
+      atribuidoA
     );
     const notaVentaId = info.lastInsertRowid;
     const insertItem = db.prepare(
@@ -311,6 +332,36 @@ router.post('/:id/anular', requireAccion('ventas', 'anular_comprobante'), (req, 
   });
   anular();
   res.json(db.prepare('SELECT *, total AS subtotal, 0 AS igv FROM notas_venta WHERE id = ?').get(nv.id));
+});
+
+// PUT /api/notas-venta/:id/atribuido-a { atribuido_a_id } — mismo patrón que
+// PUT /api/invoices/:id/atribuido-a: Gerencia o Supervisor corrige, después
+// de emitida, a nombre de quién cuenta esta nota de venta en el Ranking.
+router.put('/:id/atribuido-a', requireGerenciaOSupervisor, (req, res) => {
+  const nv = db.prepare('SELECT * FROM notas_venta WHERE id = ? AND sucursal_id = ?').get(req.params.id, req.sucursalId);
+  if (!nv) return res.status(404).json({ error: 'Nota de venta interna no encontrada.' });
+  if (nv.estado === 'anulado') {
+    return res.status(400).json({ error: 'No se puede reatribuir una nota de venta anulada.' });
+  }
+  const { atribuido_a_id } = req.body || {};
+  let atribuidoA = null;
+  if (atribuido_a_id) {
+    const entrenador = db.prepare(
+      `SELECT id FROM users WHERE id = ? AND activo = 1 AND categoria_staff IN ('trainer', 'supervisor')
+       AND (sucursal_id IS NULL OR sucursal_id = ?)`
+    ).get(atribuido_a_id, nv.sucursal_id);
+    if (!entrenador) {
+      return res.status(400).json({ error: 'La persona seleccionada no existe o no pertenece a esta sede.' });
+    }
+    atribuidoA = entrenador.id;
+  }
+  db.prepare('UPDATE notas_venta SET atribuido_a = ? WHERE id = ?').run(atribuidoA, req.params.id);
+  const updated = db.prepare(
+    `SELECT nv.*, u.full_name AS vendedor_nombre, au.full_name AS atribuido_nombre
+     FROM notas_venta nv LEFT JOIN users u ON u.id = nv.created_by LEFT JOIN users au ON au.id = nv.atribuido_a
+     WHERE nv.id = ?`
+  ).get(req.params.id);
+  res.json(updated);
 });
 
 router.get('/:id/pdf', async (req, res) => {

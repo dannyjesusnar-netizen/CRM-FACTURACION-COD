@@ -78,15 +78,23 @@ router.get('/ranking-personal', (req, res) => {
   const sucursalId = sedeFiltro(req);
   const rows = db.prepare(`
     SELECT u.id AS user_id, u.full_name AS nombre, u.turno, u.sucursal_id, s.nombre AS sede,
-           COALESCE(SUM(CASE WHEN i.tipo_comprobante = 'nota_credito' THEN -i.total ELSE i.total END), 0) AS venta
+           COALESCE(SUM(v.monto), 0) AS venta
     FROM users u
     LEFT JOIN sucursales s ON s.id = u.sucursal_id
-    LEFT JOIN invoices i ON COALESCE(i.atribuido_a, i.created_by) = u.id AND i.estado = 'emitido'
-      AND strftime('%Y', i.fecha_emision) = ? AND strftime('%m', i.fecha_emision) = ?
+    LEFT JOIN (
+      SELECT COALESCE(atribuido_a, created_by) AS user_id,
+             CASE WHEN tipo_comprobante = 'nota_credito' THEN -total ELSE total END AS monto
+      FROM invoices
+      WHERE estado = 'emitido' AND strftime('%Y', fecha_emision) = ? AND strftime('%m', fecha_emision) = ?
+      UNION ALL
+      SELECT COALESCE(atribuido_a, created_by) AS user_id, total AS monto
+      FROM notas_venta
+      WHERE estado = 'emitido' AND strftime('%Y', fecha_emision) = ? AND strftime('%m', fecha_emision) = ?
+    ) v ON v.user_id = u.id
     WHERE u.categoria_staff = ? AND u.activo = 1
       AND (? IS NULL OR u.sucursal_id = ?)
     GROUP BY u.id
-  `).all(String(anio), mesPad, categoria, sucursalId, sucursalId);
+  `).all(String(anio), mesPad, String(anio), mesPad, categoria, sucursalId, sucursalId);
 
   const pools = db.prepare(
     'SELECT sucursal_id, monto_meta, dotacion FROM metas_venta_sede WHERE categoria_staff = ? AND anio = ? AND mes = ?'
@@ -160,15 +168,21 @@ router.get('/resumen-sedes', (req, res) => {
   const { anio, mes, mesPad } = anioMes(req);
   const sucursalId = sedeFiltro(req);
   const ventaPorSede = db.prepare(`
-    SELECT s.id, s.nombre,
-      COALESCE(SUM(CASE WHEN i.tipo_comprobante = 'nota_credito' THEN -i.total ELSE i.total END), 0) AS venta
+    SELECT s.id, s.nombre, COALESCE(SUM(v.monto), 0) AS venta
     FROM sucursales s
-    LEFT JOIN invoices i ON i.sucursal_id = s.id AND i.estado = 'emitido'
-      AND strftime('%Y', i.fecha_emision) = ? AND strftime('%m', i.fecha_emision) = ?
+    LEFT JOIN (
+      SELECT sucursal_id, CASE WHEN tipo_comprobante = 'nota_credito' THEN -total ELSE total END AS monto
+      FROM invoices
+      WHERE estado = 'emitido' AND strftime('%Y', fecha_emision) = ? AND strftime('%m', fecha_emision) = ?
+      UNION ALL
+      SELECT sucursal_id, total AS monto
+      FROM notas_venta
+      WHERE estado = 'emitido' AND strftime('%Y', fecha_emision) = ? AND strftime('%m', fecha_emision) = ?
+    ) v ON v.sucursal_id = s.id
     WHERE s.activo = 1
       AND (? IS NULL OR s.id = ?)
     GROUP BY s.id
-  `).all(String(anio), mesPad, sucursalId, sucursalId);
+  `).all(String(anio), mesPad, String(anio), mesPad, sucursalId, sucursalId);
 
   const metaPorSede = db.prepare(
     `SELECT sucursal_id AS id, SUM(monto_meta) AS meta FROM metas_venta_sede

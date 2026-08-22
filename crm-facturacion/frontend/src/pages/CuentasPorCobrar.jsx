@@ -25,6 +25,7 @@ export default function CuentasPorCobrar() {
   const [observacion, setObservacion] = useState('');
   const [error, setError] = useState('');
   const [metodosPago, setMetodosPago] = useState([]);
+  const [q, setQ] = useState('');
 
   useEffect(() => {
     load();
@@ -64,9 +65,42 @@ export default function CuentasPorCobrar() {
     }
   }
 
+  // Filtro por persona que debe: nombre o número de documento del cliente.
+  const qNorm = q.trim().toLowerCase();
+  const deudasFiltradas = qNorm
+    ? deudas.filter((d) =>
+        (d.cliente_nombre || '').toLowerCase().includes(qNorm) ||
+        (d.cliente_documento || '').toLowerCase().includes(qNorm))
+    : deudas;
+
   // Nunca sumar soles y dólares como si fueran la misma unidad.
-  const totalAdeudadoPEN = round2(deudas.filter((d) => d.moneda !== 'USD').reduce((s, d) => s + d.saldo, 0));
-  const totalAdeudadoUSD = round2(deudas.filter((d) => d.moneda === 'USD').reduce((s, d) => s + d.saldo, 0));
+  const totalAdeudadoPEN = round2(deudasFiltradas.filter((d) => d.moneda !== 'USD').reduce((s, d) => s + d.saldo, 0));
+  const totalAdeudadoUSD = round2(deudasFiltradas.filter((d) => d.moneda === 'USD').reduce((s, d) => s + d.saldo, 0));
+
+  function handleExportar() {
+    const header = ['Fecha', 'Comprobante', 'Tipo', 'Cliente', 'Documento', 'Total', 'Pagado', 'Saldo'];
+    const rows = deudasFiltradas.map((d) => [
+      d.fecha_emision,
+      `${d.serie}-${String(d.numero).padStart(6, '0')}`,
+      tipoLabel(d),
+      d.cliente_nombre,
+      `${d.cliente_tipo_documento || ''} ${d.cliente_documento || ''}`.trim(),
+      d.total,
+      d.monto_pagado,
+      d.saldo,
+    ]);
+    const csv = [header, ...rows].map((r) => r.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'cuentas_por_cobrar.csv';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    toast.success('Archivo CSV exportado.');
+  }
 
   return (
     <div>
@@ -81,12 +115,20 @@ export default function CuentasPorCobrar() {
         {totalAdeudadoUSD > 0 && <> + <strong>$ {totalAdeudadoUSD.toFixed(2)}</strong></>}
       </p>
 
+      <div className="filter-panel" style={{ marginBottom: 12 }}>
+        <div className="filter-field grow">
+          <label>Buscar por nombre o número doc.</label>
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Nro. doc/nombre.." />
+        </div>
+        <button type="button" className="btn-primary" onClick={handleExportar}>Exportar</button>
+      </div>
+
       <table className="data-table">
         <thead>
           <tr><th>Fecha</th><th>Comprobante</th><th>Tipo</th><th>Cliente</th><th>Documento</th><th>Total</th><th>Pagado</th><th>Saldo</th><th></th></tr>
         </thead>
         <tbody>
-          {deudas.map((d) => (
+          {deudasFiltradas.map((d) => (
             <tr key={`${d._source}-${d.id}`}>
               <td>{d.fecha_emision}</td>
               <td>{d.serie}-{String(d.numero).padStart(6, '0')}</td>
@@ -101,8 +143,10 @@ export default function CuentasPorCobrar() {
               </td>
             </tr>
           ))}
-          {deudas.length === 0 && (
-            <tr><td colSpan={9} className="empty-row">No hay cuentas por cobrar pendientes.</td></tr>
+          {deudasFiltradas.length === 0 && (
+            <tr><td colSpan={9} className="empty-row">
+              {deudas.length === 0 ? 'No hay cuentas por cobrar pendientes.' : 'Ningún cliente coincide con la búsqueda.'}
+            </td></tr>
           )}
         </tbody>
       </table>
