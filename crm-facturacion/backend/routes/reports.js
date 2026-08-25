@@ -203,15 +203,12 @@ router.get('/cierre-caja', requireAlgunPermiso(['caja', 'reportes']), (req, res)
 
   const efectivo = buildResumen(fecha, req.sucursalId, { moneda: 'PEN', empleadoId }).find((r) => r.codigo === 'efectivo') || null;
 
-  // Boleta / Nota de Venta (boleta con forma_pago='abonado', ver rename de
-  // "Abonado" a "Nota de Venta") / Factura — solo comprobantes emitidos.
+  // Boleta / Factura (invoices) + Nota de Venta Interna (tabla notas_venta,
+  // separada desde que dejó de ser "boleta con forma_pago=abonado") — solo
+  // comprobantes emitidos.
   const docRows = db.prepare(`
     SELECT
-      CASE
-        WHEN tipo_comprobante = 'factura' THEN 'factura'
-        WHEN forma_pago = 'abonado' THEN 'nota_venta'
-        ELSE 'boleta'
-      END AS doc,
+      CASE WHEN tipo_comprobante = 'factura' THEN 'factura' ELSE 'boleta' END AS doc,
       COUNT(*) AS cantidad, COALESCE(SUM(total), 0) AS total
     FROM invoices
     WHERE estado = 'emitido' AND tipo_comprobante IN ('boleta', 'factura')
@@ -220,9 +217,13 @@ router.get('/cierre-caja', requireAlgunPermiso(['caja', 'reportes']), (req, res)
   `).all(...baseParams);
   const docByKey = {};
   docRows.forEach((r) => { docByKey[r.doc] = { cantidad: r.cantidad, total: round2(r.total) }; });
+  const nvDocRow = db.prepare(`
+    SELECT COUNT(*) AS cantidad, COALESCE(SUM(total), 0) AS total FROM notas_venta
+    WHERE estado = 'emitido' AND date(fecha_emision) = date(?) AND sucursal_id = ? ${empleadoFiltro}
+  `).get(...baseParams);
   const ventas_por_documento = [
     { doc: 'boleta', label: 'Boleta', ...(docByKey.boleta || { cantidad: 0, total: 0 }) },
-    { doc: 'nota_venta', label: 'Abonado (crédito)', ...(docByKey.nota_venta || { cantidad: 0, total: 0 }) },
+    { doc: 'nota_venta_interna', label: 'Nota de Venta Interna', cantidad: nvDocRow.cantidad, total: round2(nvDocRow.total) },
     { doc: 'factura', label: 'Factura', ...(docByKey.factura || { cantidad: 0, total: 0 }) },
   ];
 
@@ -232,21 +233,35 @@ router.get('/cierre-caja', requireAlgunPermiso(['caja', 'reportes']), (req, res)
     WHERE estado = 'emitido' AND tipo_comprobante IN ('boleta', 'factura')
       AND date(fecha_emision) = date(?) AND sucursal_id = ? ${empleadoFiltro}
     GROUP BY forma_pago
-    ORDER BY total DESC
   `).all(...baseParams);
-  const metodosPago = db.prepare('SELECT codigo, nombre, icono FROM metodos_pago').all();
-  const ventas_por_forma_pago = formaPagoRows.map((r) => {
-    if (r.forma_pago === 'abonado') return { forma_pago: r.forma_pago, label: '🧾 Abonado (crédito)', cantidad: r.cantidad, total: round2(r.total) };
-    if (r.forma_pago === 'mixto') return { forma_pago: r.forma_pago, label: '🔀 Pago mixto', cantidad: r.cantidad, total: round2(r.total) };
-    const metodo = metodosPago.find((m) => m.codigo === r.forma_pago);
-    return { forma_pago: r.forma_pago, label: metodo ? `${metodo.icono} ${metodo.nombre}` : (r.forma_pago || 'Sin especificar'), cantidad: r.cantidad, total: round2(r.total) };
+  const nvFormaPagoRows = db.prepare(`
+    SELECT forma_pago, COUNT(*) AS cantidad, COALESCE(SUM(total), 0) AS total
+    FROM notas_venta
+    WHERE estado = 'emitido' AND date(fecha_emision) = date(?) AND sucursal_id = ? ${empleadoFiltro}
+    GROUP BY forma_pago
+  `).all(...baseParams);
+  const formaPagoMap = {};
+  formaPagoRows.forEach((r) => { formaPagoMap[r.forma_pago] = { cantidad: r.cantidad, total: r.total }; });
+  nvFormaPagoRows.forEach((r) => {
+    const prev = formaPagoMap[r.forma_pago] || { cantidad: 0, total: 0 };
+    formaPagoMap[r.forma_pago] = { cantidad: prev.cantidad + r.cantidad, total: prev.total + r.total };
   });
+  const metodosPago = db.prepare('SELECT codigo, nombre, icono FROM metodos_pago').all();
+  const ventas_por_forma_pago = Object.entries(formaPagoMap)
+    .sort((a, b) => b[1].total - a[1].total)
+    .map(([forma_pago, v]) => {
+      if (forma_pago === 'abonado') return { forma_pago, label: '🧾 Abonado (crédito)', cantidad: v.cantidad, total: round2(v.total) };
+      if (forma_pago === 'mixto') return { forma_pago, label: '🔀 Pago mixto', cantidad: v.cantidad, total: round2(v.total) };
+      const metodo = metodosPago.find((m) => m.codigo === forma_pago);
+      return { forma_pago, label: metodo ? `${metodo.icono} ${metodo.nombre}` : (forma_pago || 'Sin especificar'), cantidad: v.cantidad, total: round2(v.total) };
+    });
 
   // Resultado de turno: bruto (antes de cualquier descuento, todas las
-  // líneas de boleta/factura sin importar el estado), descuento (bruto -
-  // total facturado, incluye anuladas), anulaciones (boleta/factura
-  // anuladas) y devoluciones (notas de crédito emitidas) — el mismo patrón
-  // de "netear NC" que usa el resto de reports.js.
+  // líneas de boleta/factura + notas de venta interna sin importar el
+  // estado), descuento (bruto - total facturado, incluye anuladas),
+  // anulaciones (comprobantes anulados) y devoluciones (notas de crédito
+  // emitidas — la Nota de Venta Interna no tiene concepto de NC) — el mismo
+  // patrón de "netear NC" que usa el resto de reports.js.
   const brutoRow = db.prepare(`
     SELECT COALESCE(SUM(ii.cantidad * ii.precio_unitario), 0) AS bruto
     FROM invoice_items ii
@@ -254,14 +269,29 @@ router.get('/cierre-caja', requireAlgunPermiso(['caja', 'reportes']), (req, res)
     WHERE i.tipo_comprobante IN ('boleta', 'factura')
       AND date(i.fecha_emision) = date(?) AND i.sucursal_id = ? ${empleadoId ? 'AND i.created_by = ?' : ''}
   `).get(...baseParams);
+  const nvBrutoRow = db.prepare(`
+    SELECT COALESCE(SUM(nvi.cantidad * nvi.precio_unitario), 0) AS bruto
+    FROM nota_venta_items nvi
+    JOIN notas_venta nv ON nv.id = nvi.nota_venta_id
+    WHERE date(nv.fecha_emision) = date(?) AND nv.sucursal_id = ? ${empleadoId ? 'AND nv.created_by = ?' : ''}
+  `).get(...baseParams);
   const totalTodosRow = db.prepare(`
     SELECT COALESCE(SUM(total), 0) AS total FROM invoices
     WHERE tipo_comprobante IN ('boleta', 'factura')
       AND date(fecha_emision) = date(?) AND sucursal_id = ? ${empleadoFiltro}
   `).get(...baseParams);
+  const nvTotalTodosRow = db.prepare(`
+    SELECT COALESCE(SUM(total), 0) AS total FROM notas_venta
+    WHERE date(fecha_emision) = date(?) AND sucursal_id = ? ${empleadoFiltro}
+  `).get(...baseParams);
   const anulacionesRow = db.prepare(`
     SELECT COALESCE(SUM(total), 0) AS total FROM invoices
     WHERE tipo_comprobante IN ('boleta', 'factura') AND estado = 'anulado'
+      AND date(fecha_emision) = date(?) AND sucursal_id = ? ${empleadoFiltro}
+  `).get(...baseParams);
+  const nvAnulacionesRow = db.prepare(`
+    SELECT COALESCE(SUM(total), 0) AS total FROM notas_venta
+    WHERE estado = 'anulado'
       AND date(fecha_emision) = date(?) AND sucursal_id = ? ${empleadoFiltro}
   `).get(...baseParams);
   const devolucionesRow = db.prepare(`
@@ -270,9 +300,10 @@ router.get('/cierre-caja', requireAlgunPermiso(['caja', 'reportes']), (req, res)
       AND date(fecha_emision) = date(?) AND sucursal_id = ? ${empleadoFiltro}
   `).get(...baseParams);
 
-  const bruto = round2(brutoRow.bruto);
-  const descuento = round2(bruto - totalTodosRow.total);
-  const anulaciones = round2(anulacionesRow.total);
+  const bruto = round2(brutoRow.bruto + nvBrutoRow.bruto);
+  const totalTodos = totalTodosRow.total + nvTotalTodosRow.total;
+  const descuento = round2(bruto - totalTodos);
+  const anulaciones = round2(anulacionesRow.total + nvAnulacionesRow.total);
   const devoluciones = round2(devolucionesRow.total);
   const neto = round2(bruto - descuento - anulaciones - devoluciones);
 
