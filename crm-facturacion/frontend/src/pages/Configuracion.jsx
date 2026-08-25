@@ -4,6 +4,7 @@ import { ArrowLeft, Building2, Users as UsersIcon, Store, ShieldCheck, FileText,
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import { leerArchivoComoTextoCsv, descargarComoExcel } from '../utils/excelImport';
 
 const DEPARTAMENTOS_PERU = [
   'Amazonas', 'Áncash', 'Apurímac', 'Arequipa', 'Ayacucho', 'Cajamarca', 'Callao', 'Cusco',
@@ -767,19 +768,20 @@ export default function Configuracion() {
     setShowCargaMasivaOperativos(true);
   }
 
-  function handleCargaOperativosFileChange(e) {
+  async function handleCargaOperativosFileChange(e) {
     const file = e.target.files?.[0];
     if (!file) return;
     setCargaOperativosFileName(file.name);
     setCargaOperativosResult(null);
     setErrorCargaOperativos('');
-    const reader = new FileReader();
-    reader.onload = () => {
-      const rows = parseCsvOperativos(String(reader.result || ''));
+    try {
+      const texto = await leerArchivoComoTextoCsv(file);
+      const rows = parseCsvOperativos(texto);
       setCargaOperativosRows(rows);
       if (rows.length === 0) setErrorCargaOperativos('No se encontraron filas válidas (columnas esperadas: dni, nombres, apellidos, categoria_staff, sede, turno).');
-    };
-    reader.readAsText(file);
+    } catch {
+      setErrorCargaOperativos('No se pudo leer el archivo. Verifica que sea un CSV o Excel (.xlsx) válido.');
+    }
   }
 
   async function handleCargaMasivaOperativosSubmit(e) {
@@ -808,6 +810,11 @@ export default function Configuracion() {
     a.href = url; a.download = 'plantilla_carga_masiva_operativos.csv';
     document.body.appendChild(a); a.click(); a.remove();
     URL.revokeObjectURL(url);
+  }
+
+  function descargarPlantillaCargaMasivaOperativosExcel() {
+    const ejemplo = ['87654321', 'Lucía', 'Fernández', 'trainer', sucursales[0]?.nombre || '', 'manana'];
+    descargarComoExcel('plantilla_carga_masiva_operativos.xlsx', CARGA_MASIVA_OPERATIVOS_COLUMNAS, [ejemplo]);
   }
 
   function openNewSucursal() {
@@ -1817,16 +1824,21 @@ export default function Configuracion() {
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h2>Carga masiva de Entrenadores/Supervisores operativos</h2>
             <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -6 }}>
-              Sube un CSV con columnas: dni, nombres, apellidos, categoria_staff, sede, turno. "categoria_staff" es
+              Sube un CSV o Excel (.xlsx) con columnas: dni, nombres, apellidos, categoria_staff, sede, turno. "categoria_staff" es
               trainer o supervisor. Si el DNI ya existe como registro operativo, lo actualiza; si no, lo crea.
               Ninguno de estos registros tiene usuario ni contraseña — no pueden iniciar sesión.
             </p>
-            <button type="button" className="btn-link" onClick={descargarPlantillaCargaMasivaOperativos} style={{ marginBottom: 10 }}>
-              Descargar plantilla de ejemplo
-            </button>
+            <div style={{ display: 'flex', gap: 12, marginBottom: 10 }}>
+              <button type="button" className="btn-link" onClick={descargarPlantillaCargaMasivaOperativos}>
+                Descargar plantilla (CSV)
+              </button>
+              <button type="button" className="btn-link" onClick={descargarPlantillaCargaMasivaOperativosExcel}>
+                Descargar plantilla (Excel)
+              </button>
+            </div>
             <form onSubmit={handleCargaMasivaOperativosSubmit}>
-              <label>Archivo CSV</label>
-              <input required type="file" accept=".csv,text/csv" onChange={handleCargaOperativosFileChange} />
+              <label>Archivo CSV o Excel</label>
+              <input required type="file" accept=".csv,text/csv,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" onChange={handleCargaOperativosFileChange} />
               {cargaOperativosFileName && (
                 <p className="caja-row-auto">{cargaOperativosFileName} — {cargaOperativosRows.length} fila(s) detectadas.</p>
               )}

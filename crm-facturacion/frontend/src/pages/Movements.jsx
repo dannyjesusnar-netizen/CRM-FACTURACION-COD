@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import api from '../api';
 import { useToast } from '../context/ToastContext';
+import { leerArchivoComoTextoCsv, descargarComoExcel } from '../utils/excelImport';
 
 const TIPO_LABEL = {
   venta: 'Venta', anulacion: 'Anulación', ajuste: 'Ajuste manual',
@@ -200,19 +201,34 @@ export default function Movements() {
     setShowImportar(true);
   }
 
-  function handleFileChange(e) {
+  async function handleFileChange(e) {
     const file = e.target.files?.[0];
     if (!file) return;
     setImportFileName(file.name);
     setImportResult(null);
     setErrorImportar('');
-    const reader = new FileReader();
-    reader.onload = () => {
-      const rows = parseCsv(String(reader.result || ''));
+    try {
+      const texto = await leerArchivoComoTextoCsv(file);
+      const rows = parseCsv(texto);
       setImportRows(rows);
       if (rows.length === 0) setErrorImportar('No se encontraron filas válidas en el archivo (formato esperado: codigo,stock_real).');
-    };
-    reader.readAsText(file);
+    } catch {
+      setErrorImportar('No se pudo leer el archivo. Verifica que sea un CSV o Excel (.xlsx) válido.');
+    }
+  }
+
+  function descargarPlantillaImportarExcel() {
+    descargarComoExcel('plantilla_importar_stock_real.xlsx', ['codigo', 'stock_real'], [['P100', 25]]);
+  }
+
+  function descargarPlantillaImportarCsv() {
+    const csv = ['codigo,stock_real', 'P100,25'].join('\n');
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'plantilla_importar_stock_real.csv';
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
   }
 
   async function handleImportarSubmit(e) {
@@ -238,19 +254,28 @@ export default function Movements() {
     setShowImportarLotes(true);
   }
 
-  function handleFileChangeLotes(e) {
+  async function handleFileChangeLotes(e) {
     const file = e.target.files?.[0];
     if (!file) return;
     setImportLotesFileName(file.name);
     setImportLotesResult(null);
     setErrorImportarLotes('');
-    const reader = new FileReader();
-    reader.onload = () => {
-      const rows = parseCsvLotes(String(reader.result || ''));
+    try {
+      const texto = await leerArchivoComoTextoCsv(file);
+      const rows = parseCsvLotes(texto);
       setImportLotesRows(rows);
       if (rows.length === 0) setErrorImportarLotes('No se encontraron filas válidas en el archivo (formato esperado: codigo,cantidad,codigo_lote,fecha_vencimiento,motivo).');
-    };
-    reader.readAsText(file);
+    } catch {
+      setErrorImportarLotes('No se pudo leer el archivo. Verifica que sea un CSV o Excel (.xlsx) válido.');
+    }
+  }
+
+  function descargarPlantillaImportarLotesExcel() {
+    descargarComoExcel(
+      'plantilla_importar_stock_lotes.xlsx',
+      ['codigo', 'cantidad', 'codigo_lote', 'fecha_vencimiento', 'motivo'],
+      [['P100', 25, 'L001', '2027-01-31', 'Compra inicial']]
+    );
   }
 
   async function handleImportarLotesSubmit(e) {
@@ -432,9 +457,17 @@ export default function Movements() {
         <div className="modal-overlay" onClick={() => setShowImportar(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h2>Importar stock real</h2>
+            <div style={{ display: 'flex', gap: 12, marginBottom: 10 }}>
+              <button type="button" className="btn-link" onClick={descargarPlantillaImportarCsv}>
+                Descargar plantilla (CSV)
+              </button>
+              <button type="button" className="btn-link" onClick={descargarPlantillaImportarExcel}>
+                Descargar plantilla (Excel)
+              </button>
+            </div>
             <form onSubmit={handleImportarSubmit}>
-              <label>Archivo CSV (columnas: código, stock real)</label>
-              <input required type="file" accept=".csv,text/csv" onChange={handleFileChange} />
+              <label>Archivo CSV o Excel (columnas: código, stock real)</label>
+              <input required type="file" accept=".csv,text/csv,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" onChange={handleFileChange} />
               {importFileName && (
                 <p className="caja-row-auto">{importFileName} — {importRows.length} fila(s) detectadas.</p>
               )}
@@ -461,14 +494,17 @@ export default function Movements() {
       {showImportarLotes && (
         <div className="modal-overlay" onClick={() => setShowImportarLotes(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h2>Cargar stock + lotes (CSV)</h2>
+            <h2>Cargar stock + lotes (CSV o Excel)</h2>
             <form onSubmit={handleImportarLotesSubmit}>
-              <label>Archivo CSV (columnas: código, cantidad, N.º de lote, fecha de vencimiento, motivo)</label>
+              <label>Archivo CSV o Excel (columnas: código, cantidad, N.º de lote, fecha de vencimiento, motivo)</label>
               <p className="caja-row-auto" style={{ marginTop: -6 }}>
                 El N.º de lote, la fecha de vencimiento (AAAA-MM-DD) y el motivo son opcionales — puedes dejarlos
                 vacíos en la fila. Cada fila suma esa cantidad al stock (ingreso); no sirve para dar de baja stock.
               </p>
-              <input required type="file" accept=".csv,text/csv" onChange={handleFileChangeLotes} />
+              <button type="button" className="btn-link" onClick={descargarPlantillaImportarLotesExcel} style={{ marginBottom: 10 }}>
+                Descargar plantilla (Excel)
+              </button>
+              <input required type="file" accept=".csv,text/csv,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" onChange={handleFileChangeLotes} />
               {importLotesFileName && (
                 <p className="caja-row-auto">{importLotesFileName} — {importLotesRows.length} fila(s) detectadas.</p>
               )}
