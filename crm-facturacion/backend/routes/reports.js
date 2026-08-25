@@ -227,17 +227,24 @@ router.get('/cierre-caja', requireAlgunPermiso(['caja', 'reportes']), (req, res)
     { doc: 'factura', label: 'Factura', ...(docByKey.factura || { cantidad: 0, total: 0 }) },
   ];
 
+  // "abonado" no es un método de pago real, es crédito — agrupar el total
+  // completo de cada venta bajo un bucket genérico "Abonado" no reflejaba qué
+  // dinero entró de verdad hoy. Por eso se excluye de la agrupación directa
+  // y, más abajo, lo ya cobrado (vía cobros/nota_venta_cobros) se suma al
+  // medio real con el que se cobró — ej. si el abono fue en Efectivo, cuenta
+  // como Efectivo — y lo pendiente queda en su propio bucket.
   const formaPagoRows = db.prepare(`
     SELECT forma_pago, COUNT(*) AS cantidad, COALESCE(SUM(total), 0) AS total
     FROM invoices
-    WHERE estado = 'emitido' AND tipo_comprobante IN ('boleta', 'factura')
+    WHERE estado = 'emitido' AND tipo_comprobante IN ('boleta', 'factura') AND forma_pago != 'abonado'
       AND date(fecha_emision) = date(?) AND sucursal_id = ? ${empleadoFiltro}
     GROUP BY forma_pago
   `).all(...baseParams);
   const nvFormaPagoRows = db.prepare(`
     SELECT forma_pago, COUNT(*) AS cantidad, COALESCE(SUM(total), 0) AS total
     FROM notas_venta
-    WHERE estado = 'emitido' AND date(fecha_emision) = date(?) AND sucursal_id = ? ${empleadoFiltro}
+    WHERE estado = 'emitido' AND forma_pago != 'abonado'
+      AND date(fecha_emision) = date(?) AND sucursal_id = ? ${empleadoFiltro}
     GROUP BY forma_pago
   `).all(...baseParams);
   const formaPagoMap = {};
@@ -246,15 +253,58 @@ router.get('/cierre-caja', requireAlgunPermiso(['caja', 'reportes']), (req, res)
     const prev = formaPagoMap[r.forma_pago] || { cantidad: 0, total: 0 };
     formaPagoMap[r.forma_pago] = { cantidad: prev.cantidad + r.cantidad, total: prev.total + r.total };
   });
+
+  // Lo cobrado hoy de ventas "abonado" (Boleta/Factura y Nota de Venta
+  // Interna) emitidas hoy: cada cobro (incluido el abono inicial al emitir)
+  // se suma al medio real con el que se cobró.
+  const cobradoAbonadoInvoices = db.prepare(`
+    SELECT c.medio, COUNT(*) AS cantidad, COALESCE(SUM(c.monto), 0) AS total
+    FROM cobros c JOIN invoices i ON i.id = c.invoice_id
+    WHERE i.forma_pago = 'abonado' AND i.estado = 'emitido'
+      AND date(i.fecha_emision) = date(?) AND i.sucursal_id = ? ${empleadoId ? 'AND i.created_by = ?' : ''}
+    GROUP BY c.medio
+  `).all(...baseParams);
+  const cobradoAbonadoNv = db.prepare(`
+    SELECT nvc.medio, COUNT(*) AS cantidad, COALESCE(SUM(nvc.monto), 0) AS total
+    FROM nota_venta_cobros nvc JOIN notas_venta nv ON nv.id = nvc.nota_venta_id
+    WHERE nv.forma_pago = 'abonado' AND nv.estado = 'emitido'
+      AND date(nv.fecha_emision) = date(?) AND nv.sucursal_id = ? ${empleadoId ? 'AND nv.created_by = ?' : ''}
+    GROUP BY nvc.medio
+  `).all(...baseParams);
+  [...cobradoAbonadoInvoices, ...cobradoAbonadoNv].forEach((r) => {
+    const prev = formaPagoMap[r.medio] || { cantidad: 0, total: 0 };
+    formaPagoMap[r.medio] = { cantidad: prev.cantidad + r.cantidad, total: prev.total + r.total };
+  });
+
+  // Lo que sigue pendiente (sin cobrar) de esas mismas ventas "abonado"
+  // emitidas hoy, para no perder de vista cuánto sigue siendo crédito real.
+  const pendienteAbonadoInvoices = db.prepare(`
+    SELECT COUNT(*) AS cantidad, COALESCE(SUM(total - monto_pagado), 0) AS total
+    FROM invoices WHERE forma_pago = 'abonado' AND estado = 'emitido'
+      AND date(fecha_emision) = date(?) AND sucursal_id = ? ${empleadoFiltro}
+  `).get(...baseParams);
+  const pendienteAbonadoNv = db.prepare(`
+    SELECT COUNT(*) AS cantidad, COALESCE(SUM(total - monto_pagado), 0) AS total
+    FROM notas_venta WHERE forma_pago = 'abonado' AND estado = 'emitido'
+      AND date(fecha_emision) = date(?) AND sucursal_id = ? ${empleadoFiltro}
+  `).get(...baseParams);
+  const pendienteAbonado = round2(pendienteAbonadoInvoices.total + pendienteAbonadoNv.total);
+  const cantidadPendienteAbonado = pendienteAbonadoInvoices.cantidad + pendienteAbonadoNv.cantidad;
+
   const metodosPago = db.prepare('SELECT codigo, nombre, icono FROM metodos_pago').all();
   const ventas_por_forma_pago = Object.entries(formaPagoMap)
     .sort((a, b) => b[1].total - a[1].total)
     .map(([forma_pago, v]) => {
-      if (forma_pago === 'abonado') return { forma_pago, label: '🧾 Abonado (crédito)', cantidad: v.cantidad, total: round2(v.total) };
       if (forma_pago === 'mixto') return { forma_pago, label: '🔀 Pago mixto', cantidad: v.cantidad, total: round2(v.total) };
       const metodo = metodosPago.find((m) => m.codigo === forma_pago);
       return { forma_pago, label: metodo ? `${metodo.icono} ${metodo.nombre}` : (forma_pago || 'Sin especificar'), cantidad: v.cantidad, total: round2(v.total) };
     });
+  if (pendienteAbonado > 0) {
+    ventas_por_forma_pago.push({
+      forma_pago: 'pendiente_credito', label: '🕒 Pendiente por cobrar (crédito)',
+      cantidad: cantidadPendienteAbonado, total: pendienteAbonado,
+    });
+  }
 
   // Resultado de turno: bruto (antes de cualquier descuento, todas las
   // líneas de boleta/factura + notas de venta interna sin importar el
