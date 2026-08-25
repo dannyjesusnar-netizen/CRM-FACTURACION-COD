@@ -69,15 +69,6 @@ export default function Movements() {
   const [mostrarPor, setMostrarPor] = useState('f_registro');
   const [canales, setCanales] = useState([]);
 
-  const [showForm, setShowForm] = useState(false);
-  const [productId, setProductId] = useState('');
-  const [cantidad, setCantidad] = useState('');
-  const [motivo, setMotivo] = useState('');
-  const [canal, setCanal] = useState('Compras');
-  const [codigoLote, setCodigoLote] = useState('');
-  const [fechaVencimiento, setFechaVencimiento] = useState('');
-  const [error, setError] = useState('');
-
   const [showConteo, setShowConteo] = useState(false);
   const [conteoProductId, setConteoProductId] = useState('');
   const [conteoCantidad, setConteoCantidad] = useState('');
@@ -132,41 +123,6 @@ export default function Movements() {
     a.remove();
     URL.revokeObjectURL(url);
     toast.success('Archivo CSV exportado.');
-  }
-
-  function openForm() {
-    setProductId('');
-    setCantidad('');
-    setMotivo('');
-    setCanal((canales.find((c) => c.nombre === 'Compras') || canales[0])?.nombre || 'Compras');
-    setCodigoLote('');
-    setFechaVencimiento('');
-    setError('');
-    setShowForm(true);
-  }
-
-  async function handleSubmit(e) {
-    e.preventDefault();
-    setError('');
-    if (!productId || !cantidad) {
-      setError('Selecciona un producto e ingresa una cantidad.');
-      return;
-    }
-    try {
-      await api.post('/movements', {
-        product_id: Number(productId),
-        cantidad: Number(cantidad),
-        motivo,
-        canal,
-        codigo_lote: esIngreso ? codigoLote : undefined,
-        fecha_vencimiento: esIngreso ? (fechaVencimiento || undefined) : undefined,
-      });
-      toast.success(esIngreso && codigoLote ? 'Stock y lote registrados.' : 'Ajuste de stock registrado.');
-      setShowForm(false);
-      load();
-    } catch (err) {
-      setError(err.response?.data?.error || 'Error al registrar el ajuste.');
-    }
   }
 
   function openConteo() {
@@ -301,7 +257,6 @@ export default function Movements() {
   }
 
   const productoConteo = products.find((p) => String(p.id) === String(conteoProductId));
-  const esIngreso = Number(cantidad) > 0;
 
   return (
     <div>
@@ -316,7 +271,7 @@ export default function Movements() {
 
       <div className="actions-with-select-row">
         <div className="actions-buttons">
-          <button className="ventas-action-btn" onClick={openForm}>Registrar Movimiento</button>
+          <button className="ventas-action-btn" onClick={() => navigate('/movimientos/registrar')}>Registrar Movimiento</button>
           <button className="ventas-action-btn" onClick={openConteo}>Inventario Físico</button>
           <button className="ventas-action-btn" onClick={openImportar}>Importar Stock Real</button>
           <button className="ventas-action-btn" onClick={openImportarLotes}>Cargar Stock + Lotes (CSV)</button>
@@ -402,47 +357,6 @@ export default function Movements() {
           </table>
         </div>
       </div>
-
-      {showForm && (
-        <div className="modal-overlay" onClick={() => setShowForm(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h2>Registrar movimiento (ajuste manual)</h2>
-            <form onSubmit={handleSubmit}>
-              <label>Producto</label>
-              <select required value={productId} onChange={(e) => setProductId(e.target.value)}>
-                <option value="">Selecciona un producto...</option>
-                {products.filter((p) => p.tipo === 'producto').map((p) => (
-                  <option key={p.id} value={p.id}>{p.nombre} (stock actual: {p.stock})</option>
-                ))}
-              </select>
-              <label>Cantidad (positivo = ingreso, negativo = salida)</label>
-              <input required type="number" step="1" value={cantidad} onChange={(e) => setCantidad(e.target.value)} placeholder="Ej: 10 ó -5" />
-              <label>Canal</label>
-              <select value={canal} onChange={(e) => setCanal(e.target.value)}>
-                {canales.map((c) => <option key={c.id} value={c.nombre}>{c.nombre}</option>)}
-              </select>
-              <label>Motivo</label>
-              <input value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Ej: Conteo físico, mercadería dañada..." />
-              {esIngreso && (
-                <>
-                  <label>N.º de lote (opcional)</label>
-                  <input value={codigoLote} onChange={(e) => setCodigoLote(e.target.value)} placeholder="Ej: L-2026-08" />
-                  <label>Fecha de vencimiento (opcional)</label>
-                  <input type="date" value={fechaVencimiento} onChange={(e) => setFechaVencimiento(e.target.value)} disabled={!codigoLote} />
-                  <p className="caja-row-auto" style={{ marginTop: -4 }}>
-                    Si ingresas un N.º de lote, este ingreso también quedará registrado en Lotes y Series.
-                  </p>
-                </>
-              )}
-              {error && <div className="form-error">{error}</div>}
-              <div className="modal-actions">
-                <button type="button" className="btn-secondary" onClick={() => setShowForm(false)}>Cancelar</button>
-                <button type="submit" className="btn-primary">Registrar ajuste</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
       {showConteo && (
         <div className="modal-overlay" onClick={() => setShowConteo(false)}>
