@@ -60,6 +60,31 @@ function movimientosSum(desde, hasta, tipo, medio, categoria, sucursalId, moneda
   return round2(row.total);
 }
 
+// Total vendido "abonado" (crédito) en el rango, sin importar cuánto se
+// cobró realmente — es lo que se está fiando ese día, no dinero en caja.
+// Por eso NO se mezcla con ingresos.ventas de los métodos reales: lo que sí
+// se cobra de un abono ya cuenta aparte, bajo el método real usado (ver
+// movimientosSum categoria 'cuentas_cobrar').
+function totalAbonadoDia(desde, hasta, sucursalId, moneda, empleadoId) {
+  let sqlInv = `SELECT COALESCE(SUM(total), 0) AS total, COUNT(*) AS cantidad FROM invoices
+     WHERE forma_pago = 'abonado' AND estado = 'emitido' AND tipo_comprobante IN ('boleta', 'factura')
+       AND date(fecha_emision) BETWEEN date(?) AND date(?) AND sucursal_id = ?`;
+  const paramsInv = [desde, hasta, sucursalId];
+  if (moneda) { sqlInv += ' AND moneda = ?'; paramsInv.push(moneda); }
+  if (empleadoId) { sqlInv += ' AND created_by = ?'; paramsInv.push(empleadoId); }
+  const inv = db.prepare(sqlInv).get(...paramsInv);
+
+  let sqlNv = `SELECT COALESCE(SUM(total), 0) AS total, COUNT(*) AS cantidad FROM notas_venta
+     WHERE forma_pago = 'abonado' AND estado = 'emitido'
+       AND date(fecha_emision) BETWEEN date(?) AND date(?) AND sucursal_id = ?`;
+  const paramsNv = [desde, hasta, sucursalId];
+  if (moneda) { sqlNv += ' AND moneda = ?'; paramsNv.push(moneda); }
+  if (empleadoId) { sqlNv += ' AND created_by = ?'; paramsNv.push(empleadoId); }
+  const nv = db.prepare(sqlNv).get(...paramsNv);
+
+  return { total: round2(inv.total + nv.total), cantidad: inv.cantidad + nv.cantidad };
+}
+
 // Arqueo del período (uno por cada método de pago activo: Efectivo, Yape,
 // Plin, POS, ... según lo que Gerencia tenga configurado en Configuración ->
 // Métodos de pago). desde/hasta delimitan el rango — para el arqueo de un
@@ -71,7 +96,7 @@ function movimientosSum(desde, hasta, tipo, medio, categoria, sucursalId, moneda
 // del rango completo — o sea, cuánto quedaría en caja al cierre de "hasta".
 function buildResumen(desde, hasta, sucursalId, { moneda, empleadoId } = {}) {
   const metodos = db.prepare('SELECT * FROM metodos_pago WHERE activo = 1 ORDER BY orden ASC, id ASC').all();
-  return metodos.map((m) => {
+  const resumen = metodos.map((m) => {
     const ingresos = {
       // Ventas con un solo método (forma_pago directo) + el tramo que le
       // corresponde a este método en ventas con "pago mixto" (que se
@@ -110,6 +135,23 @@ function buildResumen(desde, hasta, sucursalId, { moneda, empleadoId } = {}) {
       saldo_inicial, ingresos, egresos, saldo_final,
     };
   });
+
+  // "Abonados" no es un método de pago real (no hay billetes que contar
+  // aparte), así que no forma parte del catálogo metodos_pago ni de
+  // saldo_final (queda en 0 a propósito, para no inflar el total general de
+  // caja) — es solo informativo: cuánto se vendió a crédito hoy, para que
+  // Gerencia lo vea junto a Efectivo/Yape/Plin igual que pidió.
+  const abonadoDia = totalAbonadoDia(desde, hasta, sucursalId, moneda, empleadoId);
+  resumen.push({
+    codigo: 'abonado', nombre: 'Abonados', tipo: 'credito', color: '#f59e0b', icono: '🧾',
+    saldo_inicial: 0,
+    ingresos: { ventas: abonadoDia.total, cuentas_cobrar: 0, transferencia: 0, otros: 0, total: abonadoDia.total },
+    egresos: { compras: 0, cuentas_pagar: 0, transferencia: 0, otros: 0, total: 0 },
+    saldo_final: 0,
+    cantidad: abonadoDia.cantidad,
+  });
+
+  return resumen;
 }
 
 module.exports = { round2, INGRESO_CATS, EGRESO_CATS, ventasAuto, movimientosSum, buildResumen };

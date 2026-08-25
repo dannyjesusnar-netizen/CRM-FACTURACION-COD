@@ -217,7 +217,9 @@ router.get('/cierre-caja', requireAlgunPermiso(['caja', 'reportes']), (req, res)
   const empleadoFiltro = empleadoId ? 'AND created_by = ?' : '';
   const baseParams = empleadoId ? [fecha, req.sucursalId, empleadoId] : [fecha, req.sucursalId];
 
-  const efectivo = buildResumen(fecha, fecha, req.sucursalId, { moneda: 'PEN', empleadoId }).find((r) => r.codigo === 'efectivo') || null;
+  const resumenMetodosDia = buildResumen(fecha, fecha, req.sucursalId, { moneda: 'PEN', empleadoId });
+  const efectivo = resumenMetodosDia.find((r) => r.codigo === 'efectivo') || null;
+  const abonados = resumenMetodosDia.find((r) => r.codigo === 'abonado') || null;
 
   // Boleta / Factura (invoices) + Nota de Venta Interna (tabla notas_venta,
   // separada desde que dejó de ser "boleta con forma_pago=abonado") — solo
@@ -376,6 +378,7 @@ router.get('/cierre-caja', requireAlgunPermiso(['caja', 'reportes']), (req, res)
   res.json({
     fecha,
     efectivo,
+    abonados,
     ventas_por_documento,
     ventas_por_forma_pago,
     turno: { bruto, descuento, devoluciones, anulaciones, neto },
