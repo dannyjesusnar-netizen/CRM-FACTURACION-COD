@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api';
 import { useToast } from '../context/ToastContext';
+import { leerArchivoComoTextoCsv, descargarComoExcel } from '../utils/excelImport';
 
 const CARGA_MASIVA_COLUMNAS = ['codigo', 'nombre', 'categoria', 'unidad', 'precio_unitario', 'stock', 'stock_minimo', 'precio_compra', 'codigo_barras'];
 
@@ -251,19 +252,20 @@ export default function Products() {
     setShowCargaMasiva(true);
   }
 
-  function handleCargaFileChange(e) {
+  async function handleCargaFileChange(e) {
     const file = e.target.files?.[0];
     if (!file) return;
     setCargaFileName(file.name);
     setCargaResult(null);
     setErrorCarga('');
-    const reader = new FileReader();
-    reader.onload = () => {
-      const rows = parseCsvProductos(String(reader.result || ''));
+    try {
+      const texto = await leerArchivoComoTextoCsv(file);
+      const rows = parseCsvProductos(texto);
       setCargaRows(rows);
       if (rows.length === 0) setErrorCarga('No se encontraron filas válidas (columnas esperadas: código, nombre, categoría, unidad, precio_unitario, stock, stock_mínimo, precio_compra, código_barras).');
-    };
-    reader.readAsText(file);
+    } catch {
+      setErrorCarga('No se pudo leer el archivo. Verifica que sea un CSV o Excel (.xlsx) válido.');
+    }
   }
 
   async function handleCargaMasivaSubmit(e) {
@@ -292,6 +294,11 @@ export default function Products() {
     a.href = url; a.download = 'plantilla_carga_masiva_productos.csv';
     document.body.appendChild(a); a.click(); a.remove();
     URL.revokeObjectURL(url);
+  }
+
+  function descargarPlantillaCargaMasivaExcel() {
+    const ejemplo = ['P100', 'Producto de ejemplo', 'General', 'NIU', 19.90, 10, 2, 12.00, ''];
+    descargarComoExcel('plantilla_carga_masiva_productos.xlsx', CARGA_MASIVA_COLUMNAS, [ejemplo]);
   }
 
   async function handleDelete(id) {
@@ -636,15 +643,20 @@ export default function Products() {
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h2>Carga masiva de productos</h2>
             <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -6 }}>
-              Sube un CSV con columnas: código, nombre, categoría, unidad, precio_unitario, stock, stock_mínimo, precio_compra, código_barras.
+              Sube un CSV o Excel (.xlsx) con columnas: código, nombre, categoría, unidad, precio_unitario, stock, stock_mínimo, precio_compra, código_barras.
               Si el código ya existe, actualiza ese producto; si no, lo crea. El stock que subas es el de esta sede.
             </p>
-            <button type="button" className="btn-link" onClick={descargarPlantillaCargaMasiva} style={{ marginBottom: 10 }}>
-              Descargar plantilla de ejemplo
-            </button>
+            <div style={{ display: 'flex', gap: 12, marginBottom: 10 }}>
+              <button type="button" className="btn-link" onClick={descargarPlantillaCargaMasiva}>
+                Descargar plantilla (CSV)
+              </button>
+              <button type="button" className="btn-link" onClick={descargarPlantillaCargaMasivaExcel}>
+                Descargar plantilla (Excel)
+              </button>
+            </div>
             <form onSubmit={handleCargaMasivaSubmit}>
-              <label>Archivo CSV</label>
-              <input required type="file" accept=".csv,text/csv" onChange={handleCargaFileChange} />
+              <label>Archivo CSV o Excel</label>
+              <input required type="file" accept=".csv,text/csv,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" onChange={handleCargaFileChange} />
               {cargaFileName && (
                 <p className="caja-row-auto">{cargaFileName} — {cargaRows.length} fila(s) detectadas.</p>
               )}
