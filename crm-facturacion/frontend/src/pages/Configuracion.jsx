@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Building2, Users as UsersIcon, Store, ShieldCheck, FileText, Wallet, Hash, Percent } from 'lucide-react';
+import {
+  ArrowLeft, Building2, Users as UsersIcon, Store, ShieldCheck, FileText, Wallet, Hash, Percent,
+  Upload, Boxes, PackagePlus, RefreshCw, UserPlus, Tags,
+} from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
@@ -49,6 +52,81 @@ function parseCsvOperativos(text) {
   }
   return rows;
 }
+
+// Importador de Datos Masivos (Configuración): 5 flujos de carga por Excel/CSV
+// que reutilizan endpoints ya existentes de products.js/clients.js — cada uno
+// solo cambia columnas esperadas, endpoint destino y un cuerpo extra opcional.
+function parseCsvGenerico(text, columnas) {
+  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  if (lines.length === 0) return [];
+  let start = 0;
+  if (columnas.some((c) => new RegExp(c, 'i').test(lines[0]))) start = 1;
+  const rows = [];
+  for (let i = start; i < lines.length; i += 1) {
+    const cols = lines[i].split(',').map((c) => c.trim().replace(/^"|"$/g, ''));
+    if (!cols[0]) continue;
+    const row = {};
+    columnas.forEach((key, idx) => { row[key] = cols[idx] ?? ''; });
+    rows.push(row);
+  }
+  return rows;
+}
+
+// Primer valor de la fila de error que no sea el mensaje — cada endpoint usa
+// una llave distinta como identificador (codigo, numero_documento...).
+function primerIdentificadorError(errorRow) {
+  const entrada = Object.entries(errorRow).find(([k]) => k !== 'error');
+  return entrada ? entrada[1] : '';
+}
+
+const IMPORTADORES_MASIVOS = [
+  {
+    key: 'inventario',
+    titulo: 'Inventario',
+    Icon: Boxes,
+    endpoint: '/products/carga-masiva/inventario',
+    columnas: ['codigo', 'stock'],
+    filaEjemplo: ['PROD001', '25'],
+    descripcion: 'Actualiza solo el stock (de tu sede activa) de productos que YA existen, por código. No crea productos nuevos ni cambia nombre o precio.',
+  },
+  {
+    key: 'productos_nuevos',
+    titulo: 'Productos nuevos',
+    Icon: PackagePlus,
+    endpoint: '/products/carga-masiva',
+    columnas: ['codigo', 'nombre', 'categoria', 'unidad', 'precio_unitario', 'precio_compra', 'stock', 'stock_minimo', 'codigo_barras'],
+    filaEjemplo: ['PROD002', 'Proteína Whey 1kg', 'Suplementos', 'NIU', '120', '80', '30', '5', '7501234567890'],
+    descripcion: 'Crea productos nuevos por código. Si el código ya existe, actualiza sus datos (mismo criterio de siempre).',
+  },
+  {
+    key: 'actualizacion_datos',
+    titulo: 'Actualización de datos',
+    Icon: RefreshCw,
+    endpoint: '/products/carga-masiva',
+    extraBody: { crear_nuevos: false },
+    columnas: ['codigo', 'nombre', 'categoria', 'unidad', 'precio_unitario', 'precio_compra', 'stock', 'stock_minimo', 'codigo_barras'],
+    filaEjemplo: ['PROD001', 'Creatina Monohidratada 300g', 'Suplementos', 'NIU', '89.9', '55', '40', '5', '7501234500001'],
+    descripcion: 'Actualiza productos que YA existen por código. Si un código no existe, esa fila queda en error (a diferencia de "Productos nuevos", esta opción nunca crea productos).',
+  },
+  {
+    key: 'clientes',
+    titulo: 'Clientes',
+    Icon: UserPlus,
+    endpoint: '/clients/carga-masiva',
+    columnas: ['tipo_documento', 'numero_documento', 'nombre', 'direccion', 'telefono', 'email', 'sede', 'turno'],
+    filaEjemplo: ['DNI', '87654321', 'Lucía Fernández', 'Av. Larco 123, Miraflores', '987654321', 'lucia@correo.com', '', 'manana'],
+    descripcion: 'Crea clientes nuevos o actualiza los existentes por tipo y número de documento. "sede" es el nombre de la sede (déjalo vacío si no aplica).',
+  },
+  {
+    key: 'lista_precios',
+    titulo: 'Lista de precios',
+    Icon: Tags,
+    endpoint: '/products/carga-masiva/precios',
+    columnas: ['codigo', 'precio_venta', 'precio_mayorista', 'precio_distribuidor'],
+    filaEjemplo: ['PROD001', '89.9', '75', '65'],
+    descripcion: 'Actualiza precio de venta, precio de mayorista y precio de distribuidor de productos que YA existen, por código.',
+  },
+];
 
 // Los tres únicos niveles que se pueden asignar a un empleado desde este
 // formulario (reemplaza el antiguo par Nivel + Rol personalizado libre).
@@ -195,6 +273,14 @@ export default function Configuracion() {
   const [cargaOperativosRows, setCargaOperativosRows] = useState([]);
   const [cargaOperativosResult, setCargaOperativosResult] = useState(null);
   const [errorCargaOperativos, setErrorCargaOperativos] = useState('');
+
+  // --- Importador de Datos Masivos ---
+  const [importadorActivo, setImportadorActivo] = useState(null); // key de IMPORTADORES_MASIVOS o null
+  const [importFileName, setImportFileName] = useState('');
+  const [importRows, setImportRows] = useState([]);
+  const [importResult, setImportResult] = useState(null);
+  const [errorImport, setErrorImport] = useState('');
+  const [savingImport, setSavingImport] = useState(false);
 
   // --- Metas de venta (Tablero de Ventas) ---
   // Gerencia asigna un monto "pool" por sede y categoría (Vendedores /
@@ -817,6 +903,65 @@ export default function Configuracion() {
     descargarComoExcel('plantilla_carga_masiva_operativos.xlsx', CARGA_MASIVA_OPERATIVOS_COLUMNAS, [ejemplo]);
   }
 
+  function openImportador(key) {
+    setImportFileName('');
+    setImportRows([]);
+    setImportResult(null);
+    setErrorImport('');
+    setImportadorActivo(key);
+  }
+
+  async function handleImportFileChange(e) {
+    const file = e.target.files?.[0];
+    const config = IMPORTADORES_MASIVOS.find((i) => i.key === importadorActivo);
+    if (!file || !config) return;
+    setImportFileName(file.name);
+    setImportResult(null);
+    setErrorImport('');
+    try {
+      const texto = await leerArchivoComoTextoCsv(file);
+      const rows = parseCsvGenerico(texto, config.columnas);
+      setImportRows(rows);
+      if (rows.length === 0) setErrorImport(`No se encontraron filas válidas (columnas esperadas: ${config.columnas.join(', ')}).`);
+    } catch {
+      setErrorImport('No se pudo leer el archivo. Verifica que sea un CSV o Excel (.xlsx) válido.');
+    }
+  }
+
+  async function handleImportSubmit(e) {
+    e.preventDefault();
+    const config = IMPORTADORES_MASIVOS.find((i) => i.key === importadorActivo);
+    if (!config) return;
+    setErrorImport('');
+    if (importRows.length === 0) { setErrorImport('Selecciona un archivo CSV o Excel con al menos una fila.'); return; }
+    setSavingImport(true);
+    try {
+      const res = await api.post(config.endpoint, { rows: importRows, ...(config.extraBody || {}) });
+      setImportResult(res.data);
+      if (res.data.creados?.length > 0) toast.success(`${res.data.creados.length} registro(s) creados.`);
+      if (res.data.actualizados?.length > 0) toast.success(`${res.data.actualizados.length} registro(s) actualizados.`);
+      if (res.data.errores?.length > 0) toast.error(`${res.data.errores.length} fila(s) con errores. Revisa el detalle.`);
+    } catch (err) {
+      setErrorImport(err.response?.data?.error || 'No se pudo procesar el archivo.');
+    } finally {
+      setSavingImport(false);
+    }
+  }
+
+  function descargarPlantillaImportador(config) {
+    const csv = [config.columnas, config.filaEjemplo].map((r) => r.join(',')).join('\n');
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `plantilla_${config.key}.csv`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  function descargarPlantillaImportadorExcel(config) {
+    descargarComoExcel(`plantilla_${config.key}.xlsx`, config.columnas, [config.filaEjemplo]);
+  }
+
   function openNewSucursal() {
     setEditingSucursalId(null);
     setSucursalForm(emptySucursalForm());
@@ -967,6 +1112,9 @@ export default function Configuracion() {
           </div>
           <div className={'reports-sidebar-item' + (seccion === 'metodos_pago' ? ' active' : '')} onClick={() => setSeccion('metodos_pago')} role="button" tabIndex={0}>
             <Wallet size={16} /><span>Métodos de pago</span>
+          </div>
+          <div className={'reports-sidebar-item' + (seccion === 'importador' ? ' active' : '')} onClick={() => setSeccion('importador')} role="button" tabIndex={0}>
+            <Upload size={16} /><span>Importador de Datos Masivos</span>
           </div>
         </div>
 
@@ -1697,6 +1845,34 @@ export default function Configuracion() {
               </div>
             </>
           )}
+
+          {seccion === 'importador' && (
+            <>
+              <h3 style={{ marginTop: 0 }}>Importador de Datos Masivos</h3>
+              <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -8 }}>
+                Sube un CSV o Excel (.xlsx) para cargar muchos registros de una sola vez. Cada tarjeta tiene su propia
+                plantilla — descárgala, complétala y súbela de vuelta.
+              </p>
+              <div className="metodos-pago-grid">
+                {IMPORTADORES_MASIVOS.map((config) => (
+                  <div key={config.key} className="metodo-pago-card">
+                    <div className="metodo-pago-icon" style={{ background: 'var(--brand-blue, #0f4c81)' }}>
+                      <config.Icon size={18} color="#fff" />
+                    </div>
+                    <div className="metodo-pago-info">
+                      <strong>{config.titulo}</strong>
+                      <span style={{ fontSize: 12, color: 'var(--ink-muted)' }}>{config.descripcion}</span>
+                    </div>
+                    <div className="metodo-pago-actions">
+                      <button type="button" className="btn-primary" style={{ width: 'auto' }} onClick={() => openImportador(config.key)}>
+                        Cargar
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       </div>
 
@@ -1880,6 +2056,54 @@ export default function Configuracion() {
           </div>
         </div>
       )}
+
+      {importadorActivo && (() => {
+        const config = IMPORTADORES_MASIVOS.find((i) => i.key === importadorActivo);
+        if (!config) return null;
+        return (
+          <div className="modal-overlay" onClick={() => setImportadorActivo(null)}>
+            <div className="modal" onClick={(e) => e.stopPropagation()}>
+              <h2>Importar — {config.titulo}</h2>
+              <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -6 }}>
+                Sube un CSV o Excel (.xlsx) con columnas: {config.columnas.join(', ')}. {config.descripcion}
+              </p>
+              <div style={{ display: 'flex', gap: 12, marginBottom: 10 }}>
+                <button type="button" className="btn-link" onClick={() => descargarPlantillaImportador(config)}>
+                  Descargar plantilla (CSV)
+                </button>
+                <button type="button" className="btn-link" onClick={() => descargarPlantillaImportadorExcel(config)}>
+                  Descargar plantilla (Excel)
+                </button>
+              </div>
+              <form onSubmit={handleImportSubmit}>
+                <label>Archivo CSV o Excel</label>
+                <input required type="file" accept=".csv,text/csv,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" onChange={handleImportFileChange} />
+                {importFileName && (
+                  <p className="caja-row-auto">{importFileName} — {importRows.length} fila(s) detectadas.</p>
+                )}
+                {importResult && (
+                  <div style={{ marginTop: 10 }}>
+                    <p>
+                      <strong>{importResult.creados?.length || 0}</strong> creados, <strong>{importResult.actualizados?.length || 0}</strong> actualizados,{' '}
+                      <strong>{importResult.errores?.length || 0}</strong> con error.
+                    </p>
+                    {importResult.errores?.length > 0 && (
+                      <ul style={{ fontSize: 12, color: 'var(--critical)', maxHeight: 120, overflowY: 'auto' }}>
+                        {importResult.errores.map((e, i) => <li key={i}>{primerIdentificadorError(e)}: {e.error}</li>)}
+                      </ul>
+                    )}
+                  </div>
+                )}
+                {errorImport && <div className="form-error">{errorImport}</div>}
+                <div className="modal-actions">
+                  <button type="button" className="btn-secondary" onClick={() => setImportadorActivo(null)}>Cerrar</button>
+                  <button type="submit" className="btn-primary" disabled={savingImport}>{savingImport ? 'Cargando...' : 'Cargar'}</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        );
+      })()}
 
       {showOperativoForm && (
         <div className="modal-overlay" onClick={() => setShowOperativoForm(false)}>

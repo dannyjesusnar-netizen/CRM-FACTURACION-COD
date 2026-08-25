@@ -124,12 +124,14 @@ router.post('/', requireAccion('inventario', 'productos'), (req, res) => {
 });
 
 // POST /api/products/carga-masiva { rows: [{ codigo, nombre, categoria, unidad,
-// precio_unitario, stock, stock_minimo, precio_compra, codigo_barras }] }
+// precio_unitario, stock, stock_minimo, precio_compra, codigo_barras }], crear_nuevos }
 // Crea productos nuevos (por código) o actualiza los que ya existen. El
 // stock de cada fila es el de la sede activa, igual que en el alta/edición
-// individual.
+// individual. Con crear_nuevos:false (usado por "Actualización de datos" en
+// el Importador de Datos Masivos) un código que no existe cae en error en
+// vez de crear un producto nuevo por error de tipeo.
 router.post('/carga-masiva', requireAccion('inventario', 'productos'), (req, res) => {
-  const { rows } = req.body || {};
+  const { rows, crear_nuevos: crearNuevos = true } = req.body || {};
   if (!Array.isArray(rows) || rows.length === 0) {
     return res.status(400).json({ error: 'rows es requerido y debe tener al menos una fila.' });
   }
@@ -154,6 +156,10 @@ router.post('/carga-masiva', requireAccion('inventario', 'productos'), (req, res
     const codigoBarras = (r.codigo_barras || '').toString().trim() || null;
 
     const existing = db.prepare('SELECT * FROM products WHERE codigo = ?').get(codigo);
+    if (!existing && !crearNuevos) {
+      errores.push({ codigo, error: 'No existe un producto con este código — usa "Productos nuevos" para crearlo.' });
+      continue;
+    }
     try {
       if (existing) {
         const nuevoAgregado = tipo === 'servicio' || stock === null
@@ -179,6 +185,89 @@ router.post('/carga-masiva', requireAccion('inventario', 'productos'), (req, res
   }
 
   res.json({ creados, actualizados, errores });
+});
+
+// POST /api/products/carga-masiva/inventario { rows: [{ codigo, stock }] }
+// Solo toca el stock (sede activa) de productos YA existentes, por código —
+// no crea productos ni modifica nombre/precio/categoría. Pensado para el
+// Importador de Datos Masivos, cuando lo que llega es un conteo de
+// inventario y no un catálogo de productos.
+router.post('/carga-masiva/inventario', requireAccion('inventario', 'productos'), (req, res) => {
+  const { rows } = req.body || {};
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return res.status(400).json({ error: 'rows es requerido y debe tener al menos una fila.' });
+  }
+  const actualizados = [];
+  const errores = [];
+
+  for (const r of rows) {
+    const codigo = (r.codigo || '').toString().trim();
+    const stock = Number(r.stock);
+    if (!codigo || Number.isNaN(stock)) {
+      errores.push({ codigo: codigo || '(vacío)', error: 'codigo y stock son requeridos (stock debe ser numérico).' });
+      continue;
+    }
+    const existing = db.prepare('SELECT * FROM products WHERE codigo = ?').get(codigo);
+    if (!existing) {
+      errores.push({ codigo, error: 'No existe un producto con este código.' });
+      continue;
+    }
+    if (existing.tipo === 'servicio' || existing.stock === null) {
+      errores.push({ codigo, error: 'Este producto es un servicio, no maneja stock.' });
+      continue;
+    }
+    try {
+      const nuevoAgregado = round2(existing.stock + (stock - getStockSucursal(existing.id, req.sucursalId)));
+      db.prepare('UPDATE products SET stock = ? WHERE id = ?').run(nuevoAgregado, existing.id);
+      setStockSucursal(existing.id, req.sucursalId, stock);
+      actualizados.push({ codigo, nombre: existing.nombre });
+    } catch (err) {
+      errores.push({ codigo, error: 'No se pudo guardar esta fila.' });
+    }
+  }
+
+  res.json({ creados: [], actualizados, errores });
+});
+
+// POST /api/products/carga-masiva/precios { rows: [{ codigo, precio_unitario,
+// precio_mayorista, precio_distribuidor }] }
+// Solo toca los 3 precios de productos YA existentes, por código.
+router.post('/carga-masiva/precios', requireAccion('inventario', 'productos'), (req, res) => {
+  const { rows } = req.body || {};
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return res.status(400).json({ error: 'rows es requerido y debe tener al menos una fila.' });
+  }
+  const actualizados = [];
+  const errores = [];
+
+  for (const r of rows) {
+    const codigo = (r.codigo || '').toString().trim();
+    if (!codigo) {
+      errores.push({ codigo: '(vacío)', error: 'codigo es requerido.' });
+      continue;
+    }
+    const existing = db.prepare('SELECT * FROM products WHERE codigo = ?').get(codigo);
+    if (!existing) {
+      errores.push({ codigo, error: 'No existe un producto con este código.' });
+      continue;
+    }
+    const precioVenta = r.precio_venta === undefined || r.precio_venta === '' ? existing.precio_unitario : Number(r.precio_venta);
+    const precioMayorista = r.precio_mayorista === undefined || r.precio_mayorista === '' ? null : Number(r.precio_mayorista);
+    const precioDistribuidor = r.precio_distribuidor === undefined || r.precio_distribuidor === '' ? null : Number(r.precio_distribuidor);
+    if (Number.isNaN(precioVenta) || (precioMayorista !== null && Number.isNaN(precioMayorista)) || (precioDistribuidor !== null && Number.isNaN(precioDistribuidor))) {
+      errores.push({ codigo, error: 'precio_venta, precio_mayorista y precio_distribuidor deben ser numéricos.' });
+      continue;
+    }
+    try {
+      db.prepare('UPDATE products SET precio_unitario = ?, precio_mayorista = ?, precio_distribuidor = ? WHERE id = ?')
+        .run(precioVenta, precioMayorista, precioDistribuidor, existing.id);
+      actualizados.push({ codigo, nombre: existing.nombre });
+    } catch (err) {
+      errores.push({ codigo, error: 'No se pudo guardar esta fila.' });
+    }
+  }
+
+  res.json({ creados: [], actualizados, errores });
 });
 
 router.put('/:id', requireAccion('inventario', 'productos'), (req, res) => {
