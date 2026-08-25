@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import api from '../api';
 import { useToast } from '../context/ToastContext';
 
@@ -34,6 +35,13 @@ export default function ClientPicker({ value, onChange, required }) {
 
   async function handleCreate(e) {
     e.preventDefault();
+    // Este formulario vive dentro del <form> de la pantalla que lo usa
+    // (Registro de Venta, Nota de Venta, Guía). Sin stopPropagation, React
+    // también dispara el onSubmit del formulario contenedor (submit
+    // burbujea por el árbol de React, no por el DOM, así que ni siquiera
+    // el portal de más abajo evita esto) — eso hacía que "Crear cliente"
+    // nunca llegara a crear nada.
+    e.stopPropagation();
     if (!newClient.numero_documento || !newClient.nombre) {
       toast.error('Número de documento y nombre son requeridos.');
       return;
@@ -81,7 +89,7 @@ export default function ClientPicker({ value, onChange, required }) {
       </div>
       <button type="button" className="btn-secondary client-picker-new-btn" onClick={() => setShowNew(true)}>Cliente Nuevo</button>
 
-      {showNew && (
+      {showNew && createPortal(
         <div className="modal-overlay" onClick={() => setShowNew(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h2>Cliente nuevo</h2>
@@ -119,7 +127,8 @@ export default function ClientPicker({ value, onChange, required }) {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
