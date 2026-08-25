@@ -25,7 +25,7 @@ function parseCsvProductos(text) {
 
 const EMPTY_FORM = {
   codigo: '', codigo_barras: '', nombre: '', descripcion: '', categoria: 'General',
-  unidad: 'NIU', afectacion_igv: 'gravado', control: 'ninguno', tipo_inventario: 'MERCADERIAS',
+  unidad: 'NIU', afectacion_igv: 'gravado', control: 'ninguno', tipo_inventario: 'MERCADERÍAS',
   tipo_clasificacion: 'Otros', subtipo_clasificacion: 'Otros', peso: '', favorito: false,
   precio_compra: '', precio_unitario: '', stock: '', stock_minimo: '', palabras_clave: '', proveedor_id: '',
 };
@@ -57,14 +57,6 @@ const CONTROLES = [
   { value: 'ninguno', label: 'Ninguno' },
   { value: 'lote', label: 'Lote' },
   { value: 'serie', label: 'Serie' },
-];
-
-const TIPOS_INVENTARIO = [
-  { value: 'MERCADERIAS', label: 'MERCADERÍAS' },
-  { value: 'MATERIA_PRIMA', label: 'MATERIA PRIMA' },
-  { value: 'PRODUCTO_TERMINADO', label: 'PRODUCTO TERMINADO' },
-  { value: 'ACTIVO_FIJO', label: 'ACTIVO FIJO' },
-  { value: 'SUMINISTROS', label: 'SUMINISTROS' },
 ];
 
 export default function Products() {
@@ -103,6 +95,7 @@ export default function Products() {
   const [suppliers, setSuppliers] = useState([]);
   const [showSupplierForm, setShowSupplierForm] = useState(false);
   const [newSupplier, setNewSupplier] = useState(emptySupplier());
+  const [tiposInventario, setTiposInventario] = useState([]);
 
   function load() {
     const params = {};
@@ -118,6 +111,7 @@ export default function Products() {
   useEffect(() => { load(); }, []);
   useEffect(() => { api.get('/products/categorias').then((res) => setCategorias(res.data)); }, []);
   useEffect(() => { loadSuppliers(); }, []);
+  useEffect(() => { api.get('/tipos-inventario', { params: { estado: 'activo' } }).then((res) => setTiposInventario(res.data)); }, []);
 
   function handleSearch(e) {
     e.preventDefault();
@@ -155,7 +149,7 @@ export default function Products() {
       unidad: p.unidad,
       afectacion_igv: p.afectacion_igv || 'gravado',
       control: p.control || 'ninguno',
-      tipo_inventario: p.tipo_inventario || 'MERCADERIAS',
+      tipo_inventario: p.tipo_inventario || 'MERCADERÍAS',
       tipo_clasificacion: p.tipo_clasificacion || 'Otros',
       subtipo_clasificacion: p.subtipo_clasificacion || 'Otros',
       peso: p.peso ?? '',
@@ -331,6 +325,7 @@ export default function Products() {
         <button className="ventas-action-btn" onClick={() => navigate('/promociones')}>Promociones</button>
         <button className="ventas-action-btn" onClick={() => navigate('/movimientos')}>Movimientos</button>
         <button className="ventas-action-btn" onClick={() => navigate('/lotes')}>Lotes y Series</button>
+        <button className="ventas-action-btn" onClick={() => navigate('/productos/tipos-inventario')}>Tipos de Inventario</button>
       </div>
 
       <form className="filter-panel" onSubmit={handleSearch}>
@@ -491,7 +486,10 @@ export default function Products() {
                 <div>
                   <label>Tipo inventario</label>
                   <select value={form.tipo_inventario} onChange={(e) => setForm({ ...form, tipo_inventario: e.target.value })}>
-                    {TIPOS_INVENTARIO.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    {form.tipo_inventario && !tiposInventario.some((t) => t.nombre === form.tipo_inventario) && (
+                      <option value={form.tipo_inventario}>{form.tipo_inventario}</option>
+                    )}
+                    {tiposInventario.map((t) => <option key={t.id} value={t.nombre}>{t.nombre}</option>)}
                   </select>
                 </div>
                 <div>

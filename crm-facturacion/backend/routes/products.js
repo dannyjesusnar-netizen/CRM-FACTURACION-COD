@@ -95,7 +95,7 @@ router.post('/', requireAccion('inventario', 'productos'), (req, res) => {
       unidad || 'NIU',
       afectacion_igv || 'gravado',
       control || 'ninguno',
-      tipo_inventario || 'MERCADERIAS',
+      tipo_inventario || 'MERCADERÍAS',
       tipo_clasificacion || 'Otros',
       subtipo_clasificacion || 'Otros',
       peso === undefined || peso === '' ? null : Number(peso),
