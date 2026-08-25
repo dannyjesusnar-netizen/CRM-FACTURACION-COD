@@ -647,6 +647,8 @@ CREATE TABLE IF NOT EXISTS qr_unico_medios (
     ['precio_compra', "REAL"],
     ['palabras_clave', "TEXT"],
     ['proveedor_id', "INTEGER REFERENCES suppliers(id)"],
+    ['precio_mayorista', "REAL"],
+    ['precio_distribuidor', "REAL"],
   ];
   for (const [col, def] of PRODUCT_NEW_COLUMNS) {
     if (!productColumns.includes(col)) {
