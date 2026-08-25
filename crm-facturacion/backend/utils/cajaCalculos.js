@@ -12,6 +12,11 @@ function round2(n) {
 // verdad de "cuánto se vendió hoy con Yape/Efectivo/POS/...".
 // moneda/empleadoId son opcionales: acotan a una moneda (invoices.moneda) y/o
 // a quien registró la venta (invoices.created_by).
+//
+// Las Notas de Venta Interna (tabla notas_venta) pagadas de una vez con este
+// método también cuentan aquí — solo las que NO son "abonado", porque esas
+// se cobran vía caja_movimientos categoria 'cuentas_cobrar' (ver
+// movimientosSum), no como venta directa.
 function ventasAuto(fecha, codigoMetodo, sucursalId, moneda, empleadoId) {
   let sql = `SELECT COALESCE(SUM(total), 0) AS total FROM invoices
      WHERE date(fecha_emision) = date(?) AND forma_pago = ? AND estado = 'emitido'
@@ -19,8 +24,16 @@ function ventasAuto(fecha, codigoMetodo, sucursalId, moneda, empleadoId) {
   const params = [fecha, codigoMetodo, sucursalId];
   if (moneda) { sql += ' AND moneda = ?'; params.push(moneda); }
   if (empleadoId) { sql += ' AND created_by = ?'; params.push(empleadoId); }
-  const row = db.prepare(sql).get(...params);
-  return round2(row.total);
+  const totalInvoices = db.prepare(sql).get(...params).total;
+
+  let sqlNv = `SELECT COALESCE(SUM(total), 0) AS total FROM notas_venta
+     WHERE date(fecha_emision) = date(?) AND forma_pago = ? AND estado = 'emitido' AND sucursal_id = ?`;
+  const paramsNv = [fecha, codigoMetodo, sucursalId];
+  if (moneda) { sqlNv += ' AND moneda = ?'; paramsNv.push(moneda); }
+  if (empleadoId) { sqlNv += ' AND created_by = ?'; paramsNv.push(empleadoId); }
+  const totalNotasVenta = db.prepare(sqlNv).get(...paramsNv).total;
+
+  return round2(totalInvoices + totalNotasVenta);
 }
 
 // Los movimientos manuales (y los que el sistema registra automáticamente al
