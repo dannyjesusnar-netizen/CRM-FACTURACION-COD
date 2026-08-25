@@ -809,6 +809,26 @@ CREATE TABLE IF NOT EXISTS metas_venta_sede (
   if (!stockMovementColumns.includes('sucursal_id')) {
     db.exec('ALTER TABLE stock_movements ADD COLUMN sucursal_id INTEGER REFERENCES sucursales(id)');
   }
+  // Canal de un movimiento manual de inventario (Compras, Canje, Premio,
+  // Regalo...): distinto de "tipo" (que es el origen técnico del movimiento
+  // — venta/anulacion/ajuste/ingreso_lote). Gerencia/Supervisor administra
+  // la lista desde Configuración; "Compras" es el canal por defecto.
+  if (!stockMovementColumns.includes('canal')) {
+    db.exec("ALTER TABLE stock_movements ADD COLUMN canal TEXT DEFAULT 'Compras'");
+  }
+  db.exec(`
+CREATE TABLE IF NOT EXISTS movimiento_canales (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  nombre TEXT NOT NULL UNIQUE,
+  activo INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+`);
+  const canalesExistentes = db.prepare('SELECT COUNT(*) AS n FROM movimiento_canales').get().n;
+  if (canalesExistentes === 0) {
+    const insertCanal = db.prepare('INSERT INTO movimiento_canales (nombre) VALUES (?)');
+    ['Compras', 'Canje', 'Premio', 'Regalo'].forEach((nombre) => insertCanal.run(nombre));
+  }
   const cajaMovimientoColumns = db.prepare("PRAGMA table_info(caja_movimientos)").all().map((c) => c.name);
   if (!cajaMovimientoColumns.includes('sucursal_id')) {
     db.exec('ALTER TABLE caja_movimientos ADD COLUMN sucursal_id INTEGER REFERENCES sucursales(id)');

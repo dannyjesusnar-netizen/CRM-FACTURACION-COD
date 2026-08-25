@@ -2,13 +2,49 @@ const express = require('express');
 const db = require('../db');
 const { requireAuth, resolveSucursal } = require('../middleware/auth');
 const { round2, ajustarStockSucursal, getStockSucursal, setStockSucursal } = require('../utils/stock');
-const { requirePermiso, requireAccion } = require('../utils/permisos');
+const { requirePermiso, requireAccion, esGerenciaOSupervisor } = require('../utils/permisos');
 const { analizarEtiqueta } = require('../utils/ocrEtiqueta');
 
 const router = express.Router();
 router.use(requireAuth);
 router.use(requirePermiso('inventario'));
 router.use(resolveSucursal);
+
+function requireGerenciaOSupervisorCanales(req, res, next) {
+  if (esGerenciaOSupervisor(req.user)) return next();
+  return res.status(403).json({ error: 'Solo Gerencia o un Supervisor puede administrar los canales de movimiento.' });
+}
+
+// GET /api/movements/canales — canales activos, para el selector al registrar
+// un movimiento y para el filtro del listado.
+router.get('/canales', (req, res) => {
+  res.json(db.prepare('SELECT * FROM movimiento_canales WHERE activo = 1 ORDER BY id ASC').all());
+});
+
+// POST /api/movements/canales { nombre } — Gerencia/Supervisor únicamente.
+router.post('/canales', requireGerenciaOSupervisorCanales, (req, res) => {
+  const nombre = (req.body?.nombre || '').toString().trim();
+  if (!nombre) return res.status(400).json({ error: 'nombre es requerido.' });
+  try {
+    const info = db.prepare('INSERT INTO movimiento_canales (nombre) VALUES (?)').run(nombre);
+    res.status(201).json(db.prepare('SELECT * FROM movimiento_canales WHERE id = ?').get(info.lastInsertRowid));
+  } catch (err) {
+    if (String(err.message).includes('UNIQUE')) {
+      return res.status(409).json({ error: 'Ya existe un canal con ese nombre.' });
+    }
+    res.status(500).json({ error: 'No se pudo crear el canal.' });
+  }
+});
+
+// DELETE /api/movements/canales/:id — Gerencia/Supervisor únicamente. No
+// borra movimientos históricos (su columna "canal" queda con el nombre tal
+// cual quedó guardado en su momento), solo lo saca de la lista de opciones.
+router.delete('/canales/:id', requireGerenciaOSupervisorCanales, (req, res) => {
+  const canal = db.prepare('SELECT * FROM movimiento_canales WHERE id = ?').get(req.params.id);
+  if (!canal) return res.status(404).json({ error: 'Canal no encontrado.' });
+  db.prepare('DELETE FROM movimiento_canales WHERE id = ?').run(req.params.id);
+  res.json({ ok: true });
+});
 
 // cliente_proveedor: nombre del proveedor o cliente del documento que originó
 // el movimiento, resuelto a partir de la referencia (no es un campo propio
@@ -22,9 +58,9 @@ const CLIENTE_PROVEEDOR_SUBQUERY = `(
   WHERE i.serie || '-' || printf('%06d', i.numero) = m.referencia LIMIT 1
 )`;
 
-// GET /api/movements?product_id=&tipo=&from=&to=&q=
+// GET /api/movements?product_id=&tipo=&canal=&from=&to=&q=
 router.get('/', (req, res) => {
-  const { product_id, tipo, from, to, q } = req.query;
+  const { product_id, tipo, canal, from, to, q } = req.query;
   let sql = `
     SELECT m.*, p.nombre AS producto_nombre, p.codigo AS producto_codigo, u.full_name AS usuario_nombre,
            COALESCE(${CLIENTE_PROVEEDOR_SUBQUERY}) AS cliente_proveedor
@@ -36,6 +72,7 @@ router.get('/', (req, res) => {
   const params = [req.sucursalId];
   if (product_id) { sql += ' AND m.product_id = ?'; params.push(product_id); }
   if (tipo) { sql += ' AND m.tipo = ?'; params.push(tipo); }
+  if (canal) { sql += ' AND m.canal = ?'; params.push(canal); }
   if (from) { sql += ' AND date(m.created_at) >= date(?)'; params.push(from); }
   if (to) { sql += ' AND date(m.created_at) <= date(?)'; params.push(to); }
   if (q) {
@@ -51,10 +88,11 @@ router.get('/', (req, res) => {
 // Si es un ingreso (cantidad > 0) y viene codigo_lote, se crea el lote junto con el
 // movimiento en la misma transacción (mismo patrón que POST /api/lotes).
 router.post('/', requireAccion('inventario', 'ajustes'), (req, res) => {
-  const { product_id, cantidad, motivo, codigo_lote, fecha_vencimiento } = req.body || {};
+  const { product_id, cantidad, motivo, codigo_lote, fecha_vencimiento, canal } = req.body || {};
   if (!product_id || !cantidad) {
     return res.status(400).json({ error: 'product_id y cantidad son requeridos.' });
   }
+  const canalFinal = (canal || '').toString().trim() || 'Compras';
   const product = db.prepare('SELECT * FROM products WHERE id = ?').get(product_id);
   if (!product) return res.status(404).json({ error: 'Producto no encontrado.' });
   if (product.tipo === 'servicio' || product.stock === null) {
@@ -81,14 +119,14 @@ router.post('/', requireAccion('inventario', 'ajustes'), (req, res) => {
          VALUES (?, ?, 'lote', ?, ?, ?, ?)`
       ).run(product_id, codigoLote, fecha_vencimiento || null, cant, cant, req.user?.id || null);
       db.prepare(
-        `INSERT INTO stock_movements (product_id, lote_id, tipo, cantidad, stock_resultante, motivo, referencia, created_by, sucursal_id)
-         VALUES (?, ?, 'ingreso_lote', ?, ?, ?, ?, ?, ?)`
-      ).run(product_id, loteInfo.lastInsertRowid, cant, updated.stock, motivo || null, codigoLote, req.user?.id || null, req.sucursalId);
+        `INSERT INTO stock_movements (product_id, lote_id, tipo, cantidad, stock_resultante, motivo, referencia, canal, created_by, sucursal_id)
+         VALUES (?, ?, 'ingreso_lote', ?, ?, ?, ?, ?, ?, ?)`
+      ).run(product_id, loteInfo.lastInsertRowid, cant, updated.stock, motivo || null, codigoLote, canalFinal, req.user?.id || null, req.sucursalId);
     } else {
       db.prepare(
-        `INSERT INTO stock_movements (product_id, tipo, cantidad, stock_resultante, motivo, created_by, sucursal_id)
-         VALUES (?, 'ajuste', ?, ?, ?, ?, ?)`
-      ).run(product_id, cant, updated.stock, motivo || null, req.user?.id || null, req.sucursalId);
+        `INSERT INTO stock_movements (product_id, tipo, cantidad, stock_resultante, motivo, canal, created_by, sucursal_id)
+         VALUES (?, 'ajuste', ?, ?, ?, ?, ?, ?)`
+      ).run(product_id, cant, updated.stock, motivo || null, canalFinal, req.user?.id || null, req.sucursalId);
     }
     return updated.stock;
   });
@@ -191,6 +229,7 @@ router.post('/importar-lotes', requireAccion('inventario', 'ajustes'), (req, res
       const codigoLote = (r.codigo_lote || '').toString().trim();
       const fechaVencimiento = (r.fecha_vencimiento || '').toString().trim();
       const motivo = (r.motivo || '').toString().trim();
+      const canalFila = (r.canal || '').toString().trim() || 'Compras';
 
       if (!codigo || !Number.isFinite(cant) || cant <= 0) {
         errores.push({ codigo: codigo || '(vacío)', error: 'Fila inválida (código o cantidad faltante/no es un ingreso positivo).' });
@@ -216,14 +255,14 @@ router.post('/importar-lotes', requireAccion('inventario', 'ajustes'), (req, res
            VALUES (?, ?, 'lote', ?, ?, ?, ?)`
         ).run(prod.id, codigoLote, fechaVencimiento || null, cant, cant, req.user?.id || null);
         db.prepare(
-          `INSERT INTO stock_movements (product_id, lote_id, tipo, cantidad, stock_resultante, motivo, referencia, created_by, sucursal_id)
-           VALUES (?, ?, 'ingreso_lote', ?, ?, ?, ?, ?, ?)`
-        ).run(prod.id, loteInfo.lastInsertRowid, cant, nuevoStock, motivo || null, codigoLote, req.user?.id || null, req.sucursalId);
+          `INSERT INTO stock_movements (product_id, lote_id, tipo, cantidad, stock_resultante, motivo, referencia, canal, created_by, sucursal_id)
+           VALUES (?, ?, 'ingreso_lote', ?, ?, ?, ?, ?, ?, ?)`
+        ).run(prod.id, loteInfo.lastInsertRowid, cant, nuevoStock, motivo || null, codigoLote, canalFila, req.user?.id || null, req.sucursalId);
       } else {
         db.prepare(
-          `INSERT INTO stock_movements (product_id, tipo, cantidad, stock_resultante, motivo, referencia, created_by, sucursal_id)
-           VALUES (?, 'ajuste', ?, ?, ?, 'IMPORT-LOTES', ?, ?)`
-        ).run(prod.id, cant, nuevoStock, motivo || null, req.user?.id || null, req.sucursalId);
+          `INSERT INTO stock_movements (product_id, tipo, cantidad, stock_resultante, motivo, referencia, canal, created_by, sucursal_id)
+           VALUES (?, 'ajuste', ?, ?, ?, 'IMPORT-LOTES', ?, ?, ?)`
+        ).run(prod.id, cant, nuevoStock, motivo || null, canalFila, req.user?.id || null, req.sucursalId);
       }
 
       aplicados.push({ codigo, producto: prod.nombre, cantidad: cant, codigo_lote: codigoLote || null, stock_nuevo: nuevoStock });
