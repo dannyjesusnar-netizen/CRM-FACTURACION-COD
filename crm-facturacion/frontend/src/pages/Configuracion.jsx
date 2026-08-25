@@ -350,14 +350,20 @@ export default function Configuracion() {
 
   useEffect(() => {
     api.get('/empresa').then((res) => setEmpresa(res.data));
-    loadUsuarios();
-    loadOperativos();
     loadSucursales();
     loadLimiteSucursales();
-    loadSolicitudesSede();
-    loadRoles();
     loadMetodosPago();
     loadCanalesMovimiento();
+    // /users, /users/operativos, /sucursales/solicitudes y /roles son
+    // estrictamente de Gerencia en el backend (requireGerencia) — ni
+    // Supervisor tiene acceso — así que pedirlos para cualquier otro rol
+    // solo generaría 403 sin datos que mostrar.
+    if (user?.role === 'gerencia') {
+      loadUsuarios();
+      loadOperativos();
+      loadSolicitudesSede();
+      loadRoles();
+    }
   }, []);
 
   useEffect(() => {
@@ -383,10 +389,10 @@ export default function Configuracion() {
 
   // Las series son por sede (SUNAT exige una serie distinta por punto de
   // emisión) — cada vez que se cambia la sede seleccionada arriba, se
-  // recargan sus propias series.
+  // recargan sus propias series. /api/series es de Gerencia únicamente.
   useEffect(() => {
-    if (sucursalSeleccionadaId) loadSeries(sucursalSeleccionadaId);
-  }, [sucursalSeleccionadaId]);
+    if (sucursalSeleccionadaId && user?.role === 'gerencia') loadSeries(sucursalSeleccionadaId);
+  }, [sucursalSeleccionadaId, user]);
 
   function loadUsuarios() {
     const params = {};
