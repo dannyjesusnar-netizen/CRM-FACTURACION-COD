@@ -359,7 +359,7 @@ export default function Promociones() {
                         <td>{it.nombre}</td>
                         <td style={{ textAlign: 'right' }}>S/ {Number(it.precio_unitario).toFixed(2)}</td>
                         <td>
-                          <input type="number" min="0.01" step="0.01" value={it.cantidad} style={{ width: 80 }}
+                          <input type="number" min="1" step="1" value={it.cantidad} style={{ width: 80 }}
                             onChange={(e) => updateItemCombo(idx, Number(e.target.value) || 0)} />
                         </td>
                         <td style={{ textAlign: 'right' }}>S/ {(it.cantidad * it.precio_unitario).toFixed(2)}</td>

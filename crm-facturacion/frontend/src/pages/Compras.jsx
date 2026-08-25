@@ -605,7 +605,7 @@ export default function Compras() {
                             onChange={(e) => updateItem(idx, { observacion: e.target.value })} />
                         </td>
                         <td>
-                          <input type="number" min="0.01" step="0.01" style={{ width: 65 }} value={it.cantidad}
+                          <input type="number" min="1" step="1" style={{ width: 65 }} value={it.cantidad}
                             onChange={(e) => updateItem(idx, { cantidad: e.target.value })} />
                         </td>
                         <td>

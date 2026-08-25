@@ -440,7 +440,7 @@ export default function Movements() {
                 <p className="caja-row-auto">Stock actual en el sistema: {productoConteo.stock} {productoConteo.unidad}</p>
               )}
               <label>Cantidad contada físicamente</label>
-              <input required type="number" step="0.01" value={conteoCantidad} onChange={(e) => setConteoCantidad(e.target.value)} />
+              <input required type="number" min="0" step="1" value={conteoCantidad} onChange={(e) => setConteoCantidad(e.target.value)} />
               <label>Motivo / observación</label>
               <input value={conteoMotivo} onChange={(e) => setConteoMotivo(e.target.value)} placeholder="Ej: Conteo mensual de agosto" />
               {errorConteo && <div className="form-error">{errorConteo}</div>}
