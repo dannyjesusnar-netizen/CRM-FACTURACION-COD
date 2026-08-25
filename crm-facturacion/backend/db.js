@@ -1241,6 +1241,12 @@ CREATE TABLE IF NOT EXISTS descuentos (
   if (!invoiceColumnsDescuento.includes('descuento_id')) {
     db.exec('ALTER TABLE invoices ADD COLUMN descuento_id INTEGER REFERENCES descuentos(id)');
   }
+  // Mismo mecanismo para Nota de Venta Interna — también debe poder elegir
+  // un descuento con nombre en vez de escribir el % a mano.
+  const notaVentaColumnsDescuento = db.prepare("PRAGMA table_info(notas_venta)").all().map((c) => c.name);
+  if (!notaVentaColumnsDescuento.includes('descuento_id')) {
+    db.exec('ALTER TABLE notas_venta ADD COLUMN descuento_id INTEGER REFERENCES descuentos(id)');
+  }
 
   // Backfill: el toggle "Tablero de Ventas" (Configuración → Roles →
   // Inicio) es nuevo — antes de que existiera, cualquier rol llamado

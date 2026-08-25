@@ -31,9 +31,9 @@ export default function RegistroVenta() {
   const [observaciones, setObservaciones] = useState('');
   const [descuentoGlobal, setDescuentoGlobal] = useState(0);
   // Descuento con nombre elegido de Configuración → Descuentos (ver
-  // routes/descuentos.js) — autocompleta el % de arriba; si el vendedor lo
-  // vuelve a editar a mano, se desvincula del nombre para no etiquetar mal
-  // un % que ya no corresponde al descuento elegido.
+  // routes/descuentos.js) — es la única forma de aplicar un descuento
+  // global: no se puede escribir un % a mano, el backend solo confía en el
+  // % del descuento_id elegido (ver utils/descuentos.js:resolverDescuentoPct).
   const [descuentosActivos, setDescuentosActivos] = useState([]);
   const [descuentoId, setDescuentoId] = useState('');
   const [cuenta, setCuenta] = useState('efectivo');
@@ -122,11 +122,6 @@ export default function RegistroVenta() {
     setDescuentoId(id);
     const d = descuentosActivos.find((x) => String(x.id) === String(id));
     setDescuentoGlobal(d ? d.porcentaje : 0);
-  }
-
-  function editarDescuentoGlobalManual(valor) {
-    setDescuentoGlobal(valor);
-    setDescuentoId('');
   }
 
   function addProducto(p) {
@@ -452,21 +447,25 @@ export default function RegistroVenta() {
               <input value={observaciones} onChange={(e) => setObservaciones(e.target.value)} />
             </div>
             <div className="venta-bottom-right">
-              {descuentosActivos.length > 0 && (
-                <div className="venta-totals-row">
-                  <span>Descuento:</span>
+              <div className="venta-totals-row">
+                <span>Descuento:</span>
+                {descuentosActivos.length > 0 ? (
                   <select value={descuentoId} onChange={(e) => seleccionarDescuento(e.target.value)}>
-                    <option value="">Sin descuento con nombre</option>
+                    <option value="">Sin descuento</option>
                     {descuentosActivos.map((d) => (
                       <option key={d.id} value={d.id}>{d.nombre} ({d.porcentaje}%)</option>
                     ))}
                   </select>
+                ) : (
+                  <span style={{ fontSize: 12, color: 'var(--ink-muted)' }}>No hay descuentos vigentes</span>
+                )}
+              </div>
+              {descuentoGlobal > 0 && (
+                <div className="venta-totals-row">
+                  <span>Desc. Global %:</span>
+                  <input readOnly value={`${descuentoGlobal}%`} />
                 </div>
               )}
-              <div className="venta-totals-row">
-                <span>Desc. Global %:</span>
-                <input type="number" min="0" max="100" value={descuentoGlobal} onChange={(e) => editarDescuentoGlobalManual(e.target.value)} />
-              </div>
               <div className="venta-totals-row">
                 <span>Ganancia:</span>
                 <input readOnly value={computed.ganancia.toFixed(2)} />

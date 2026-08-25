@@ -6,6 +6,7 @@ const { consumirStock, incrementarStock, ajustarStockSucursal, getStockSucursal,
 const { emitirComprobante, estaConfigurado } = require('../utils/facturacionElectronica');
 const { requirePermiso, requireAccion, requireAlgunPermiso, tieneAccion, tienePermiso, requireGerenciaOSupervisor } = require('../utils/permisos');
 const { siguienteNumero } = require('../utils/series');
+const { resolverDescuentoPct } = require('../utils/descuentos');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -323,7 +324,17 @@ router.post('/', async (req, res) => {
     medioAbono = medio_abono;
   }
 
-  const descuentoGlobalPct = Math.min(100, Math.max(0, Number(descuento_global_pct || 0)));
+  // El % de descuento global nunca se acepta a mano — solo se resuelve a
+  // partir de un descuento_id vigente (Configuración → Descuentos). Ignora
+  // descuento_global_pct si lo mandan: solo existe en el body por
+  // compatibilidad con /preview-pdf, que no persiste nada.
+  let descuentoGlobalPct;
+  try {
+    descuentoGlobalPct = resolverDescuentoPct(descuento_id, req.sucursalId);
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ error: err.message });
+    throw err;
+  }
 
   const tasaIgv = igvRate();
   let totalBruto = 0;
