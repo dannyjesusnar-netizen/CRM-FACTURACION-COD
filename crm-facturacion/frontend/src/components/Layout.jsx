@@ -153,16 +153,6 @@ export default function Layout() {
       </header>
 
       <div className="app-body">
-        <main className="content">
-          <div className="app-bg-decor">
-            <FloatingShapes shapes={APP_SHAPES} />
-            <FloatingIcons icons={APP_ICONS} />
-          </div>
-          <div className="content-wide content-body">
-            <Outlet />
-          </div>
-        </main>
-
         <nav className="sidenav">
           {SUBNAV_ITEMS.filter((item) => !item.modulo || user?.permisos?.[item.modulo] !== false).map((item) => {
             const isActive = item.to && location.pathname === item.to;
@@ -180,6 +170,16 @@ export default function Layout() {
             );
           })}
         </nav>
+
+        <main className="content">
+          <div className="app-bg-decor">
+            <FloatingShapes shapes={APP_SHAPES} />
+            <FloatingIcons icons={APP_ICONS} />
+          </div>
+          <div className="content-wide content-body">
+            <Outlet />
+          </div>
+        </main>
       </div>
 
       <OdinWidget />
