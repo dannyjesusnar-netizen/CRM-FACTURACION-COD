@@ -5,7 +5,7 @@ import api from '../api';
 import { useToast } from '../context/ToastContext';
 
 function emptyItem() {
-  return { product_id: '', cantidad: 1 };
+  return { product_id: '', cantidad: 1, lote_id: '' };
 }
 
 function todayStr() {
@@ -29,6 +29,7 @@ export default function Traslados() {
   const [observaciones, setObservaciones] = useState('');
   const [items, setItems] = useState([emptyItem()]);
   const [stockPorSucursal, setStockPorSucursal] = useState({}); // productId -> [{sucursal_id, stock}]
+  const [lotesPorProducto, setLotesPorProducto] = useState({}); // productId -> [{id, codigo_lote, fecha_vencimiento, cantidad_actual}]
   const [error, setError] = useState('');
 
   function load() {
@@ -56,6 +57,7 @@ export default function Traslados() {
     setObservaciones('');
     setItems([emptyItem()]);
     setStockPorSucursal({});
+    setLotesPorProducto({});
     setError('');
     setShowForm(true);
   }
@@ -65,10 +67,14 @@ export default function Traslados() {
   }
 
   async function handleProductSelect(idx, productId) {
-    updateItem(idx, { product_id: productId });
+    updateItem(idx, { product_id: productId, lote_id: '' });
     if (productId && !stockPorSucursal[productId]) {
       const res = await api.get(`/traslados/stock/${productId}`);
       setStockPorSucursal((prev) => ({ ...prev, [productId]: res.data }));
+    }
+    if (productId && !lotesPorProducto[productId]) {
+      const res = await api.get(`/traslados/lotes/${productId}`);
+      setLotesPorProducto((prev) => ({ ...prev, [productId]: res.data }));
     }
   }
 
@@ -98,7 +104,7 @@ export default function Traslados() {
         sucursal_origen_id: Number(origenId),
         sucursal_destino_id: Number(destinoId),
         observaciones,
-        items: items.map((it) => ({ product_id: Number(it.product_id), cantidad: Number(it.cantidad) })),
+        items: items.map((it) => ({ product_id: Number(it.product_id), cantidad: Number(it.cantidad), lote_id: it.lote_id ? Number(it.lote_id) : null })),
       });
       toast.success('Traslado registrado correctamente.');
       setShowForm(false);
@@ -239,30 +245,47 @@ export default function Traslados() {
               <table className="items-table">
                 <thead>
                   <tr>
-                    <th>Producto</th><th>Stock en origen</th><th>Cantidad a trasladar</th><th></th>
+                    <th>Producto</th><th>Stock en origen</th><th>Lote</th><th>Cantidad a trasladar</th><th></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {items.map((it, idx) => (
-                    <tr key={idx}>
-                      <td>
-                        <select value={it.product_id} onChange={(e) => handleProductSelect(idx, e.target.value)}>
-                          <option value="">Selecciona un producto...</option>
-                          {productos.map((p) => <option key={p.id} value={p.id}>{p.codigo} — {p.nombre}</option>)}
-                        </select>
-                      </td>
-                      <td>{it.product_id ? (stockEnOrigen(it.product_id) ?? '...') : '—'}</td>
-                      <td>
-                        <input type="number" min="1" step="1" style={{ width: 90 }} value={it.cantidad}
-                          onChange={(e) => updateItem(idx, { cantidad: e.target.value })} />
-                      </td>
-                      <td>
-                        {items.length > 1 && (
-                          <button type="button" className="btn-link danger" onClick={() => removeItem(idx)}>x</button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
+                  {items.map((it, idx) => {
+                    const lotesProducto = it.product_id ? lotesPorProducto[it.product_id] : null;
+                    return (
+                      <tr key={idx}>
+                        <td>
+                          <select value={it.product_id} onChange={(e) => handleProductSelect(idx, e.target.value)}>
+                            <option value="">Selecciona un producto...</option>
+                            {productos.map((p) => <option key={p.id} value={p.id}>{p.codigo} — {p.nombre}</option>)}
+                          </select>
+                        </td>
+                        <td>{it.product_id ? (stockEnOrigen(it.product_id) ?? '...') : '—'}</td>
+                        <td>
+                          {it.product_id && lotesProducto?.length > 0 ? (
+                            <select value={it.lote_id} onChange={(e) => updateItem(idx, { lote_id: e.target.value })}>
+                              <option value="">Sin lote</option>
+                              {lotesProducto.map((l) => (
+                                <option key={l.id} value={l.id}>
+                                  {l.codigo_lote}{l.fecha_vencimiento ? ` (vence ${l.fecha_vencimiento})` : ''}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <span className="icon-link muted">—</span>
+                          )}
+                        </td>
+                        <td>
+                          <input type="number" min="1" step="1" style={{ width: 90 }} value={it.cantidad}
+                            onChange={(e) => updateItem(idx, { cantidad: e.target.value })} />
+                        </td>
+                        <td>
+                          {items.length > 1 && (
+                            <button type="button" className="btn-link danger" onClick={() => removeItem(idx)}>x</button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
               <button type="button" className="btn-secondary" style={{ marginTop: 8 }} onClick={addItem}>+ Agregar producto</button>

@@ -93,12 +93,24 @@ export default function Promociones() {
   }
 
   async function handleToggleEstado(promo) {
+    if (promo.activo && !window.confirm(`¿Seguro que quieres desactivar la promoción "${promo.nombre}"?`)) return;
     try {
       await api.put(`/promociones/${promo.id}/estado`, { activo: !promo.activo });
       toast.success(promo.activo ? 'Promoción desactivada.' : 'Promoción activada.');
       load();
     } catch (err) {
       toast.error(err.response?.data?.error || 'No se pudo cambiar el estado.');
+    }
+  }
+
+  async function handleDeletePromo(promo) {
+    if (!window.confirm(`¿Seguro que quieres eliminar la promoción "${promo.nombre}"? Esta acción no se puede deshacer.`)) return;
+    try {
+      await api.delete(`/promociones/${promo.id}`);
+      toast.success('Promoción eliminada.');
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'No se pudo eliminar la promoción.');
     }
   }
 
@@ -152,7 +164,8 @@ export default function Promociones() {
   async function handleSubmitCombo(e) {
     e.preventDefault();
     setErrorForm('');
-    if (comboForm.items.length < 2) { setErrorForm('Agrega al menos 2 productos existentes al combo.'); return; }
+    const totalUnidadesCombo = comboForm.items.reduce((s, it) => s + Number(it.cantidad), 0);
+    if (totalUnidadesCombo < 2) { setErrorForm('Agrega al menos 2 unidades al combo (puede ser 2 del mismo producto, o de productos distintos).'); return; }
     setGuardando(true);
     try {
       const payload = {
@@ -234,6 +247,9 @@ export default function Promociones() {
                       <button className="btn-link danger" onClick={() => handleToggleEstado(p)}>
                         {p.activo ? 'Desactivar' : 'Activar'}
                       </button>
+                      {!p.activo && (
+                        <>{' '}<button className="btn-link danger" onClick={() => handleDeletePromo(p)}>Eliminar</button></>
+                      )}
                     </td>
                   </tr>
                 );
@@ -351,7 +367,7 @@ export default function Promociones() {
               <label>Nombre de la promoción *</label>
               <input required value={comboForm.nombre} onChange={(e) => setComboForm({ ...comboForm, nombre: e.target.value })} placeholder="Ej. Combo Proteína + Shaker" />
 
-              <label>Agregar productos del inventario (mínimo 2) *</label>
+              <label>Agregar productos del inventario (mínimo 2 unidades) *</label>
               <ProductSearchBar onSelect={addProductoCombo} placeholder="Busca y agrega productos por nombre o código.." />
 
               {comboForm.items.length > 0 && (
