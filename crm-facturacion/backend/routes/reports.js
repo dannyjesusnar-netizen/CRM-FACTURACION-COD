@@ -44,6 +44,22 @@ router.get('/summary', requireDashboardOReportes, (req, res) => {
   ).get(today, req.sucursalId);
   ventasHoy.total = round2(ventasHoy.total - ventasHoyNc.total);
 
+  // Nota de Venta Interna: cuenta con su total completo, sin importar la
+  // forma de pago — igual que una Boleta/Factura "abonado" ya cuenta con su
+  // total completo arriba. No tiene concepto de nota de crédito que restar.
+  const nvVentasMes = db.prepare(
+    `SELECT COALESCE(SUM(total), 0) AS total, COUNT(*) AS cantidad FROM notas_venta
+     WHERE estado = 'emitido' AND date(fecha_emision) >= date(?) AND sucursal_id = ?`
+  ).get(startOfMonth, req.sucursalId);
+  ventasMes.total = round2(ventasMes.total + nvVentasMes.total);
+  ventasMes.cantidad += nvVentasMes.cantidad;
+  const nvVentasHoy = db.prepare(
+    `SELECT COALESCE(SUM(total), 0) AS total, COUNT(*) AS cantidad FROM notas_venta
+     WHERE estado = 'emitido' AND date(fecha_emision) = date(?) AND sucursal_id = ?`
+  ).get(today, req.sucursalId);
+  ventasHoy.total = round2(ventasHoy.total + nvVentasHoy.total);
+  ventasHoy.cantidad += nvVentasHoy.cantidad;
+
   const totalClientes = db.prepare('SELECT COUNT(*) AS n FROM clients').get().n;
   const totalProductos = db.prepare('SELECT COUNT(*) AS n FROM products WHERE activo = 1').get().n;
   const comprobantesAnulados = db.prepare("SELECT COUNT(*) AS n FROM invoices WHERE estado = 'anulado' AND sucursal_id = ?").get(req.sucursalId).n;
