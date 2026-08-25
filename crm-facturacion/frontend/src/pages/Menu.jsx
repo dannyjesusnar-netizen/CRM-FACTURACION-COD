@@ -5,7 +5,7 @@ import FloatingShapes from '../components/FloatingShapes';
 import FloatingIcons from '../components/FloatingIcons';
 import {
   Receipt, Users, Package, LayoutDashboard, LineChart,
-  ShoppingCart, Wallet, Repeat, BookOpen, Briefcase, Clock, Settings, QrCode,
+  ShoppingCart, Wallet, Repeat, Briefcase, Clock, Settings, QrCode,
 } from 'lucide-react';
 
 const MENU_SHAPES = [
@@ -39,7 +39,6 @@ const ACTIVE_MODULES = [
 const COMING_SOON = [
   { label: 'Finanzas', Icon: Wallet },
   { label: 'Conciliación', Icon: Repeat },
-  { label: 'Contabilidad', Icon: BookOpen },
   { label: 'Asistencias', Icon: Clock },
   { label: 'Configuración', Icon: Settings },
   { label: 'QR Único', Icon: QrCode },
