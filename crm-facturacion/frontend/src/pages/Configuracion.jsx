@@ -132,7 +132,6 @@ const IMPORTADORES_MASIVOS = [
 // descarga en Excel los datos que YA existen en el sistema, con las mismas
 // columnas que su importador equivalente (para poder editar el archivo y
 // volver a subirlo tal cual). No sube nada, solo lee y genera el .xlsx.
-const TIPO_COMPROBANTE_LABEL = { factura: 'Factura', boleta: 'Boleta', nota_credito: 'Nota de crédito' };
 const EXPORTADORES_MASIVOS = [
   {
     key: 'clientes',
@@ -163,19 +162,16 @@ const EXPORTADORES_MASIVOS = [
     key: 'ventas',
     titulo: 'Ventas',
     Icon: FileText,
-    // Igual que "Documentos Emitidos": junta Boletas/Facturas/Notas de
-    // Crédito (invoices) con Notas de Venta Interna (notas-venta), sin
-    // límite de fecha (a diferencia del botón "Exportar" de esa pantalla,
-    // que solo exporta lo que está filtrado en pantalla).
-    fetchAll: async () => {
-      const [invRes, nvRes] = await Promise.all([api.get('/invoices'), api.get('/notas-venta')]);
-      const invRows = invRes.data.map((r) => ({ ...r, _tipo: TIPO_COMPROBANTE_LABEL[r.tipo_comprobante] || r.tipo_comprobante }));
-      const nvRows = nvRes.data.map((r) => ({ ...r, _tipo: 'Nota de Venta Interna' }));
-      return [...invRows, ...nvRows].sort((a, b) => (a.fecha_emision < b.fecha_emision ? 1 : -1));
-    },
-    columnas: ['fecha_emision', '_tipo', 'serie', 'numero', 'cliente_documento', 'cliente_nombre', 'forma_pago', 'subtotal', 'total', 'estado', 'vendedor_nombre', 'atribuido_nombre'],
-    headers: ['Fecha', 'Tipo', 'Serie', 'Número', 'Doc. Cliente', 'Cliente', 'Forma de Pago', 'Subtotal', 'Total', 'Estado', 'Vendedor', 'Atribuido a'],
-    descripcion: 'Todas las Boletas, Facturas, Notas de Crédito y Notas de Venta Interna emitidas (equivale a "Documentos Emitidos", sin filtro de fecha).',
+    // Detalle línea por línea (una fila por producto vendido, no por
+    // comprobante): junta Boletas/Facturas/Notas de Crédito con Notas de
+    // Venta Interna, con producto, marca/proveedor, categoría, vendedor y a
+    // quién se atribuyó la venta (Entrenador/Supervisor/Vendedor) — sin
+    // límite de fecha (a diferencia del botón "Exportar" de Documentos
+    // Emitidos, que solo exporta lo filtrado en pantalla).
+    endpoint: '/reports/ventas-detalle',
+    columnas: ['fecha_emision', 'sede', 'tipo', 'serie', 'numero', 'cliente_documento', 'cliente_nombre', 'producto_codigo', 'producto_nombre', 'categoria', 'marca', 'cantidad', 'precio_unitario', 'subtotal_item', 'forma_pago', 'total_venta', 'estado', 'vendedor_nombre', 'atribuido_nombre', 'atribuido_categoria'],
+    headers: ['Fecha', 'Sede', 'Tipo', 'Serie', 'Número', 'Doc. Cliente', 'Cliente', 'Cód. Producto', 'Producto', 'Categoría', 'Marca/Proveedor', 'Cantidad', 'Precio Unit.', 'Subtotal Ítem', 'Forma de Pago', 'Total Venta', 'Estado', 'Vendedor', 'Atribuido a', 'Categoría Atribuido'],
+    descripcion: 'Detalle de cada producto vendido (Boletas, Facturas, Notas de Crédito y Notas de Venta Interna), con marca/proveedor, categoría, vendedor y a quién se atribuyó — sin filtro de fecha.',
   },
 ];
 

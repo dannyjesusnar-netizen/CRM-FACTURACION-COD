@@ -206,6 +206,79 @@ router.get('/productos-mas-vendidos', requireReportes, requireAccion('reportes',
   res.json(rows);
 });
 
+// Misma lógica que products.js/tablero.js: la marca de un producto es su
+// Proveedor asignado directamente, o si no tiene, el proveedor de su compra
+// más reciente. Recibe el alias de la tabla products a usar (p / p2) porque
+// esta consulta junta invoices y notas_venta con UNION ALL.
+function marcaExpr(alias) {
+  return `COALESCE(
+    (SELECT s.nombre FROM suppliers s WHERE s.id = ${alias}.proveedor_id),
+    (
+      SELECT s.nombre FROM purchase_items pi
+      JOIN purchases pu ON pu.id = pi.purchase_id
+      JOIN suppliers s ON s.id = pu.supplier_id
+      WHERE pi.product_id = ${alias}.id AND pu.estado = 'registrada'
+      ORDER BY pu.fecha DESC, pu.id DESC LIMIT 1
+    ),
+    'Sin marca'
+  )`;
+}
+const ATRIBUIDO_CATEGORIA_EXPR = (alias) => `CASE ${alias}.categoria_staff
+  WHEN 'trainer' THEN 'Entrenador' WHEN 'supervisor' THEN 'Supervisor' WHEN 'vendedor' THEN 'Vendedor' ELSE '' END`;
+
+// Detalle línea por línea de todo lo vendido (Boletas/Facturas/Notas de
+// Crédito + Notas de Venta Interna), con producto, marca/proveedor,
+// categoría, vendedor y a quién se le atribuyó la venta (y si es
+// Entrenador/Supervisor/Vendedor) — pensado para el Exportador de Datos
+// Masivos de Configuración, sin límite de fecha (a diferencia de los demás
+// reportes de esta pantalla, que sí filtran por mes/año).
+router.get('/ventas-detalle', requireAlgunPermiso(['ventas', 'reportes']), (req, res) => {
+  const sql = `
+    SELECT i.fecha_emision, suc.nombre AS sede,
+      CASE i.tipo_comprobante WHEN 'factura' THEN 'Factura' WHEN 'boleta' THEN 'Boleta' WHEN 'nota_credito' THEN 'Nota de crédito' ELSE i.tipo_comprobante END AS tipo,
+      i.serie, i.numero,
+      c.numero_documento AS cliente_documento, c.nombre AS cliente_nombre,
+      COALESCE(p.codigo, '') AS producto_codigo, COALESCE(p.nombre, ii.descripcion) AS producto_nombre,
+      COALESCE(p.categoria, '') AS categoria,
+      ${marcaExpr('p')} AS marca,
+      ii.cantidad, ii.precio_unitario, ii.subtotal AS subtotal_item,
+      i.forma_pago, i.total AS total_venta, i.estado,
+      u.full_name AS vendedor_nombre, au.full_name AS atribuido_nombre,
+      ${ATRIBUIDO_CATEGORIA_EXPR('au')} AS atribuido_categoria
+    FROM invoice_items ii
+    JOIN invoices i ON i.id = ii.invoice_id
+    JOIN sucursales suc ON suc.id = i.sucursal_id
+    JOIN clients c ON c.id = i.client_id
+    LEFT JOIN products p ON p.id = ii.product_id
+    LEFT JOIN users u ON u.id = i.created_by
+    LEFT JOIN users au ON au.id = i.atribuido_a
+    WHERE i.sucursal_id = ?
+    UNION ALL
+    SELECT nv.fecha_emision, suc2.nombre AS sede,
+      'Nota de Venta Interna' AS tipo,
+      nv.serie, nv.numero,
+      c2.numero_documento AS cliente_documento, c2.nombre AS cliente_nombre,
+      COALESCE(p2.codigo, '') AS producto_codigo, COALESCE(p2.nombre, nvi.descripcion) AS producto_nombre,
+      COALESCE(p2.categoria, '') AS categoria,
+      ${marcaExpr('p2')} AS marca,
+      nvi.cantidad, nvi.precio_unitario, nvi.subtotal AS subtotal_item,
+      nv.forma_pago, nv.total AS total_venta, nv.estado,
+      u2.full_name AS vendedor_nombre, au2.full_name AS atribuido_nombre,
+      ${ATRIBUIDO_CATEGORIA_EXPR('au2')} AS atribuido_categoria
+    FROM nota_venta_items nvi
+    JOIN notas_venta nv ON nv.id = nvi.nota_venta_id
+    JOIN sucursales suc2 ON suc2.id = nv.sucursal_id
+    LEFT JOIN clients c2 ON c2.id = nv.client_id
+    LEFT JOIN products p2 ON p2.id = nvi.product_id
+    LEFT JOIN users u2 ON u2.id = nv.created_by
+    LEFT JOIN users au2 ON au2.id = nv.atribuido_a
+    WHERE nv.sucursal_id = ?
+    ORDER BY fecha_emision DESC
+  `;
+  const rows = db.prepare(sql).all(req.sucursalId, req.sucursalId);
+  res.json(rows);
+});
+
 // Cierre de Caja: Efectivo (arqueo del día) + Ventas por Documento + Ventas
 // por Forma de Pago + Resultado de Turno (bruto/descuento/devoluciones/
 // anulaciones/neto). "Turno" se aproxima como (fecha + empleado opcional),
