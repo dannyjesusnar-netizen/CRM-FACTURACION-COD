@@ -532,6 +532,21 @@ export default function Reports() {
                     </table>
                   ) : <p className="empty-row">El método Efectivo no está activo.</p>}
 
+                  <h4 style={{ marginTop: 24, marginBottom: 8 }}>🧾 Abonados</h4>
+                  <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -6 }}>
+                    Total vendido a crédito hoy (Boleta/Factura/Nota de Venta Interna "Abonado"), sin importar
+                    cuánto se cobró — no es dinero en caja, lo ya cobrado del abono cuenta en su método real
+                    (Efectivo, Yape, etc.) dentro de "Ventas por Forma de Pago".
+                  </p>
+                  {cierreCaja.abonados ? (
+                    <table className="data-table compact">
+                      <tbody>
+                        <tr><td>Cantidad de ventas abonado</td><td style={{ textAlign: 'right' }}>{cierreCaja.abonados.cantidad}</td></tr>
+                        <tr className="totals-footer"><td>Total vendido a crédito</td><td style={{ textAlign: 'right' }}>{money(cierreCaja.abonados.ingresos.total)}</td></tr>
+                      </tbody>
+                    </table>
+                  ) : <p className="empty-row">Sin ventas abonado en la fecha seleccionada.</p>}
+
                   <h4 style={{ marginTop: 24, marginBottom: 8 }}>Ventas por Documento</h4>
                   <table className="data-table">
                     <thead>

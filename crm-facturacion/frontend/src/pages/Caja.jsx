@@ -222,6 +222,8 @@ export default function Caja() {
                       <span className="caja-row-amount">{fmt(m.ingresos[cat])}</span>
                       {cat === 'ventas' ? (
                         <span className="caja-row-auto">auto</span>
+                      ) : m.codigo === 'abonado' ? (
+                        <span className="icon-link muted">—</span>
                       ) : (
                         <button className="caja-row-add" title={esRango ? 'Elige un solo día para registrar un ingreso' : 'Registrar ingreso'} disabled={esRango} onClick={() => openMovForm('ingreso', m, cat)}>
                           <Plus size={13} />
@@ -242,9 +244,13 @@ export default function Caja() {
                     <span className="caja-row-label">{EGRESO_LABELS[cat]}</span>
                     <span className="caja-row-right">
                       <span className="caja-row-amount">{fmt(m.egresos[cat])}</span>
-                      <button className="caja-row-add" title={esRango ? 'Elige un solo día para registrar un egreso' : 'Registrar egreso'} disabled={esRango} onClick={() => openMovForm('egreso', m, cat)}>
-                        <Plus size={13} />
-                      </button>
+                      {m.codigo === 'abonado' ? (
+                        <span className="icon-link muted">—</span>
+                      ) : (
+                        <button className="caja-row-add" title={esRango ? 'Elige un solo día para registrar un egreso' : 'Registrar egreso'} disabled={esRango} onClick={() => openMovForm('egreso', m, cat)}>
+                          <Plus size={13} />
+                        </button>
+                      )}
                     </span>
                   </div>
                 ))}
