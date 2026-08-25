@@ -45,6 +45,7 @@ const SUBNAV_ITEMS = [
   { to: null, label: 'Contabilidad', Icon: Calculator, active: false },
   { to: '/planilla', label: 'Planillas', Icon: ClipboardList, active: true, modulo: 'caja' },
   { to: '/reportes', label: 'Reportes', Icon: FileText, active: true, modulo: 'reportes' },
+  { to: '/configuracion', label: 'Configuración', Icon: Settings, active: true },
 ];
 
 export default function Layout() {
@@ -110,9 +111,6 @@ export default function Layout() {
             onClick={toggleTheme}
           >
             {isDark ? <Sun size={17} /> : <Moon size={17} />}
-          </button>
-          <button type="button" className="icon-btn" title="Configuración" onClick={() => navigate('/configuracion')}>
-            <Settings size={17} />
           </button>
           <div className="user-menu" ref={menuRef} onClick={() => setMenuOpen((v) => !v)}>
             <span className="user-name">{(user?.role || 'GERENCIA').toUpperCase()}</span>
