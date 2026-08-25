@@ -154,33 +154,35 @@ export default function Layout() {
         </div>
       </header>
 
-      <nav className="subnav">
-        {SUBNAV_ITEMS.filter((item) => !item.modulo || user?.permisos?.[item.modulo] !== false).map((item) => {
-          const isActive = item.to && location.pathname === item.to;
-          return (
-            <div
-              key={item.label}
-              className={'subnav-item' + (isActive ? ' active' : '') + (!item.active ? ' disabled' : '')}
-              title={item.active ? item.label : `${item.label} (próximamente)`}
-              onClick={() => handleSubnavClick(item)}
-            >
-              <item.Icon size={16} className="subnav-icon" />
-              <span>{item.label}</span>
-              {!item.active && <span className="subnav-soon-dot" />}
-            </div>
-          );
-        })}
-      </nav>
+      <div className="app-body">
+        <main className="content">
+          <div className="app-bg-decor">
+            <FloatingShapes shapes={APP_SHAPES} />
+            <FloatingIcons icons={APP_ICONS} />
+          </div>
+          <div className="content-wide content-body">
+            <Outlet />
+          </div>
+        </main>
 
-      <main className="content">
-        <div className="app-bg-decor">
-          <FloatingShapes shapes={APP_SHAPES} />
-          <FloatingIcons icons={APP_ICONS} />
-        </div>
-        <div className="content-wide content-body">
-          <Outlet />
-        </div>
-      </main>
+        <nav className="sidenav">
+          {SUBNAV_ITEMS.filter((item) => !item.modulo || user?.permisos?.[item.modulo] !== false).map((item) => {
+            const isActive = item.to && location.pathname === item.to;
+            return (
+              <div
+                key={item.label}
+                className={'sidenav-item' + (isActive ? ' active' : '') + (!item.active ? ' disabled' : '')}
+                title={item.active ? item.label : `${item.label} (próximamente)`}
+                onClick={() => handleSubnavClick(item)}
+              >
+                <item.Icon size={17} className="sidenav-icon" />
+                <span>{item.label}</span>
+                {!item.active && <span className="sidenav-soon-dot" />}
+              </div>
+            );
+          })}
+        </nav>
+      </div>
 
       <OdinWidget />
 
