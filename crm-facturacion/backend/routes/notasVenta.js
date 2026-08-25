@@ -3,6 +3,7 @@ const db = require('../db');
 const { requireAuth, resolveSucursal } = require('../middleware/auth');
 const { requirePermiso, requireAccion, tieneAccion, tienePermiso, requireGerenciaOSupervisor } = require('../utils/permisos');
 const { siguienteNumero } = require('../utils/series');
+const { resolverDescuentoPct } = require('../utils/descuentos');
 const { consumirStock, incrementarStock, StockInsuficienteError } = require('../utils/stock');
 const { buildNotaVentaPdf } = require('../utils/pdf');
 
@@ -160,7 +161,7 @@ router.get('/:id', (req, res) => {
 router.post('/', requireAccion('ventas', 'nota_venta'), (req, res) => {
   const {
     client_id, items, moneda, observaciones, fecha_emision,
-    descuento_global_pct, numero: numeroManual, forma_pago,
+    descuento_id, numero: numeroManual, forma_pago,
     monto_pagado: montoPagadoBody, medio_abono, atribuido_a_id,
   } = req.body || {};
 
@@ -207,7 +208,15 @@ router.post('/', requireAccion('ventas', 'nota_venta'), (req, res) => {
     return res.status(400).json({ error: 'Selecciona un método de pago válido para el abono inicial.' });
   }
 
-  const descuentoGlobalPct = Math.min(100, Math.max(0, Number(descuento_global_pct || 0)));
+  // El % de descuento global nunca se acepta a mano — solo se resuelve a
+  // partir de un descuento_id vigente (Configuración → Descuentos).
+  let descuentoGlobalPct;
+  try {
+    descuentoGlobalPct = resolverDescuentoPct(descuento_id, req.sucursalId);
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ error: err.message });
+    throw err;
+  }
 
   // Sin IGV: el total de cada línea es el importe final tal cual, sin
   // separar impuesto — es exactamente lo que diferencia a este documento
@@ -244,8 +253,8 @@ router.post('/', requireAccion('ventas', 'nota_venta'), (req, res) => {
   const insertAll = db.transaction(() => {
     const numero = numeroManual ? Number(numeroManual) : numeroSugerido;
     const info = db.prepare(
-      `INSERT INTO notas_venta (serie, numero, client_id, created_by, sucursal_id, fecha_emision, moneda, descuento_global_pct, total, forma_pago, monto_pagado, estado, observaciones, atribuido_a)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'emitido', ?, ?)`
+      `INSERT INTO notas_venta (serie, numero, client_id, created_by, sucursal_id, fecha_emision, moneda, descuento_global_pct, total, forma_pago, monto_pagado, estado, observaciones, atribuido_a, descuento_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'emitido', ?, ?, ?)`
     ).run(
       serie,
       numero,
@@ -259,7 +268,8 @@ router.post('/', requireAccion('ventas', 'nota_venta'), (req, res) => {
       forma_pago || 'efectivo',
       montoPagado,
       observaciones || null,
-      atribuidoA
+      atribuidoA,
+      descuento_id || null
     );
     const notaVentaId = info.lastInsertRowid;
     const insertItem = db.prepare(
