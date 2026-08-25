@@ -171,11 +171,27 @@ body {
    como un riel vertical a la derecha del contenido, con la sede activa
    destacándose en "azul eléctrico" y sobresaliendo hacia el contenido para
    que siempre quede claro en qué pestaña se está. */
-.app-body { flex: 1; display: flex; overflow: hidden; }
+.app-body {
+  flex: 1; display: flex; overflow: hidden; position: relative;
+  background:
+    radial-gradient(420px 320px at 4% 8%, rgba(147, 197, 253, 0.30), transparent 70%),
+    radial-gradient(380px 300px at 96% 5%, rgba(129, 140, 248, 0.18), transparent 70%),
+    radial-gradient(460px 360px at 92% 92%, rgba(147, 197, 253, 0.26), transparent 70%),
+    radial-gradient(360px 280px at 3% 92%, rgba(129, 140, 248, 0.16), transparent 70%),
+    var(--page-bg);
+}
+html.dark .app-body {
+  background:
+    radial-gradient(420px 320px at 4% 8%, rgba(147, 197, 253, 0.12), transparent 70%),
+    radial-gradient(380px 300px at 96% 5%, rgba(129, 140, 248, 0.12), transparent 70%),
+    radial-gradient(460px 360px at 92% 92%, rgba(147, 197, 253, 0.1), transparent 70%),
+    radial-gradient(360px 280px at 3% 92%, rgba(129, 140, 248, 0.09), transparent 70%),
+    var(--page-bg);
+}
 
 .sidenav {
-  flex-shrink: 0; width: 190px; background: var(--surface); border-right: 1px solid var(--border);
-  display: flex; flex-direction: column; gap: 2px; padding: 14px 0; overflow-y: auto;
+  flex-shrink: 0; width: 190px; background: transparent;
+  display: flex; flex-direction: column; gap: 2px; padding: 14px 0; overflow-y: auto; position: relative; z-index: 1;
 }
 .sidenav-item {
   display: flex; align-items: center; gap: 10px; padding: 12px 18px; cursor: pointer;
@@ -202,21 +218,7 @@ body {
 }
 
 .content {
-  flex: 1; overflow-y: auto; padding: 26px 28px; position: relative;
-  background:
-    radial-gradient(420px 320px at 6% 8%, rgba(147, 197, 253, 0.30), transparent 70%),
-    radial-gradient(380px 300px at 94% 5%, rgba(129, 140, 248, 0.18), transparent 70%),
-    radial-gradient(460px 360px at 90% 92%, rgba(147, 197, 253, 0.26), transparent 70%),
-    radial-gradient(360px 280px at 5% 92%, rgba(129, 140, 248, 0.16), transparent 70%),
-    var(--page-bg);
-}
-html.dark .content {
-  background:
-    radial-gradient(420px 320px at 6% 8%, rgba(147, 197, 253, 0.12), transparent 70%),
-    radial-gradient(380px 300px at 94% 5%, rgba(129, 140, 248, 0.12), transparent 70%),
-    radial-gradient(460px 360px at 90% 92%, rgba(147, 197, 253, 0.1), transparent 70%),
-    radial-gradient(360px 280px at 5% 92%, rgba(129, 140, 248, 0.09), transparent 70%),
-    var(--page-bg);
+  flex: 1; overflow-y: auto; padding: 26px 28px; position: relative; background: transparent;
 }
 .app-bg-decor { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 0; }
 .content-body { position: relative; z-index: 1; }
