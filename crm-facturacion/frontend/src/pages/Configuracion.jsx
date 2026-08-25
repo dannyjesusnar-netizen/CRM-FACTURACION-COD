@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Building2, Users as UsersIcon, Store, ShieldCheck, FileText, Wallet, Hash, Percent,
-  Upload, Boxes, PackagePlus, RefreshCw, UserPlus, Tags, ArrowLeftRight, AlertTriangle,
+  Upload, Download, Boxes, PackagePlus, RefreshCw, UserPlus, Tags, ArrowLeftRight, AlertTriangle,
 } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
@@ -125,6 +125,38 @@ const IMPORTADORES_MASIVOS = [
     columnas: ['codigo', 'precio_venta', 'precio_mayorista', 'precio_distribuidor'],
     filaEjemplo: ['PROD001', '89.9', '75', '65'],
     descripcion: 'Actualiza precio de venta, precio de mayorista y precio de distribuidor de productos que YA existen, por código.',
+  },
+];
+
+// Exportador de Datos Masivos: la contraparte del Importador de arriba —
+// descarga en Excel los datos que YA existen en el sistema, con las mismas
+// columnas que su importador equivalente (para poder editar el archivo y
+// volver a subirlo tal cual). No sube nada, solo lee y genera el .xlsx.
+const EXPORTADORES_MASIVOS = [
+  {
+    key: 'clientes',
+    titulo: 'Clientes',
+    Icon: UserPlus,
+    endpoint: '/clients',
+    columnas: ['tipo_documento', 'numero_documento', 'nombre', 'direccion', 'telefono', 'email', 'sucursal_nombre', 'turno'],
+    descripcion: 'Todos los clientes registrados, con los mismos datos que pide el importador de Clientes.',
+  },
+  {
+    key: 'productos',
+    titulo: 'Productos',
+    Icon: Boxes,
+    endpoint: '/products',
+    columnas: ['codigo', 'nombre', 'categoria', 'unidad', 'precio_unitario', 'precio_compra', 'stock', 'stock_minimo', 'codigo_barras'],
+    descripcion: 'Todo el catálogo de productos activos, con stock de la sede activa.',
+  },
+  {
+    key: 'empleados',
+    titulo: 'Empleados',
+    Icon: UsersIcon,
+    endpoint: '/users',
+    columnas: ['dni', 'nombres', 'apellidos', 'username', 'email', 'telefono', 'sucursal_nombre', 'rol_personalizado_nombre'],
+    transformar: (u) => ({ ...u, rol_personalizado_nombre: u.role === 'gerencia' ? 'Administrador (Gerencia)' : (u.rol_personalizado_nombre || '') }),
+    descripcion: 'Todos los empleados con acceso al sistema (usuario, sede y rol asignado).',
   },
 ];
 
@@ -284,6 +316,7 @@ export default function Configuracion() {
 
   // --- Importador de Datos Masivos ---
   const [importadorActivo, setImportadorActivo] = useState(null); // key de IMPORTADORES_MASIVOS o null
+  const [exportandoKey, setExportandoKey] = useState(null); // key de EXPORTADORES_MASIVOS en curso o null
   const [importFileName, setImportFileName] = useState('');
   const [importRows, setImportRows] = useState([]);
   const [importResult, setImportResult] = useState(null);
@@ -973,6 +1006,23 @@ export default function Configuracion() {
     descargarComoExcel('plantilla_carga_masiva_operativos.xlsx', CARGA_MASIVA_OPERATIVOS_COLUMNAS, [ejemplo]);
   }
 
+  async function exportarDatos(config) {
+    setExportandoKey(config.key);
+    try {
+      const res = await api.get(config.endpoint);
+      const filas = res.data.map((fila) => {
+        const f = config.transformar ? config.transformar(fila) : fila;
+        return config.columnas.map((c) => f[c] ?? '');
+      });
+      await descargarComoExcel(`${config.key}.xlsx`, config.columnas, filas);
+      toast.success(`${config.titulo}: Excel generado con ${filas.length} fila${filas.length === 1 ? '' : 's'}.`);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'No se pudo generar el Excel.');
+    } finally {
+      setExportandoKey(null);
+    }
+  }
+
   function openImportador(key) {
     setImportFileName('');
     setImportRows([]);
@@ -1190,6 +1240,9 @@ export default function Configuracion() {
           )}
           <div className={'reports-sidebar-item' + (seccion === 'importador' ? ' active' : '')} onClick={() => setSeccion('importador')} role="button" tabIndex={0}>
             <Upload size={16} /><span>Importador de Datos Masivos</span>
+          </div>
+          <div className={'reports-sidebar-item' + (seccion === 'exportador' ? ' active' : '')} onClick={() => setSeccion('exportador')} role="button" tabIndex={0}>
+            <Download size={16} /><span>Exportador de Datos Masivos</span>
           </div>
           {user?.role === 'gerencia' && (
             <div className={'reports-sidebar-item' + (seccion === 'zona_peligro' ? ' active' : '')} onClick={() => setSeccion('zona_peligro')} role="button" tabIndex={0} style={{ color: 'var(--critical, #dc2626)' }}>
@@ -1984,6 +2037,40 @@ export default function Configuracion() {
                     <div className="metodo-pago-actions">
                       <button type="button" className="btn-primary" style={{ width: 'auto' }} onClick={() => openImportador(config.key)}>
                         Cargar
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
+          {seccion === 'exportador' && (
+            <>
+              <h3 style={{ marginTop: 0 }}>Exportador de Datos Masivos</h3>
+              <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -8 }}>
+                Descarga en Excel (.xlsx) los datos que ya tienes registrados. Cada tarjeta usa las mismas
+                columnas que su importador equivalente, para poder editar el archivo y volver a subirlo.
+              </p>
+              <div className="metodos-pago-grid">
+                {EXPORTADORES_MASIVOS.map((config) => (
+                  <div key={config.key} className="metodo-pago-card">
+                    <div className="metodo-pago-icon" style={{ background: 'var(--brand-blue, #0f4c81)' }}>
+                      <config.Icon size={18} color="#fff" />
+                    </div>
+                    <div className="metodo-pago-info">
+                      <strong>{config.titulo}</strong>
+                      <span style={{ fontSize: 12, color: 'var(--ink-muted)' }}>{config.descripcion}</span>
+                    </div>
+                    <div className="metodo-pago-actions">
+                      <button
+                        type="button"
+                        className="btn-primary"
+                        style={{ width: 'auto' }}
+                        disabled={exportandoKey === config.key}
+                        onClick={() => exportarDatos(config)}
+                      >
+                        {exportandoKey === config.key ? 'Generando...' : 'Descargar'}
                       </button>
                     </div>
                   </div>

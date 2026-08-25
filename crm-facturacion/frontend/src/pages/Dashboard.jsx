@@ -12,10 +12,11 @@ import {
   Legend,
   Filler,
 } from 'chart.js';
-import { Circle, Triangle, Diamond, Camera } from 'lucide-react';
+import { Circle, Triangle, Diamond, Camera, Download } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import { descargarComoExcel } from '../utils/excelImport';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Tooltip, Legend, Filler);
 
@@ -67,17 +68,33 @@ function pctBadge(pct) {
 // de Ventas — el color lo elige Gerencia (empresa.color_tablero_ventas).
 // onCopiar (opcional) agrega un botón de cámara para copiar/descargar el
 // panel completo como imagen (ver copiarPanelComoImagen).
-function PanelHeader({ children, color, onCopiar }) {
+function PanelHeader({ children, color, onCopiar, onDescargarExcel }) {
   return (
     <div className="panel-banda" style={{ background: color }}>
       <h3>{children}</h3>
-      {onCopiar && (
-        <button type="button" className="panel-banda-copy-btn" onClick={onCopiar} title="Copiar como imagen (para enviar por WhatsApp)">
-          <Camera size={14} />
-        </button>
-      )}
+      <div className="panel-banda-actions">
+        {onDescargarExcel && (
+          <button type="button" className="panel-banda-copy-btn" onClick={onDescargarExcel} title="Descargar en Excel">
+            <Download size={14} />
+          </button>
+        )}
+        {onCopiar && (
+          <button type="button" className="panel-banda-copy-btn" onClick={onCopiar} title="Copiar como imagen (para enviar por WhatsApp)">
+            <Camera size={14} />
+          </button>
+        )}
+      </div>
     </div>
   );
+}
+
+// Descarga cualquiera de las tablas del Tablero de Ventas como .xlsx real
+// (mismo mecanismo que las plantillas del Importador de Datos Masivos, ver
+// utils/excelImport.js) — headers en negrita + una fila por cada registro.
+function descargarPanelComoExcel(filename, headers, filas, toast) {
+  descargarComoExcel(filename, headers, filas).catch(() => {
+    toast.error('No se pudo generar el Excel.');
+  });
 }
 
 // Convierte un panel completo (incluida la franja de color y todas las
@@ -392,7 +409,17 @@ export default function Dashboard() {
             <>
               <div className="chart-grid">
                 <div className="panel" ref={rankingTrainersRef}>
-                  <PanelHeader color={colorTablero} onCopiar={() => copiarPanelComoImagen(rankingTrainersRef, 'ranking-trainers.png', toast)}>Ranking Trainers</PanelHeader>
+                  <PanelHeader
+                    color={colorTablero}
+                    onCopiar={() => copiarPanelComoImagen(rankingTrainersRef, 'ranking-trainers.png', toast)}
+                    onDescargarExcel={() => descargarPanelComoExcel(
+                      'ranking-trainers.xlsx',
+                      ['Trainer', 'Sede', 'Turno', 'Venta', 'Meta', '%'],
+                      rankingTrainers.map((r) => [r.nombre, r.sede || '', r.turno === 'manana' ? 'Mañana' : r.turno === 'tarde' ? 'Tarde' : '', r.venta, r.meta, r.porcentaje ?? ''
+                      ]),
+                      toast
+                    )}
+                  >Ranking Trainers</PanelHeader>
                   <table className="data-table">
                     <thead>
                       <tr><th>Trainer</th><th>Sede</th><th>Turno</th><th style={{ textAlign: 'right' }}>Venta</th><th style={{ textAlign: 'right' }}>Meta</th><th>%</th></tr>
@@ -431,7 +458,16 @@ export default function Dashboard() {
                 </div>
 
                 <div className="panel" ref={rankingVendedoresRef}>
-                  <PanelHeader color={colorTablero} onCopiar={() => copiarPanelComoImagen(rankingVendedoresRef, 'ranking-vendedores.png', toast)}>Ranking Vendedores</PanelHeader>
+                  <PanelHeader
+                    color={colorTablero}
+                    onCopiar={() => copiarPanelComoImagen(rankingVendedoresRef, 'ranking-vendedores.png', toast)}
+                    onDescargarExcel={() => descargarPanelComoExcel(
+                      'ranking-vendedores.xlsx',
+                      ['Vendedor', 'Sede', 'Venta', 'Meta', '%'],
+                      rankingVendedores.map((r) => [r.nombre, r.sede || '', r.venta, r.meta, r.porcentaje ?? '']),
+                      toast
+                    )}
+                  >Ranking Vendedores</PanelHeader>
                   <table className="data-table">
                     <thead>
                       <tr><th>Vendedor</th><th>Sede</th><th style={{ textAlign: 'right' }}>Venta</th><th style={{ textAlign: 'right' }}>Meta</th><th>%</th></tr>
@@ -470,7 +506,16 @@ export default function Dashboard() {
 
               <div className="chart-grid">
                 <div className="panel" ref={totalMarcaRef}>
-                  <PanelHeader color={colorTablero} onCopiar={() => copiarPanelComoImagen(totalMarcaRef, 'total-por-marca.png', toast)}>Total por Marca</PanelHeader>
+                  <PanelHeader
+                    color={colorTablero}
+                    onCopiar={() => copiarPanelComoImagen(totalMarcaRef, 'total-por-marca.png', toast)}
+                    onDescargarExcel={() => descargarPanelComoExcel(
+                      'total-por-marca.xlsx',
+                      ['Marca', 'Cantidad', 'Venta', '% Venta'],
+                      totalMarca.map((m) => [m.marca, m.cantidad, m.venta, m.porcentaje]),
+                      toast
+                    )}
+                  >Total por Marca</PanelHeader>
                   <table className="data-table">
                     <thead>
                       <tr><th>Marca</th><th style={{ textAlign: 'right' }}>Cantidad</th><th style={{ textAlign: 'right' }}>Venta</th><th style={{ textAlign: 'right' }}>% Venta</th></tr>
@@ -491,7 +536,16 @@ export default function Dashboard() {
                   </table>
                 </div>
                 <div className="panel" ref={totalProductoRef}>
-                  <PanelHeader color={colorTablero} onCopiar={() => copiarPanelComoImagen(totalProductoRef, 'total-por-producto.png', toast)}>Total por Producto</PanelHeader>
+                  <PanelHeader
+                    color={colorTablero}
+                    onCopiar={() => copiarPanelComoImagen(totalProductoRef, 'total-por-producto.png', toast)}
+                    onDescargarExcel={() => descargarPanelComoExcel(
+                      'total-por-producto.xlsx',
+                      ['Categoría', 'Cantidad', 'Venta', '% Venta'],
+                      totalProducto.map((p) => [p.categoria, p.cantidad, p.venta, p.porcentaje]),
+                      toast
+                    )}
+                  >Total por Producto</PanelHeader>
                   <table className="data-table">
                     <thead>
                       <tr><th>Categoría</th><th style={{ textAlign: 'right' }}>Cantidad</th><th style={{ textAlign: 'right' }}>Venta</th><th style={{ textAlign: 'right' }}>% Venta</th></tr>
@@ -515,7 +569,19 @@ export default function Dashboard() {
 
               <div className="chart-grid">
                 <div className="panel" ref={resumenSedesRef}>
-                  <PanelHeader color={colorTablero} onCopiar={() => copiarPanelComoImagen(resumenSedesRef, 'resumen-sedes.png', toast)}>Resumen Sedes</PanelHeader>
+                  <PanelHeader
+                    color={colorTablero}
+                    onCopiar={() => copiarPanelComoImagen(resumenSedesRef, 'resumen-sedes.png', toast)}
+                    onDescargarExcel={() => descargarPanelComoExcel(
+                      'resumen-sedes.xlsx',
+                      ['Sede', 'Venta', 'Meta', '% Meta'],
+                      [
+                        ...resumenSedes.sedes.map((s) => [s.sede, s.venta, s.meta, s.porcentaje ?? '']),
+                        ...(resumenSedes.total ? [['Total', resumenSedes.total.venta, resumenSedes.total.meta, resumenSedes.total.porcentaje ?? '']] : []),
+                      ],
+                      toast
+                    )}
+                  >Resumen Sedes</PanelHeader>
                   <table className="data-table">
                     <thead>
                       <tr><th>Sede</th><th style={{ textAlign: 'right' }}>Venta</th><th style={{ textAlign: 'right' }}>Meta</th><th>% Meta</th></tr>
@@ -548,14 +614,29 @@ export default function Dashboard() {
                 <div className="stat-card" style={{ alignSelf: 'start' }} ref={ventasTotalesRef}>
                   <div className="stat-card-banda" style={{ background: colorTablero }}>
                     Ventas Totales
-                    <button
-                      type="button"
-                      className="panel-banda-copy-btn"
-                      onClick={() => copiarPanelComoImagen(ventasTotalesRef, 'ventas-totales.png', toast)}
-                      title="Copiar como imagen (para enviar por WhatsApp)"
-                    >
-                      <Camera size={14} />
-                    </button>
+                    <div className="panel-banda-actions">
+                      <button
+                        type="button"
+                        className="panel-banda-copy-btn"
+                        onClick={() => descargarPanelComoExcel(
+                          'ventas-totales.xlsx',
+                          ['Período', 'Sede', 'Ventas Totales'],
+                          [[`${MESES[tableroMes - 1]} ${tableroAnio}`, tableroSedeId ? (sucursalesTablero.find((s) => String(s.id) === String(tableroSedeId))?.nombre || '') : 'Todas las sedes', resumenSedes.ventas_totales]],
+                          toast
+                        )}
+                        title="Descargar en Excel"
+                      >
+                        <Download size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        className="panel-banda-copy-btn"
+                        onClick={() => copiarPanelComoImagen(ventasTotalesRef, 'ventas-totales.png', toast)}
+                        title="Copiar como imagen (para enviar por WhatsApp)"
+                      >
+                        <Camera size={14} />
+                      </button>
+                    </div>
                   </div>
                   <div className="stat-value" style={{ textAlign: 'center' }}>{money(resumenSedes.ventas_totales)}</div>
                   <div className="stat-sub">
