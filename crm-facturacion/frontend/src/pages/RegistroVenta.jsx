@@ -416,7 +416,7 @@ export default function RegistroVenta() {
                     </td>
                     <td className="num">{it.stock ?? '—'}</td>
                     <td>
-                      <input type="number" min="0.01" step="0.01" value={it.cantidad}
+                      <input type="number" min="1" step="1" value={it.cantidad}
                         onChange={(e) => updateItem(idx, { cantidad: e.target.value })} />
                     </td>
                     <td>{it.unidad}</td>

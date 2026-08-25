@@ -229,7 +229,7 @@ export default function Produccion() {
                 </div>
                 <div>
                   <label>Cantidad producida por lote</label>
-                  <input required type="number" min="0.01" step="0.01" value={cantidadSalida} onChange={(e) => setCantidadSalida(e.target.value)} />
+                  <input required type="number" min="1" step="1" value={cantidadSalida} onChange={(e) => setCantidadSalida(e.target.value)} />
                 </div>
               </div>
 
@@ -254,7 +254,7 @@ export default function Produccion() {
                         </select>
                       </td>
                       <td>
-                        <input type="number" min="0.01" step="0.01" style={{ width: 90 }} value={it.cantidad}
+                        <input type="number" min="1" step="1" style={{ width: 90 }} value={it.cantidad}
                           onChange={(e) => updateItem(idx, { cantidad: e.target.value })} />
                       </td>
                       <td>
@@ -284,7 +284,7 @@ export default function Produccion() {
             <h2>Producir — {recetaProducir.nombre}</h2>
             <form onSubmit={handleProducir}>
               <label>Cantidad de lotes a producir</label>
-              <input required type="number" min="0.01" step="0.01" value={cantidadLotes} onChange={(e) => setCantidadLotes(e.target.value)} autoFocus />
+              <input required type="number" min="1" step="1" value={cantidadLotes} onChange={(e) => setCantidadLotes(e.target.value)} autoFocus />
               <p className="caja-row-auto">
                 Producirá {Number(cantidadLotes || 0) * recetaProducir.cantidad_salida} {recetaProducir.producto_salida_unidad} de {recetaProducir.producto_salida_nombre}.
               </p>
