@@ -132,6 +132,7 @@ const IMPORTADORES_MASIVOS = [
 // descarga en Excel los datos que YA existen en el sistema, con las mismas
 // columnas que su importador equivalente (para poder editar el archivo y
 // volver a subirlo tal cual). No sube nada, solo lee y genera el .xlsx.
+const TIPO_COMPROBANTE_LABEL = { factura: 'Factura', boleta: 'Boleta', nota_credito: 'Nota de crédito' };
 const EXPORTADORES_MASIVOS = [
   {
     key: 'clientes',
@@ -157,6 +158,24 @@ const EXPORTADORES_MASIVOS = [
     columnas: ['dni', 'nombres', 'apellidos', 'username', 'email', 'telefono', 'sucursal_nombre', 'rol_personalizado_nombre'],
     transformar: (u) => ({ ...u, rol_personalizado_nombre: u.role === 'gerencia' ? 'Administrador (Gerencia)' : (u.rol_personalizado_nombre || '') }),
     descripcion: 'Todos los empleados con acceso al sistema (usuario, sede y rol asignado).',
+  },
+  {
+    key: 'ventas',
+    titulo: 'Ventas',
+    Icon: FileText,
+    // Igual que "Documentos Emitidos": junta Boletas/Facturas/Notas de
+    // Crédito (invoices) con Notas de Venta Interna (notas-venta), sin
+    // límite de fecha (a diferencia del botón "Exportar" de esa pantalla,
+    // que solo exporta lo que está filtrado en pantalla).
+    fetchAll: async () => {
+      const [invRes, nvRes] = await Promise.all([api.get('/invoices'), api.get('/notas-venta')]);
+      const invRows = invRes.data.map((r) => ({ ...r, _tipo: TIPO_COMPROBANTE_LABEL[r.tipo_comprobante] || r.tipo_comprobante }));
+      const nvRows = nvRes.data.map((r) => ({ ...r, _tipo: 'Nota de Venta Interna' }));
+      return [...invRows, ...nvRows].sort((a, b) => (a.fecha_emision < b.fecha_emision ? 1 : -1));
+    },
+    columnas: ['fecha_emision', '_tipo', 'serie', 'numero', 'cliente_documento', 'cliente_nombre', 'forma_pago', 'subtotal', 'total', 'estado', 'vendedor_nombre', 'atribuido_nombre'],
+    headers: ['Fecha', 'Tipo', 'Serie', 'Número', 'Doc. Cliente', 'Cliente', 'Forma de Pago', 'Subtotal', 'Total', 'Estado', 'Vendedor', 'Atribuido a'],
+    descripcion: 'Todas las Boletas, Facturas, Notas de Crédito y Notas de Venta Interna emitidas (equivale a "Documentos Emitidos", sin filtro de fecha).',
   },
 ];
 
@@ -1009,12 +1028,12 @@ export default function Configuracion() {
   async function exportarDatos(config) {
     setExportandoKey(config.key);
     try {
-      const res = await api.get(config.endpoint);
-      const filas = res.data.map((fila) => {
+      const datos = config.fetchAll ? await config.fetchAll() : (await api.get(config.endpoint)).data;
+      const filas = datos.map((fila) => {
         const f = config.transformar ? config.transformar(fila) : fila;
         return config.columnas.map((c) => f[c] ?? '');
       });
-      await descargarComoExcel(`${config.key}.xlsx`, config.columnas, filas);
+      await descargarComoExcel(`${config.key}.xlsx`, config.headers || config.columnas, filas);
       toast.success(`${config.titulo}: Excel generado con ${filas.length} fila${filas.length === 1 ? '' : 's'}.`);
     } catch (err) {
       toast.error(err.response?.data?.error || 'No se pudo generar el Excel.');
