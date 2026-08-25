@@ -92,7 +92,7 @@ function validarOferta(body) {
 
 function validarCombo(body) {
   const { items, precio_combo } = body;
-  if (!Array.isArray(items) || items.length < 2) return 'Un combo necesita al menos 2 productos del inventario.';
+  if (!Array.isArray(items) || items.length < 1) return 'Agrega al menos un producto al combo.';
   for (const it of items) {
     if (!it.product_id || !(Number(it.cantidad) > 0)) return 'Cada producto del combo necesita cantidad mayor a 0.';
     const producto = db.prepare('SELECT id, activo FROM products WHERE id = ?').get(it.product_id);
@@ -100,6 +100,11 @@ function validarCombo(body) {
   }
   const ids = items.map((it) => it.product_id);
   if (new Set(ids).size !== ids.length) return 'No repitas el mismo producto dentro del combo.';
+  // El combo puede ser de un solo producto (ej. "lleva 2 Creatinas") o de
+  // varios distintos — lo único que importa es que sume 2+ unidades entre
+  // sus productos, no que haya 2 líneas separadas.
+  const totalUnidades = items.reduce((s, it) => s + Number(it.cantidad), 0);
+  if (totalUnidades < 2) return 'Un combo necesita al menos 2 unidades en total (por ejemplo, 2 del mismo producto, o 1 y 1 de productos distintos).';
   if (!(Number(precio_combo) > 0)) return 'Ingresa el precio del combo (mayor a 0).';
   return null;
 }
@@ -199,6 +204,18 @@ router.put('/:id/estado', requireAccion('inventario', 'productos'), (req, res) =
   if (!existente) return res.status(404).json({ error: 'Promoción no encontrada.' });
   db.prepare('UPDATE promociones SET activo = ? WHERE id = ?').run(req.body?.activo ? 1 : 0, req.params.id);
   res.json(conDetalle(db.prepare('SELECT * FROM promociones WHERE id = ?').get(req.params.id)));
+});
+
+// DELETE /api/promociones/:id — solo se puede eliminar una promoción ya
+// desactivada (flujo: primero Desactivar, luego aparece Eliminar), para
+// evitar borrar por error una que sigue vigente. promocion_items se borra
+// solo por el ON DELETE CASCADE de la tabla.
+router.delete('/:id', requireAccion('inventario', 'productos'), (req, res) => {
+  const existente = db.prepare('SELECT id, activo FROM promociones WHERE id = ?').get(req.params.id);
+  if (!existente) return res.status(404).json({ error: 'Promoción no encontrada.' });
+  if (existente.activo) return res.status(400).json({ error: 'Desactiva la promoción antes de eliminarla.' });
+  db.prepare('DELETE FROM promociones WHERE id = ?').run(req.params.id);
+  res.json({ ok: true });
 });
 
 module.exports = router;

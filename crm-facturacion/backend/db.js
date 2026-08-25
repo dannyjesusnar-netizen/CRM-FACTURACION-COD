@@ -1240,6 +1240,15 @@ CREATE TABLE IF NOT EXISTS promocion_items (
     db.exec('ALTER TABLE invoice_items ADD COLUMN promocion_id INTEGER REFERENCES promociones(id)');
   }
 
+  // Referencia informativa a qué lote/serie se está moviendo en un traslado
+  // entre sedes (para trazabilidad de vencimiento) — igual que
+  // stock_movements.lote_id, no descuenta cantidad_actual del lote (ese
+  // campo tampoco se descuenta en ningún otro flujo de la app hoy).
+  const trasladoItemColumns = db.prepare("PRAGMA table_info(traslado_items)").all().map((c) => c.name);
+  if (!trasladoItemColumns.includes('lote_id')) {
+    db.exec('ALTER TABLE traslado_items ADD COLUMN lote_id INTEGER REFERENCES lotes(id)');
+  }
+
   // Descuentos con nombre (Configuración → Descuentos): a diferencia de las
   // Promociones de Inventario (atadas a productos), estos son un % que se
   // aplica sobre el total de la venta completa (mismo campo

@@ -40,7 +40,10 @@ router.get('/:id', (req, res) => {
   ).get(req.params.id);
   if (!traslado) return res.status(404).json({ error: 'Traslado no encontrado.' });
   const items = db.prepare(
-    `SELECT ti.*, p.codigo, p.nombre, p.unidad FROM traslado_items ti JOIN products p ON p.id = ti.product_id WHERE ti.traslado_id = ?`
+    `SELECT ti.*, p.codigo, p.nombre, p.unidad, l.codigo_lote
+     FROM traslado_items ti JOIN products p ON p.id = ti.product_id
+     LEFT JOIN lotes l ON l.id = ti.lote_id
+     WHERE ti.traslado_id = ?`
   ).all(req.params.id);
   res.json({ ...traslado, items });
 });
@@ -53,6 +56,18 @@ router.get('/stock/:productId', (req, res) => {
     sucursal_nombre: s.nombre,
     stock: getStockSucursal(req.params.productId, s.id),
   }));
+  res.json(rows);
+});
+
+// GET /api/traslados/lotes/:productId -> lotes/series activos de un producto,
+// para que el traslado pueda referenciar de cuál se está moviendo stock
+// (informativo, igual que stock_movements.lote_id; no lleva un saldo por sede).
+router.get('/lotes/:productId', (req, res) => {
+  const rows = db.prepare(
+    `SELECT id, codigo_lote, tipo, fecha_vencimiento, cantidad_actual
+     FROM lotes WHERE product_id = ? AND activo = 1
+     ORDER BY (fecha_vencimiento IS NULL), date(fecha_vencimiento) ASC`
+  ).all(req.params.productId);
   res.json(rows);
 });
 
@@ -83,6 +98,10 @@ router.post('/', requireAccion('inventario', 'traslados'), (req, res) => {
         error: `Stock insuficiente en ${origen.nombre} para "${prod?.nombre || it.product_id}" (disponible: ${disponible}).`,
       });
     }
+    if (it.lote_id) {
+      const lote = db.prepare('SELECT id FROM lotes WHERE id = ? AND product_id = ? AND activo = 1').get(it.lote_id, it.product_id);
+      if (!lote) return res.status(400).json({ error: 'Uno de los lotes seleccionados no existe o no corresponde a ese producto.' });
+    }
   }
 
   const insertAll = db.transaction(() => {
@@ -92,9 +111,9 @@ router.post('/', requireAccion('inventario', 'traslados'), (req, res) => {
        VALUES (?, ?, ?, 'completado', ?, ?)`
     ).run(maxCodigo + 1, sucursal_origen_id, sucursal_destino_id, observaciones || null, req.user?.id || null);
     const trasladoId = info.lastInsertRowid;
-    const insertItem = db.prepare('INSERT INTO traslado_items (traslado_id, product_id, cantidad) VALUES (?, ?, ?)');
+    const insertItem = db.prepare('INSERT INTO traslado_items (traslado_id, product_id, cantidad, lote_id) VALUES (?, ?, ?, ?)');
     for (const it of items) {
-      insertItem.run(trasladoId, it.product_id, Number(it.cantidad));
+      insertItem.run(trasladoId, it.product_id, Number(it.cantidad), it.lote_id || null);
       setStockSucursal(it.product_id, sucursal_origen_id, getStockSucursal(it.product_id, sucursal_origen_id) - Number(it.cantidad));
       setStockSucursal(it.product_id, sucursal_destino_id, getStockSucursal(it.product_id, sucursal_destino_id) + Number(it.cantidad));
     }
