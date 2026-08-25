@@ -63,14 +63,17 @@ export default function Movements() {
   const [products, setProducts] = useState([]);
   const [q, setQ] = useState('');
   const [tipoFiltro, setTipoFiltro] = useState('');
+  const [canalFiltro, setCanalFiltro] = useState('');
   const [desde, setDesde] = useState(todayStr().slice(0, 8) + '01');
   const [hasta, setHasta] = useState(todayStr());
   const [mostrarPor, setMostrarPor] = useState('f_registro');
+  const [canales, setCanales] = useState([]);
 
   const [showForm, setShowForm] = useState(false);
   const [productId, setProductId] = useState('');
   const [cantidad, setCantidad] = useState('');
   const [motivo, setMotivo] = useState('');
+  const [canal, setCanal] = useState('Compras');
   const [codigoLote, setCodigoLote] = useState('');
   const [fechaVencimiento, setFechaVencimiento] = useState('');
   const [error, setError] = useState('');
@@ -97,6 +100,7 @@ export default function Movements() {
     const params = {};
     if (q) params.q = q;
     if (tipoFiltro) params.tipo = tipoFiltro;
+    if (canalFiltro) params.canal = canalFiltro;
     if (desde) params.from = desde;
     if (hasta) params.to = hasta;
     api.get('/movements', { params }).then((res) => setMovements(res.data));
@@ -104,6 +108,7 @@ export default function Movements() {
 
   useEffect(() => { load(); }, []);
   useEffect(() => { api.get('/products').then((res) => setProducts(res.data)); }, []);
+  useEffect(() => { api.get('/movements/canales').then((res) => setCanales(res.data)); }, []);
 
   function handleSearch(e) {
     e.preventDefault();
@@ -111,10 +116,10 @@ export default function Movements() {
   }
 
   function handleExportar() {
-    const header = ['Fecha', 'Documento', 'Producto', 'Tipo', 'Cliente/Proveedor', 'Observación', 'Cantidad', 'Stock resultante', 'Usuario'];
+    const header = ['Fecha', 'Documento', 'Producto', 'Tipo', 'Canal', 'Cliente/Proveedor', 'Observación', 'Cantidad', 'Stock resultante', 'Usuario'];
     const rows = movements.map((m) => [
       m.created_at, m.referencia || '', `${m.producto_codigo} - ${m.producto_nombre}`,
-      TIPO_LABEL[m.tipo] || m.tipo, m.cliente_proveedor || '', m.motivo || '', m.cantidad, m.stock_resultante ?? '', m.usuario_nombre || '',
+      TIPO_LABEL[m.tipo] || m.tipo, m.canal || '', m.cliente_proveedor || '', m.motivo || '', m.cantidad, m.stock_resultante ?? '', m.usuario_nombre || '',
     ]);
     const csv = [header, ...rows].map((r) => r.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
     const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
@@ -133,6 +138,7 @@ export default function Movements() {
     setProductId('');
     setCantidad('');
     setMotivo('');
+    setCanal((canales.find((c) => c.nombre === 'Compras') || canales[0])?.nombre || 'Compras');
     setCodigoLote('');
     setFechaVencimiento('');
     setError('');
@@ -151,6 +157,7 @@ export default function Movements() {
         product_id: Number(productId),
         cantidad: Number(cantidad),
         motivo,
+        canal,
         codigo_lote: esIngreso ? codigoLote : undefined,
         fecha_vencimiento: esIngreso ? (fechaVencimiento || undefined) : undefined,
       });
@@ -342,6 +349,13 @@ export default function Movements() {
           </select>
         </div>
         <div className="filter-field">
+          <label>Canal</label>
+          <select value={canalFiltro} onChange={(e) => setCanalFiltro(e.target.value)}>
+            <option value="">Todos</option>
+            {canales.map((c) => <option key={c.id} value={c.nombre}>{c.nombre}</option>)}
+          </select>
+        </div>
+        <div className="filter-field">
           <label>Desde</label>
           <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} />
         </div>
@@ -360,7 +374,7 @@ export default function Movements() {
           <table className="data-table compact">
             <thead>
               <tr>
-                <th>Fecha</th><th>Documento</th><th>Producto</th><th>Tipo</th>
+                <th>Fecha</th><th>Documento</th><th>Producto</th><th>Tipo</th><th>Canal</th>
                 <th>Cliente/Proveedor</th><th>Observación</th>
                 <th style={{ textAlign: 'right' }}>Cantidad</th><th style={{ textAlign: 'right' }}>Stock resultante</th>
                 <th>Usuario</th>
@@ -373,6 +387,7 @@ export default function Movements() {
                   <td>{m.referencia || '—'}</td>
                   <td>{m.producto_codigo} — {m.producto_nombre}</td>
                   <td><span className={'badge ' + (TIPO_BADGE[m.tipo] || 'badge-neutral')}>{TIPO_LABEL[m.tipo] || m.tipo}</span></td>
+                  <td>{m.canal || '—'}</td>
                   <td>{m.cliente_proveedor || '—'}</td>
                   <td>{m.motivo || '—'}</td>
                   <td style={{ textAlign: 'right' }}>{m.cantidad > 0 ? `+${m.cantidad}` : m.cantidad}</td>
@@ -381,7 +396,7 @@ export default function Movements() {
                 </tr>
               ))}
               {movements.length === 0 && (
-                <tr><td colSpan={9} className="empty-row">No hay movimientos registrados todavía.</td></tr>
+                <tr><td colSpan={10} className="empty-row">No hay movimientos registrados todavía.</td></tr>
               )}
             </tbody>
           </table>
@@ -402,6 +417,10 @@ export default function Movements() {
               </select>
               <label>Cantidad (positivo = ingreso, negativo = salida)</label>
               <input required type="number" step="1" value={cantidad} onChange={(e) => setCantidad(e.target.value)} placeholder="Ej: 10 ó -5" />
+              <label>Canal</label>
+              <select value={canal} onChange={(e) => setCanal(e.target.value)}>
+                {canales.map((c) => <option key={c.id} value={c.nombre}>{c.nombre}</option>)}
+              </select>
               <label>Motivo</label>
               <input value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Ej: Conteo físico, mercadería dañada..." />
               {esIngreso && (

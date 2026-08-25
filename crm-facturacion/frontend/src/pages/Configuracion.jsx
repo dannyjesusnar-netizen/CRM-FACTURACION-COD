@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Building2, Users as UsersIcon, Store, ShieldCheck, FileText, Wallet, Hash, Percent,
-  Upload, Boxes, PackagePlus, RefreshCw, UserPlus, Tags,
+  Upload, Boxes, PackagePlus, RefreshCw, UserPlus, Tags, ArrowLeftRight,
 } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
@@ -274,6 +274,11 @@ export default function Configuracion() {
   const [cargaOperativosResult, setCargaOperativosResult] = useState(null);
   const [errorCargaOperativos, setErrorCargaOperativos] = useState('');
 
+  // --- Canales de Movimiento (Gerencia/Supervisor) ---
+  const [canalesMovimiento, setCanalesMovimiento] = useState([]);
+  const [nuevoCanal, setNuevoCanal] = useState('');
+  const [errorCanal, setErrorCanal] = useState('');
+
   // --- Importador de Datos Masivos ---
   const [importadorActivo, setImportadorActivo] = useState(null); // key de IMPORTADORES_MASIVOS o null
   const [importFileName, setImportFileName] = useState('');
@@ -352,6 +357,7 @@ export default function Configuracion() {
     loadSolicitudesSede();
     loadRoles();
     loadMetodosPago();
+    loadCanalesMovimiento();
   }, []);
 
   useEffect(() => {
@@ -540,6 +546,35 @@ export default function Configuracion() {
 
   function loadMetodosPago() {
     api.get('/metodos-pago', { params: { todos: 1 } }).then((res) => setMetodosPago(res.data));
+  }
+
+  function loadCanalesMovimiento() {
+    api.get('/movements/canales').then((res) => setCanalesMovimiento(res.data));
+  }
+
+  async function handleAgregarCanal(e) {
+    e.preventDefault();
+    setErrorCanal('');
+    if (!nuevoCanal.trim()) return;
+    try {
+      await api.post('/movements/canales', { nombre: nuevoCanal.trim() });
+      setNuevoCanal('');
+      loadCanalesMovimiento();
+      toast.success('Canal agregado.');
+    } catch (err) {
+      setErrorCanal(err.response?.data?.error || 'No se pudo agregar el canal.');
+    }
+  }
+
+  async function handleEliminarCanal(c) {
+    if (!window.confirm(`¿Eliminar el canal "${c.nombre}"? Los movimientos ya registrados con este canal no se modifican.`)) return;
+    try {
+      await api.delete(`/movements/canales/${c.id}`);
+      loadCanalesMovimiento();
+      toast.success('Canal eliminado.');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'No se pudo eliminar el canal.');
+    }
   }
 
   function loadSeries(sucursalId) {
@@ -1113,6 +1148,11 @@ export default function Configuracion() {
           <div className={'reports-sidebar-item' + (seccion === 'metodos_pago' ? ' active' : '')} onClick={() => setSeccion('metodos_pago')} role="button" tabIndex={0}>
             <Wallet size={16} /><span>Métodos de pago</span>
           </div>
+          {user?.puede_ver_tablero && (
+            <div className={'reports-sidebar-item' + (seccion === 'canales_movimiento' ? ' active' : '')} onClick={() => setSeccion('canales_movimiento')} role="button" tabIndex={0}>
+              <ArrowLeftRight size={16} /><span>Canales de Movimiento</span>
+            </div>
+          )}
           <div className={'reports-sidebar-item' + (seccion === 'importador' ? ' active' : '')} onClick={() => setSeccion('importador')} role="button" tabIndex={0}>
             <Upload size={16} /><span>Importador de Datos Masivos</span>
           </div>
@@ -1843,6 +1883,44 @@ export default function Configuracion() {
                   <p className="empty-row">No hay métodos de pago creados todavía.</p>
                 )}
               </div>
+            </>
+          )}
+
+          {seccion === 'canales_movimiento' && (
+            <>
+              <h3 style={{ marginTop: 0 }}>Canales de Movimiento</h3>
+              <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -8 }}>
+                Al registrar un ingreso de stock en Movimientos, se elige uno de estos canales — por defecto queda
+                "Compras". Agrega o elimina los que necesites (por ejemplo Canje, Premio, Regalo).
+              </p>
+              <form className="filter-panel" onSubmit={handleAgregarCanal} style={{ alignItems: 'flex-end' }}>
+                <div className="filter-field">
+                  <label>Nuevo canal</label>
+                  <input value={nuevoCanal} onChange={(e) => setNuevoCanal(e.target.value)} placeholder="Ej: Devolución" />
+                </div>
+                <div className="filter-actions">
+                  <button type="submit" className="btn-primary" style={{ width: 'auto' }}>+ Agregar canal</button>
+                </div>
+              </form>
+              {errorCanal && <div className="form-error">{errorCanal}</div>}
+              <table className="data-table" style={{ maxWidth: 420 }}>
+                <thead>
+                  <tr><th>Canal</th><th></th></tr>
+                </thead>
+                <tbody>
+                  {canalesMovimiento.map((c) => (
+                    <tr key={c.id}>
+                      <td>{c.nombre}</td>
+                      <td className="row-actions">
+                        <button className="btn-link danger" onClick={() => handleEliminarCanal(c)}>Eliminar</button>
+                      </td>
+                    </tr>
+                  ))}
+                  {canalesMovimiento.length === 0 && (
+                    <tr><td colSpan={2} className="empty-row">No hay canales creados.</td></tr>
+                  )}
+                </tbody>
+              </table>
             </>
           )}
 
