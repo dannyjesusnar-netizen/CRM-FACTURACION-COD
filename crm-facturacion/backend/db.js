@@ -1248,6 +1248,23 @@ CREATE TABLE IF NOT EXISTS descuentos (
     db.exec('ALTER TABLE notas_venta ADD COLUMN descuento_id INTEGER REFERENCES descuentos(id)');
   }
 
+  // Planilla: registro real de apertura/cierre de turno de caja por
+  // empleado (botones "Abrir caja"/"Cerrar caja" en /planilla) — no
+  // reemplaza el saldo inicial de Efectivo de Caja y Bancos (que sigue
+  // siendo por sede/día, sin cambios), es un registro de asistencia
+  // aparte: cada empleado abre y cierra su propio turno, y solo
+  // Gerencia/Supervisor puede ver los de todos (ver routes/planilla.js).
+  db.exec(`
+CREATE TABLE IF NOT EXISTS caja_turnos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  sucursal_id INTEGER NOT NULL REFERENCES sucursales(id),
+  created_by INTEGER NOT NULL REFERENCES users(id),
+  fecha TEXT NOT NULL,
+  abierto_at TEXT NOT NULL DEFAULT (datetime('now')),
+  cerrado_at TEXT
+);
+`);
+
   // Backfill: el toggle "Tablero de Ventas" (Configuración → Roles →
   // Inicio) es nuevo — antes de que existiera, cualquier rol llamado
   // "Supervisor" ya veía el Tablero de Ventas del Dashboard de forma

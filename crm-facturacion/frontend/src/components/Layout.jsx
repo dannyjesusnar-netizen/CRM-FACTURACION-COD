@@ -43,7 +43,7 @@ const SUBNAV_ITEMS = [
   { to: '/caja', label: 'Caja y bancos', Icon: Wallet, active: true, modulo: 'caja' },
   { to: '/clientes', label: 'Personas', Icon: Users, active: true, modulo: 'clientes' },
   { to: null, label: 'Contabilidad', Icon: Calculator, active: false },
-  { to: null, label: 'Planillas', Icon: ClipboardList, active: false },
+  { to: '/planilla', label: 'Planillas', Icon: ClipboardList, active: true, modulo: 'caja' },
   { to: '/reportes', label: 'Reportes', Icon: FileText, active: true, modulo: 'reportes' },
 ];
 

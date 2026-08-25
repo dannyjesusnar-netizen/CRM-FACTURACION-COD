@@ -38,6 +38,7 @@ const qrUnicoRoutes = require('./routes/qrUnico');
 const pagoPublicoRoutes = require('./routes/pagoPublico');
 const metasVentaRoutes = require('./routes/metasVenta');
 const tableroRoutes = require('./routes/tablero');
+const planillaRoutes = require('./routes/planilla');
 const { procesarCobrosVencidos } = require('./utils/facturacionPlataforma');
 const db = require('./db');
 const tenantRegistry = require('./tenantRegistry');
@@ -95,6 +96,7 @@ app.use('/api/pagos-qr', pagosQrRoutes);
 app.use('/api/qr-unico', qrUnicoRoutes);
 app.use('/api/metas-venta', metasVentaRoutes);
 app.use('/api/tablero', tableroRoutes);
+app.use('/api/planilla', planillaRoutes);
 // Pública (sin sesión) — la escanea el cliente del comercio desde el QR
 // impreso, ver routes/pagoPublico.js.
 app.use('/api/pago-publico', pagoPublicoRoutes);
