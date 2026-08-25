@@ -738,6 +738,8 @@ html.dark .btn-export { color: #04231e; }
   display: inline-flex; align-items: center; transition: color 0.14s var(--ease-out), transform 0.14s var(--ease-out);
 }
 .caja-banner-edit:hover { color: var(--brand-blue); transform: scale(1.15); }
+.caja-banner-edit:disabled { opacity: 0.35; cursor: not-allowed; }
+.caja-banner-edit:disabled:hover { color: var(--ink-muted); transform: none; }
 .caja-metodo-final { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; flex-shrink: 0; }
 .caja-metodo-final span { font-size: 10px; color: var(--ink-muted); text-transform: uppercase; letter-spacing: 0.04em; }
 .caja-metodo-final strong { font-size: 15px; font-variant-numeric: tabular-nums; color: var(--metodo-color, var(--ink)); }
@@ -771,6 +773,8 @@ html.dark .btn-export { color: #04231e; }
   font-size: 15px; line-height: 1;
 }
 .caja-row-add:hover { background: var(--brand-blue-dark); transform: scale(1.12); }
+.caja-row-add:disabled { opacity: 0.35; cursor: not-allowed; }
+.caja-row-add:disabled:hover { background: var(--brand-blue); transform: none; }
 .caja-row-auto { color: var(--ink-muted); font-size: 11px; font-style: italic; }
 
 .caja-date-bar {
