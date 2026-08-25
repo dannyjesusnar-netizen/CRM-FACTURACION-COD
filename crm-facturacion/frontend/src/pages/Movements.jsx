@@ -314,6 +314,7 @@ export default function Movements() {
           <button className="ventas-action-btn" onClick={openImportar}>Importar Stock Real</button>
           <button className="ventas-action-btn" onClick={openImportarLotes}>Cargar Stock + Lotes (CSV)</button>
           <button className="ventas-action-btn" onClick={() => navigate('/movimientos/fotos')}>Cargar Stock por Fotos</button>
+          <button className="ventas-action-btn" onClick={() => navigate('/traslados')}>Traslados</button>
         </div>
         <div className="filter-field">
           <label>Mostrar por</label>
