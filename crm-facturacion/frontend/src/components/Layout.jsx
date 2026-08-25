@@ -8,7 +8,7 @@ import FloatingShapes from './FloatingShapes';
 import FloatingIcons from './FloatingIcons';
 import OdinWidget from './OdinWidget';
 import {
-  TrendingUp, ShoppingCart, Bike, Wallet, Users, Calculator, ClipboardList, FileText,
+  TrendingUp, ShoppingCart, Bike, Wallet, Users, ClipboardList, FileText,
   Moon, Sun, Settings, ChevronDown, Phone, FileSignature, Lock, Video, BarChart3, LogOut,
   CreditCard, Smartphone,
 } from 'lucide-react';
@@ -42,7 +42,6 @@ const SUBNAV_ITEMS = [
   { to: '/productos', label: 'Inventario', Icon: Bike, active: true, modulo: 'inventario' },
   { to: '/caja', label: 'Caja y bancos', Icon: Wallet, active: true, modulo: 'caja' },
   { to: '/clientes', label: 'Personas', Icon: Users, active: true, modulo: 'clientes' },
-  { to: null, label: 'Contabilidad', Icon: Calculator, active: false },
   { to: '/planilla', label: 'Planillas', Icon: ClipboardList, active: true, modulo: 'caja' },
   { to: '/reportes', label: 'Reportes', Icon: FileText, active: true, modulo: 'reportes' },
   { to: '/configuracion', label: 'Configuración', Icon: Settings, active: true },
