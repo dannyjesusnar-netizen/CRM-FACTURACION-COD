@@ -14,6 +14,8 @@
   --orange: #ea580c;
   --aqua: #0d9488;
   --overlay: rgba(15, 23, 42, 0.5);
+  --electric-blue: #0080ff;
+  --electric-blue-dark: #0062cc;
 
   --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06), 0 1px 1px rgba(15, 23, 42, 0.04);
   --shadow-md: 0 6px 16px rgba(15, 23, 42, 0.08), 0 2px 4px rgba(15, 23, 42, 0.05);
@@ -44,6 +46,8 @@ html.dark {
   --orange: #fb923c;
   --aqua: #2dd4bf;
   --overlay: rgba(3, 6, 12, 0.7);
+  --electric-blue: #2f9dff;
+  --electric-blue-dark: #0080ff;
 
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
   --shadow-md: 0 6px 18px rgba(0, 0, 0, 0.4);
@@ -162,25 +166,39 @@ body {
 .sede-switcher-btn span { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sede-switcher-dropdown { min-width: 220px; }
 
-.subnav {
-  flex-shrink: 0; background: var(--surface); border-bottom: 1px solid var(--border);
-  display: flex; align-items: center; padding: 0 18px; overflow-x: auto;
+/* ---------- Navegación lateral derecha ----------
+   Antes era una barra horizontal debajo del topbar (.subnav); ahora vive
+   como un riel vertical a la derecha del contenido, con la sede activa
+   destacándose en "azul eléctrico" y sobresaliendo hacia el contenido para
+   que siempre quede claro en qué pestaña se está. */
+.app-body { flex: 1; display: flex; overflow: hidden; }
+
+.sidenav {
+  flex-shrink: 0; width: 190px; background: var(--surface); border-left: 1px solid var(--border);
+  display: flex; flex-direction: column; gap: 2px; padding: 14px 0; overflow-y: auto;
 }
-.subnav-item {
-  display: flex; align-items: center; gap: 7px; padding: 13px 16px; cursor: pointer;
-  color: var(--ink-secondary); font-size: 13px; font-weight: 600; white-space: nowrap;
-  border-bottom: 2px solid transparent; position: relative;
-  transition: color 0.15s var(--ease-out), border-color 0.15s var(--ease-out), background 0.15s var(--ease-out);
+.sidenav-item {
+  display: flex; align-items: center; gap: 10px; padding: 12px 18px; cursor: pointer;
+  color: var(--ink-secondary); font-size: 13.5px; font-weight: 600; white-space: nowrap;
+  border-left: 3px solid transparent; position: relative; border-radius: 10px 0 0 10px;
+  transition: color 0.16s var(--ease-out), background 0.16s var(--ease-out), transform 0.18s var(--ease-spring), box-shadow 0.18s var(--ease-out), border-color 0.16s var(--ease-out);
 }
-.subnav-item:hover { background: var(--surface-hover); color: var(--brand-blue-dark); }
-.subnav-item .subnav-icon { transition: transform 0.18s var(--ease-out); }
-.subnav-item:hover .subnav-icon { transform: translateY(-1px); }
-.subnav-item.active { color: var(--brand-blue-dark); border-bottom-color: var(--brand-blue); }
-.subnav-item.disabled { color: var(--ink-muted); cursor: default; opacity: 0.55; }
-.subnav-item.disabled:hover { background: none; color: var(--ink-muted); }
-.subnav-item.disabled:hover .subnav-icon { transform: none; }
-.subnav-soon-dot {
-  width: 6px; height: 6px; border-radius: 50%; background: var(--orange); margin-left: 2px; align-self: flex-start;
+.sidenav-item:hover { background: var(--surface-hover); color: var(--brand-blue-dark); }
+.sidenav-item .sidenav-icon { transition: transform 0.18s var(--ease-out); flex-shrink: 0; }
+.sidenav-item:hover .sidenav-icon { transform: scale(1.1); }
+.sidenav-item.active {
+  background: var(--electric-blue); color: #fff;
+  border-left-color: var(--electric-blue-dark);
+  transform: translateX(-10px);
+  box-shadow: -8px 5px 18px rgba(0, 128, 255, 0.38), var(--shadow-md);
+  z-index: 2;
+}
+.sidenav-item.active:hover { background: var(--electric-blue); color: #fff; }
+.sidenav-item.disabled { color: var(--ink-muted); cursor: default; opacity: 0.55; }
+.sidenav-item.disabled:hover { background: none; color: var(--ink-muted); }
+.sidenav-item.disabled:hover .sidenav-icon { transform: none; }
+.sidenav-soon-dot {
+  width: 6px; height: 6px; border-radius: 50%; background: var(--orange); margin-left: auto; flex-shrink: 0;
 }
 
 .content {
@@ -205,10 +223,12 @@ html.dark .content {
 .content-wide { max-width: 1400px; width: 100%; margin: 0 auto; box-sizing: border-box; }
 
 /* ---------- Responsive: móvil ----------
-   El shell (topbar/subnav/content) estaba pensado solo para escritorio: en
+   El shell (topbar/sidenav/content) estaba pensado solo para escritorio: en
    pantallas angostas el topbar no cabía (nombre de empresa se encimaba,
    "GERENCIA" se cortaba) y eso empujaba a toda la página a desbordar hacia
-   los costados. Acá se angosta lo decorativo/secundario primero. */
+   los costados. Acá se angosta lo decorativo/secundario primero. El riel
+   lateral, además, no cabe parado en una pantalla angosta: pasa a ser una
+   barra horizontal arriba del contenido, como antes de este rediseño. */
 @media (max-width: 640px) {
   .topbar { padding: 0 12px; gap: 10px; }
   .topbar-company { display: none; }
@@ -217,9 +237,16 @@ html.dark .content {
   .user-menu .user-name { display: none; }
   .user-dropdown { right: -8px; min-width: 220px; }
 
-  .subnav { padding: 0 8px; scrollbar-width: none; }
-  .subnav::-webkit-scrollbar { display: none; }
-  .subnav-item { padding: 12px 12px; font-size: 12.5px; }
+  .app-body { flex-direction: column; }
+  .sidenav {
+    order: -1; width: 100%; flex-direction: row; align-items: center;
+    border-left: none; border-bottom: 1px solid var(--border);
+    padding: 0 8px; gap: 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: none;
+  }
+  .sidenav::-webkit-scrollbar { display: none; }
+  .sidenav-item { padding: 12px 12px; font-size: 12.5px; border-left: none; border-radius: 10px; }
+  .sidenav-item.active { transform: translateY(-6px); box-shadow: 0 8px 16px rgba(0, 128, 255, 0.38), var(--shadow-md); }
+  .sidenav-soon-dot { margin-left: 4px; }
 
   .content { padding: 16px 14px; }
   .content-wide { max-width: 100%; }
@@ -996,7 +1023,7 @@ html.dark .qr-medio-guardado { background: rgba(74, 222, 128, 0.14); color: #4ad
 .qr-resumen-card strong { font-size: 19px; }
 
 @media print {
-  .topbar, .subnav, .app-bg-decor, .odin-fab, .odin-panel, .no-print { display: none !important; }
+  .topbar, .sidenav, .app-bg-decor, .odin-fab, .odin-panel, .no-print { display: none !important; }
   .content, .content-wide, .content-body { padding: 0 !important; margin: 0 !important; max-width: none !important; }
   .qr-print-poster { border: none; box-shadow: none; max-width: 100%; }
   .qr-print-item img { border: 1px solid #ccc; }
