@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api';
 import { useToast } from '../context/ToastContext';
+import { useAuth } from '../context/AuthContext';
 import { leerArchivoComoTextoCsv, descargarComoExcel } from '../utils/excelImport';
 
 const CARGA_MASIVA_COLUMNAS = ['codigo', 'nombre', 'categoria', 'unidad', 'precio_unitario', 'stock', 'stock_minimo', 'precio_compra', 'codigo_barras'];
@@ -69,10 +70,17 @@ const TIPOS_INVENTARIO = [
 export default function Products() {
   const toast = useToast();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [products, setProducts] = useState([]);
   const [categorias, setCategorias] = useState([]);
   const [q, setQ] = useState('');
   const [categoriaFiltro, setCategoriaFiltro] = useState('');
+  // Ver el stock sumado de todas las sedes en vez del de la sede activa —
+  // solo Gerencia/Supervisor (mismo criterio que el Tablero de Ventas,
+  // user.puede_ver_tablero). El backend ya manda ambos valores en cada fila
+  // (stock = sede activa, stock_total = todas las sedes), así que acá solo
+  // se decide cuál mostrar, sin pedir nada nuevo al servidor.
+  const [verTodasSedes, setVerTodasSedes] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [editingId, setEditingId] = useState(null);
   const [showForm, setShowForm] = useState(false);
@@ -330,12 +338,15 @@ export default function Products() {
           <label>Buscar producto por nombre o código</label>
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar producto por nombre o codigo.." />
         </div>
-        <div className="filter-field">
-          <label>Categoría</label>
-          <select defaultValue="principal">
-            <option value="principal">Miraflores</option>
-          </select>
-        </div>
+        {user?.puede_ver_tablero && (
+          <div className="filter-field">
+            <label>Sede</label>
+            <select value={verTodasSedes ? 'todas' : 'mi_sede'} onChange={(e) => setVerTodasSedes(e.target.value === 'todas')}>
+              <option value="mi_sede">Mi sede</option>
+              <option value="todas">Todas las sedes</option>
+            </select>
+          </div>
+        )}
         <div className="filter-field">
           <label>IGV</label>
           <select value={categoriaFiltro} onChange={(e) => setCategoriaFiltro(e.target.value)}>
@@ -371,14 +382,15 @@ export default function Products() {
                 <th>Proveedor</th>
                 <th>Favorito</th>
                 <th style={{ textAlign: 'right' }}>Mínimo</th>
-                <th style={{ textAlign: 'right' }}>Stock</th>
+                <th style={{ textAlign: 'right' }}>{verTodasSedes ? 'Stock (todas las sedes)' : 'Stock'}</th>
                 <th style={{ textAlign: 'right' }}>Precio</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
               {products.map((p) => {
-                const bajoMinimo = p.stock !== null && p.stock_minimo !== null && p.stock <= p.stock_minimo;
+                const stockMostrado = verTodasSedes ? p.stock_total : p.stock;
+                const bajoMinimo = stockMostrado !== null && p.stock_minimo !== null && stockMostrado <= p.stock_minimo;
                 const afectacionLabel = AFECTACIONES_IGV.find((o) => o.value === p.afectacion_igv)?.label || '—';
                 return (
                   <tr key={p.id}>
@@ -392,8 +404,8 @@ export default function Products() {
                     <td>{p.favorito ? <span className="badge badge-good">Sí</span> : 'No'}</td>
                     <td style={{ textAlign: 'right' }}>{p.stock_minimo ?? '—'}</td>
                     <td style={{ textAlign: 'right' }}>
-                      {p.stock === null ? '—' : (
-                        <span className={bajoMinimo ? 'badge badge-critical' : ''}>{p.stock}</span>
+                      {stockMostrado === null ? '—' : (
+                        <span className={bajoMinimo ? 'badge badge-critical' : ''}>{stockMostrado}</span>
                       )}
                     </td>
                     <td style={{ textAlign: 'right' }}>S/ {Number(p.precio_unitario).toFixed(2)}</td>
