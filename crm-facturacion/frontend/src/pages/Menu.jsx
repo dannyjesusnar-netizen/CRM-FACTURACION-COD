@@ -33,13 +33,13 @@ const ACTIVE_MODULES = [
   { to: '/productos', label: 'Inventario', Icon: Package, desc: 'Productos, stock y movimientos', modulo: 'inventario' },
   { to: '/dashboard', label: 'Dashboard', Icon: LayoutDashboard, desc: 'Indicadores generales', modulo: 'dashboard' },
   { to: '/reportes', label: 'Reportes', Icon: LineChart, desc: 'Reportes de ventas', modulo: 'reportes' },
+  { to: '/planilla', label: 'Planillas', Icon: Briefcase, desc: 'Apertura y cierre de caja por empleado', modulo: 'caja' },
 ];
 
 const COMING_SOON = [
   { label: 'Finanzas', Icon: Wallet },
   { label: 'Conciliación', Icon: Repeat },
   { label: 'Contabilidad', Icon: BookOpen },
-  { label: 'Planillas', Icon: Briefcase },
   { label: 'Asistencias', Icon: Clock },
   { label: 'Configuración', Icon: Settings },
   { label: 'QR Único', Icon: QrCode },
