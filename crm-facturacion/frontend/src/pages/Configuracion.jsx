@@ -1295,8 +1295,24 @@ export default function Configuracion() {
                   <button type="button" className="btn-primary" style={{ width: 'auto' }} onClick={handleModificarSucursalSerie} disabled={savingSucursalSerie || !sucursalSeleccionadaId}>
                     {savingSucursalSerie ? 'Guardando...' : 'Modificar Nombre y Dirección'}
                   </button>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    style={{ width: 'auto' }}
+                    onClick={() => {
+                      const alcanzoLibres = limiteSucursales?.libres != null && limiteSucursales.actual >= limiteSucursales.libres;
+                      if (alcanzoLibres) openNuevaSolicitudSede();
+                      else openNewSucursal();
+                    }}
+                  >
+                    + Agregar sede
+                  </button>
                 </div>
               </div>
+              <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -8 }}>
+                Cada sede emite documentos con su propia serie — actualiza aquí su dirección apenas cambie de local,
+                para que salga correctamente impresa en boletas, facturas y notas.
+              </p>
 
               <div className="filter-panel" style={{ alignItems: 'flex-end' }}>
                 <div className="filter-field">
