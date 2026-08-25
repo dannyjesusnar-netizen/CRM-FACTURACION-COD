@@ -13,28 +13,34 @@ function todayStr() {
   return new Date().toISOString().slice(0, 10);
 }
 
-// GET /api/caja?fecha=YYYY-MM-DD&moneda=PEN|USD&empleado_id=
+// GET /api/caja?fecha=YYYY-MM-DD&hasta=YYYY-MM-DD&moneda=PEN|USD&empleado_id=
 // El arqueo es un conteo de dinero físico/por método: nunca debe sumar soles
 // y dólares como si fueran la misma unidad. Si no se especifica moneda, se
 // asume PEN (igual que los caja_movimientos manuales, que siempre son en
 // soles) — para ver el arqueo en dólares hay que filtrar explícitamente.
+//
+// "hasta" es opcional — sin él, el arqueo es de un solo día (fecha), igual
+// que siempre. Con "hasta" (>= fecha), se suma el rango completo desde
+// "fecha" hasta "hasta" (ver buildResumen para el detalle del saldo inicial
+// en un rango).
 router.get('/', (req, res) => {
   const fecha = req.query.fecha || todayStr();
+  const hasta = req.query.hasta && req.query.hasta >= fecha ? req.query.hasta : fecha;
   const moneda = req.query.moneda === 'USD' ? 'USD' : 'PEN';
   const empleadoId = req.query.empleado_id ? Number(req.query.empleado_id) : null;
-  const resumen = buildResumen(fecha, req.sucursalId, { moneda, empleadoId });
+  const resumen = buildResumen(fecha, hasta, req.sucursalId, { moneda, empleadoId });
 
   let movSql = `SELECT cm.*, u.full_name AS usuario_nombre FROM caja_movimientos cm
      LEFT JOIN users u ON u.id = cm.created_by
-     WHERE cm.fecha = ? AND cm.sucursal_id = ?`;
-  const movParams = [fecha, req.sucursalId];
+     WHERE cm.fecha BETWEEN ? AND ? AND cm.sucursal_id = ?`;
+  const movParams = [fecha, hasta, req.sucursalId];
   if (empleadoId) { movSql += ' AND cm.created_by = ?'; movParams.push(empleadoId); }
   if (moneda === 'USD') { movSql += ' AND 0 = 1'; } // movimientos manuales siempre son en soles
   movSql += ' ORDER BY cm.id DESC';
   const movimientos = db.prepare(movSql).all(...movParams);
 
   const totalGeneral = round2(resumen.reduce((s, r) => s + r.saldo_final, 0));
-  res.json({ fecha, moneda, resumen, movimientos, totalGeneral });
+  res.json({ fecha, hasta, moneda, resumen, movimientos, totalGeneral });
 });
 
 // GET /api/caja/empleados -> empleados visibles en la sede activa, para el filtro "Cuenta"

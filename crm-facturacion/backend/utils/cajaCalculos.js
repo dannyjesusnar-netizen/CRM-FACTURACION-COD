@@ -9,7 +9,8 @@ function round2(n) {
 
 // Ventas cobradas directamente (no abonado) con este método: se leen tal
 // cual de invoices.forma_pago, no de caja_movimientos — es la fuente de
-// verdad de "cuánto se vendió hoy con Yape/Efectivo/POS/...".
+// verdad de "cuánto se vendió con Yape/Efectivo/POS/..." en el rango
+// desde-hasta (un solo día cuando desde === hasta).
 // moneda/empleadoId son opcionales: acotan a una moneda (invoices.moneda) y/o
 // a quien registró la venta (invoices.created_by).
 //
@@ -17,18 +18,18 @@ function round2(n) {
 // método también cuentan aquí — solo las que NO son "abonado", porque esas
 // se cobran vía caja_movimientos categoria 'cuentas_cobrar' (ver
 // movimientosSum), no como venta directa.
-function ventasAuto(fecha, codigoMetodo, sucursalId, moneda, empleadoId) {
+function ventasAuto(desde, hasta, codigoMetodo, sucursalId, moneda, empleadoId) {
   let sql = `SELECT COALESCE(SUM(total), 0) AS total FROM invoices
-     WHERE date(fecha_emision) = date(?) AND forma_pago = ? AND estado = 'emitido'
+     WHERE date(fecha_emision) BETWEEN date(?) AND date(?) AND forma_pago = ? AND estado = 'emitido'
        AND tipo_comprobante != 'nota_credito' AND sucursal_id = ?`;
-  const params = [fecha, codigoMetodo, sucursalId];
+  const params = [desde, hasta, codigoMetodo, sucursalId];
   if (moneda) { sql += ' AND moneda = ?'; params.push(moneda); }
   if (empleadoId) { sql += ' AND created_by = ?'; params.push(empleadoId); }
   const totalInvoices = db.prepare(sql).get(...params).total;
 
   let sqlNv = `SELECT COALESCE(SUM(total), 0) AS total FROM notas_venta
-     WHERE date(fecha_emision) = date(?) AND forma_pago = ? AND estado = 'emitido' AND sucursal_id = ?`;
-  const paramsNv = [fecha, codigoMetodo, sucursalId];
+     WHERE date(fecha_emision) BETWEEN date(?) AND date(?) AND forma_pago = ? AND estado = 'emitido' AND sucursal_id = ?`;
+  const paramsNv = [desde, hasta, codigoMetodo, sucursalId];
   if (moneda) { sqlNv += ' AND moneda = ?'; paramsNv.push(moneda); }
   if (empleadoId) { sqlNv += ' AND created_by = ?'; paramsNv.push(empleadoId); }
   const totalNotasVenta = db.prepare(sqlNv).get(...paramsNv).total;
@@ -45,25 +46,30 @@ function ventasAuto(fecha, codigoMetodo, sucursalId, moneda, empleadoId) {
 // cobros) se excluyen del arqueo si ese comprobante terminó anulado — de lo
 // contrario una venta anulada sigue apareciendo como dinero cobrado en Caja
 // para siempre.
-function movimientosSum(fecha, tipo, medio, categoria, sucursalId, moneda, empleadoId) {
+function movimientosSum(desde, hasta, tipo, medio, categoria, sucursalId, moneda, empleadoId) {
   if (moneda === 'USD') return 0;
   let sql = `SELECT COALESCE(SUM(cm.monto), 0) AS total FROM caja_movimientos cm
      LEFT JOIN invoices i ON i.id = cm.invoice_id
      LEFT JOIN notas_venta nv ON nv.id = cm.nota_venta_id
-     WHERE cm.fecha = ? AND cm.tipo = ? AND cm.medio = ? AND cm.categoria = ? AND cm.sucursal_id = ?
+     WHERE cm.fecha BETWEEN ? AND ? AND cm.tipo = ? AND cm.medio = ? AND cm.categoria = ? AND cm.sucursal_id = ?
        AND (cm.invoice_id IS NULL OR i.estado != 'anulado')
        AND (cm.nota_venta_id IS NULL OR nv.estado != 'anulado')`;
-  const params = [fecha, tipo, medio, categoria, sucursalId];
+  const params = [desde, hasta, tipo, medio, categoria, sucursalId];
   if (empleadoId) { sql += ' AND cm.created_by = ?'; params.push(empleadoId); }
   const row = db.prepare(sql).get(...params);
   return round2(row.total);
 }
 
-// Arqueo del día, uno por cada método de pago activo (Efectivo, Yape, Plin,
-// POS, ... según lo que Gerencia tenga configurado en Configuración ->
-// Métodos de pago). Efectivo es el único con "saldo inicial" real (billetes
-// físicos en caja); el resto no arrastra saldo de un día a otro.
-function buildResumen(fecha, sucursalId, { moneda, empleadoId } = {}) {
+// Arqueo del período (uno por cada método de pago activo: Efectivo, Yape,
+// Plin, POS, ... según lo que Gerencia tenga configurado en Configuración ->
+// Métodos de pago). desde/hasta delimitan el rango — para el arqueo de un
+// solo día se llama con desde === hasta, igual que siempre.
+//
+// Efectivo es el único con "saldo inicial" real (billetes físicos en caja):
+// para un rango se toma el saldo con el que abrió el primer día (desde), y
+// saldo_final = ese saldo_inicial + ingresos del rango completo - egresos
+// del rango completo — o sea, cuánto quedaría en caja al cierre de "hasta".
+function buildResumen(desde, hasta, sucursalId, { moneda, empleadoId } = {}) {
   const metodos = db.prepare('SELECT * FROM metodos_pago WHERE activo = 1 ORDER BY orden ASC, id ASC').all();
   return metodos.map((m) => {
     const ingresos = {
@@ -71,30 +77,30 @@ function buildResumen(fecha, sucursalId, { moneda, empleadoId } = {}) {
       // corresponde a este método en ventas con "pago mixto" (que se
       // registran como caja_movimientos categoria 'ventas', uno por medio).
       ventas: round2(
-        ventasAuto(fecha, m.codigo, sucursalId, moneda, empleadoId)
-        + movimientosSum(fecha, 'ingreso', m.codigo, 'ventas', sucursalId, moneda, empleadoId)
+        ventasAuto(desde, hasta, m.codigo, sucursalId, moneda, empleadoId)
+        + movimientosSum(desde, hasta, 'ingreso', m.codigo, 'ventas', sucursalId, moneda, empleadoId)
       ),
-      cuentas_cobrar: movimientosSum(fecha, 'ingreso', m.codigo, 'cuentas_cobrar', sucursalId, moneda, empleadoId),
-      transferencia: movimientosSum(fecha, 'ingreso', m.codigo, 'transferencia', sucursalId, moneda, empleadoId),
-      otros: movimientosSum(fecha, 'ingreso', m.codigo, 'otros', sucursalId, moneda, empleadoId),
+      cuentas_cobrar: movimientosSum(desde, hasta, 'ingreso', m.codigo, 'cuentas_cobrar', sucursalId, moneda, empleadoId),
+      transferencia: movimientosSum(desde, hasta, 'ingreso', m.codigo, 'transferencia', sucursalId, moneda, empleadoId),
+      otros: movimientosSum(desde, hasta, 'ingreso', m.codigo, 'otros', sucursalId, moneda, empleadoId),
     };
     ingresos.total = round2(INGRESO_CATS.reduce((s, c) => s + ingresos[c], 0));
 
     const egresos = {
-      compras: movimientosSum(fecha, 'egreso', m.codigo, 'compras', sucursalId, moneda, empleadoId),
-      cuentas_pagar: movimientosSum(fecha, 'egreso', m.codigo, 'cuentas_pagar', sucursalId, moneda, empleadoId),
-      transferencia: movimientosSum(fecha, 'egreso', m.codigo, 'transferencia', sucursalId, moneda, empleadoId),
-      otros: movimientosSum(fecha, 'egreso', m.codigo, 'otros', sucursalId, moneda, empleadoId),
+      compras: movimientosSum(desde, hasta, 'egreso', m.codigo, 'compras', sucursalId, moneda, empleadoId),
+      cuentas_pagar: movimientosSum(desde, hasta, 'egreso', m.codigo, 'cuentas_pagar', sucursalId, moneda, empleadoId),
+      transferencia: movimientosSum(desde, hasta, 'egreso', m.codigo, 'transferencia', sucursalId, moneda, empleadoId),
+      otros: movimientosSum(desde, hasta, 'egreso', m.codigo, 'otros', sucursalId, moneda, empleadoId),
     };
     egresos.total = round2(EGRESO_CATS.reduce((s, c) => s + egresos[c], 0));
 
     // El saldo inicial (billetes físicos con los que abrió la caja) solo
     // existe para Efectivo en soles, y solo tiene sentido sin más filtros
-    // activos — es un monto real de un día puntual, no algo que se pueda
-    // "acotar" por empleado, y no existe versión en dólares.
+    // activos — es un monto real del primer día del rango, no algo que se
+    // pueda "acotar" por empleado, y no existe versión en dólares.
     let saldo_inicial = 0;
     if (m.codigo === 'efectivo' && moneda === 'PEN' && !empleadoId) {
-      const saldoRow = db.prepare('SELECT saldo_inicial_efectivo FROM caja_saldos_iniciales WHERE fecha = ? AND sucursal_id = ?').get(fecha, sucursalId);
+      const saldoRow = db.prepare('SELECT saldo_inicial_efectivo FROM caja_saldos_iniciales WHERE fecha = ? AND sucursal_id = ?').get(desde, sucursalId);
       saldo_inicial = saldoRow ? saldoRow.saldo_inicial_efectivo : 0;
     }
     const saldo_final = round2(saldo_inicial + ingresos.total - egresos.total);

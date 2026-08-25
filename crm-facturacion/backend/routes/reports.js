@@ -201,7 +201,7 @@ router.get('/cierre-caja', requireAlgunPermiso(['caja', 'reportes']), (req, res)
   const empleadoFiltro = empleadoId ? 'AND created_by = ?' : '';
   const baseParams = empleadoId ? [fecha, req.sucursalId, empleadoId] : [fecha, req.sucursalId];
 
-  const efectivo = buildResumen(fecha, req.sucursalId, { moneda: 'PEN', empleadoId }).find((r) => r.codigo === 'efectivo') || null;
+  const efectivo = buildResumen(fecha, fecha, req.sucursalId, { moneda: 'PEN', empleadoId }).find((r) => r.codigo === 'efectivo') || null;
 
   // Boleta / Factura (invoices) + Nota de Venta Interna (tabla notas_venta,
   // separada desde que dejó de ser "boleta con forma_pago=abonado") — solo

@@ -18,6 +18,7 @@ export default function Caja() {
   const toast = useToast();
   const navigate = useNavigate();
   const [fecha, setFecha] = useState(todayStr());
+  const [hasta, setHasta] = useState(todayStr());
   const [empleadoId, setEmpleadoId] = useState('');
   const [moneda, setMoneda] = useState('');
   const [empleados, setEmpleados] = useState([]);
@@ -34,10 +35,15 @@ export default function Caja() {
   const [movDescripcion, setMovDescripcion] = useState('');
   const [error, setError] = useState('');
 
+  // Rango activo: cuando "hasta" es distinto de "fecha" (desde), el arqueo
+  // suma varios días — en ese modo se deshabilita registrar movimientos y
+  // editar el saldo inicial, porque esas acciones necesitan un día puntual.
+  const esRango = hasta > fecha;
+
   function load() {
     setLoading(true);
     setLoadError('');
-    const params = { fecha };
+    const params = { fecha, hasta: hasta < fecha ? fecha : hasta };
     if (empleadoId) params.empleado_id = empleadoId;
     if (moneda) params.moneda = moneda;
     api.get('/caja', { params })
@@ -46,7 +52,7 @@ export default function Caja() {
       .finally(() => setLoading(false));
   }
 
-  useEffect(() => { load(); }, [fecha, empleadoId, moneda]);
+  useEffect(() => { load(); }, [fecha, hasta, empleadoId, moneda]);
   useEffect(() => { api.get('/caja/empleados').then((res) => setEmpleados(res.data)); }, []);
 
   const metodoPorCodigo = useMemo(() => {
@@ -56,6 +62,7 @@ export default function Caja() {
   }, [data]);
 
   function openSaldoForm() {
+    if (esRango) return;
     const efectivo = metodoPorCodigo.efectivo;
     setSaldoInput(efectivo?.saldo_inicial ?? 0);
     setShowSaldoForm(true);
@@ -74,6 +81,7 @@ export default function Caja() {
   }
 
   function openMovForm(tipo, metodo, categoria) {
+    if (esRango) return;
     setMovContext({ tipo, medio: metodo.codigo, categoria, label: `${(tipo === 'ingreso' ? INGRESO_LABELS : EGRESO_LABELS)[categoria]} (${metodo.nombre})`, color: metodo.color, icono: metodo.icono });
     setMovMonto('');
     setMovDescripcion('');
@@ -126,7 +134,7 @@ export default function Caja() {
         <h1 className="page-title">Caja y Bancos</h1>
         {data && (
           <div className="caja-total-general">
-            <span>Total del día</span>
+            <span>{esRango ? 'Total del período' : 'Total del día'}</span>
             <strong>S/ {fmt(data.totalGeneral)}</strong>
           </div>
         )}
@@ -138,8 +146,12 @@ export default function Caja() {
 
       <div className="caja-date-bar filter-panel">
         <div className="filter-field">
-          <label>Fecha</label>
+          <label>Desde</label>
           <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} />
+        </div>
+        <div className="filter-field">
+          <label>Hasta</label>
+          <input type="date" value={hasta} min={fecha} onChange={(e) => setHasta(e.target.value)} />
         </div>
         <div className="filter-field">
           <label>Cuenta</label>
@@ -162,6 +174,11 @@ export default function Caja() {
           Con filtros activos, el saldo inicial de Efectivo no se muestra (es un monto físico del día completo, no se puede acotar por empleado o moneda) — igual verás los ingresos y egresos que sí calzan con el filtro.
         </p>
       )}
+      {esRango && (
+        <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -12, marginBottom: 16 }}>
+          Viendo un rango de fechas ({fecha} a {hasta}): el saldo inicial de Efectivo es el del primer día del rango, y registrar movimientos o editar el saldo inicial requiere elegir un solo día.
+        </p>
+      )}
 
       {loadError ? (
         <div className="panel">
@@ -181,7 +198,7 @@ export default function Caja() {
                   {m.codigo === 'efectivo' && (
                     <span className="caja-metodo-saldo-inicial">
                       Inicial S/ {fmt(m.saldo_inicial)}
-                      <button className="caja-banner-edit" title="Editar saldo inicial" onClick={openSaldoForm}>
+                      <button className="caja-banner-edit" title={esRango ? 'Elige un solo día para editar el saldo inicial' : 'Editar saldo inicial'} disabled={esRango} onClick={openSaldoForm}>
                         <Pencil size={12} />
                       </button>
                     </span>
@@ -206,7 +223,7 @@ export default function Caja() {
                       {cat === 'ventas' ? (
                         <span className="caja-row-auto">auto</span>
                       ) : (
-                        <button className="caja-row-add" title="Registrar ingreso" onClick={() => openMovForm('ingreso', m, cat)}>
+                        <button className="caja-row-add" title={esRango ? 'Elige un solo día para registrar un ingreso' : 'Registrar ingreso'} disabled={esRango} onClick={() => openMovForm('ingreso', m, cat)}>
                           <Plus size={13} />
                         </button>
                       )}
@@ -225,7 +242,7 @@ export default function Caja() {
                     <span className="caja-row-label">{EGRESO_LABELS[cat]}</span>
                     <span className="caja-row-right">
                       <span className="caja-row-amount">{fmt(m.egresos[cat])}</span>
-                      <button className="caja-row-add" title="Registrar egreso" onClick={() => openMovForm('egreso', m, cat)}>
+                      <button className="caja-row-add" title={esRango ? 'Elige un solo día para registrar un egreso' : 'Registrar egreso'} disabled={esRango} onClick={() => openMovForm('egreso', m, cat)}>
                         <Plus size={13} />
                       </button>
                     </span>
@@ -242,7 +259,7 @@ export default function Caja() {
 
       {data && (
         <div className="panel">
-          <h3>Movimientos manuales del día</h3>
+          <h3>{esRango ? 'Movimientos manuales del período' : 'Movimientos manuales del día'}</h3>
           <div className="table-scroll">
             <table className="data-table caja-mov-table">
               <thead>
@@ -272,7 +289,7 @@ export default function Caja() {
                   );
                 })}
                 {data.movimientos.length === 0 && (
-                  <tr><td colSpan={7} className="empty-row">No hay movimientos manuales registrados para esta fecha.</td></tr>
+                  <tr><td colSpan={7} className="empty-row">No hay movimientos manuales registrados para {esRango ? 'este período' : 'esta fecha'}.</td></tr>
                 )}
               </tbody>
             </table>
