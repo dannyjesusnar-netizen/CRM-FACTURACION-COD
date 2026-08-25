@@ -717,8 +717,11 @@ html.dark .btn-export { color: #04231e; }
 /* ---------- Dashboard: Tablero de Ventas — franja de color por panel ---------- */
 .panel-banda { position: relative; margin: -20px -22px 16px; padding: 12px 22px; border-radius: 12px 12px 0 0; text-align: center; }
 .panel-banda h3 { margin: 0; color: #fff; text-align: center; }
-.panel-banda-copy-btn {
+.panel-banda-actions {
   position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+  display: flex; align-items: center; gap: 6px;
+}
+.panel-banda-copy-btn {
   display: flex; align-items: center; justify-content: center;
   width: 26px; height: 26px; padding: 0; border: none; border-radius: 6px;
   background: rgba(255, 255, 255, 0.2); color: #fff; cursor: pointer;
