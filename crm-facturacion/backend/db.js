@@ -384,6 +384,17 @@ CREATE TABLE IF NOT EXISTS tipos_compra (
   created_at TEXT DEFAULT (datetime('now'))
 );
 
+-- Tipo de inventario de un producto (Mercaderías, Materia Prima, Producto
+-- Terminado, etc.) — antes era una lista fija en el frontend (products.js
+-- guardaba lo que le llegara como texto libre, sin validarlo); ahora es un
+-- catálogo editable, mismo criterio que tipos_compra.
+CREATE TABLE IF NOT EXISTS tipos_inventario (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  nombre TEXT NOT NULL UNIQUE,
+  activo INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS cotizaciones (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   serie TEXT NOT NULL DEFAULT 'CL02',
@@ -1174,6 +1185,28 @@ CREATE TABLE IF NOT EXISTS movimiento_canales (
     insertTipoCompra.run(CATEGORIA_DEFAULT, 'Activo Fijo', 'Activo Fijo', 'Bienes de capital / activo fijo', 'centro_costo');
     insertTipoCompra.run(CATEGORIA_DEFAULT, 'Envase/Embalaje', 'Envase y Embalaje', 'Envases y embalajes', 'ingreso_inventario');
     insertTipoCompra.run(CATEGORIA_DEFAULT, 'Gastos Varios', 'Gastos Varios', 'Otros gastos no incluidos en el numeral 4', 'centro_costo');
+  }
+
+  // Tipos de inventario: se siembran con los mismos 5 que el formulario de
+  // Productos venía usando hardcodeados, para no romper productos ya
+  // registrados. Editable desde Inventario -> Tipos de Inventario.
+  const tipoInventarioCount = db.prepare('SELECT COUNT(*) AS n FROM tipos_inventario').get().n;
+  if (tipoInventarioCount === 0) {
+    const insertTipoInventario = db.prepare('INSERT INTO tipos_inventario (nombre) VALUES (?)');
+    ['MERCADERÍAS', 'MATERIA PRIMA', 'PRODUCTO TERMINADO', 'ACTIVO FIJO', 'SUMINISTROS'].forEach((nombre) => insertTipoInventario.run(nombre));
+  }
+  // Migración: productos ya guardados con los códigos viejos (sin tilde ni
+  // espacio, ej. "MATERIA_PRIMA") pasan al nombre legible del catálogo
+  // nuevo, para que el selector de Productos los reconozca de inmediato.
+  const RENOMBRES_TIPO_INVENTARIO = {
+    MERCADERIAS: 'MERCADERÍAS',
+    MATERIA_PRIMA: 'MATERIA PRIMA',
+    PRODUCTO_TERMINADO: 'PRODUCTO TERMINADO',
+    ACTIVO_FIJO: 'ACTIVO FIJO',
+  };
+  const renombrarTipoInventario = db.prepare('UPDATE products SET tipo_inventario = ? WHERE tipo_inventario = ?');
+  for (const [viejo, nuevo] of Object.entries(RENOMBRES_TIPO_INVENTARIO)) {
+    renombrarTipoInventario.run(nuevo, viejo);
   }
 
   if (demo) {

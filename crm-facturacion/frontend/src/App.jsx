@@ -31,6 +31,7 @@ import GuiaRemitente from './pages/GuiaRemitente';
 import Compras from './pages/Compras';
 import RecepcionCompras from './pages/RecepcionCompras';
 import TiposCompra from './pages/TiposCompra';
+import TiposInventario from './pages/TiposInventario';
 import Reports from './pages/Reports';
 import Configuracion from './pages/Configuracion';
 import CambiarContrasena from './pages/CambiarContrasena';
@@ -72,6 +73,7 @@ export default function App() {
             <Route path="/dashboard" element={<RequirePermiso modulo="dashboard"><Dashboard /></RequirePermiso>} />
             <Route path="/clientes" element={<RequirePermiso modulo="clientes"><Clients /></RequirePermiso>} />
             <Route path="/productos" element={<RequirePermiso modulo="inventario"><Products /></RequirePermiso>} />
+            <Route path="/productos/tipos-inventario" element={<RequirePermiso modulo="inventario"><TiposInventario /></RequirePermiso>} />
             <Route path="/promociones" element={<RequirePermiso modulo="inventario"><Promociones /></RequirePermiso>} />
             <Route path="/movimientos" element={<RequirePermiso modulo="inventario"><Movements /></RequirePermiso>} />
             <Route path="/movimientos/fotos" element={<RequirePermiso modulo="inventario"><CargarStockFotos /></RequirePermiso>} />

@@ -50,6 +50,7 @@ const ACCIONES_POR_MODULO = {
   inventario: [
     { key: 'productos', label: 'Crear / editar productos', grupo: 'Catálogo' },
     { key: 'lotes', label: 'Lotes y vencimientos', grupo: 'Catálogo' },
+    { key: 'tipos_inventario', label: 'Gestionar tipos de inventario', grupo: 'Catálogo' },
     { key: 'ajustes', label: 'Ajustes de stock', grupo: 'Movimientos' },
     { key: 'conteo', label: 'Conteo de inventario', grupo: 'Movimientos' },
     { key: 'importacion', label: 'Importación masiva', grupo: 'Movimientos' },
