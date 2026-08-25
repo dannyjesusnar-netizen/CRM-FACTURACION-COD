@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Building2, Users as UsersIcon, Store, ShieldCheck, FileText, Wallet, Hash, Percent,
-  Upload, Boxes, PackagePlus, RefreshCw, UserPlus, Tags, ArrowLeftRight,
+  Upload, Boxes, PackagePlus, RefreshCw, UserPlus, Tags, ArrowLeftRight, AlertTriangle,
 } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
@@ -258,6 +258,9 @@ export default function Configuracion() {
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyUserForm());
   const [errorForm, setErrorForm] = useState('');
+
+  // --- Zona de peligro: borrar datos de prueba ---
+  const [borrandoDatos, setBorrandoDatos] = useState(false);
 
   // --- Entrenadores y Supervisores operativos (registro sin usuario) ---
   // Solo alimentan el Tablero de Ventas (ranking + "Atribuir venta a") — no
@@ -580,6 +583,32 @@ export default function Configuracion() {
       toast.success('Canal eliminado.');
     } catch (err) {
       toast.error(err.response?.data?.error || 'No se pudo eliminar el canal.');
+    }
+  }
+
+  async function handleBorrarDatosPrueba() {
+    const primeraConfirmacion = window.confirm(
+      '¿Borrar TODOS los datos de prueba?\n\n' +
+      'Esto elimina para siempre: clientes, productos, ventas, boletas/facturas, notas de venta, ' +
+      'compras, proveedores, movimientos de stock, lotes, traslados, producción, cotizaciones, ' +
+      'guías de remisión, promociones, mensajes al soporte, pagos QR y todo lo registrado en Caja.\n\n' +
+      'Se mantienen tus empleados, sedes, roles, métodos de pago y demás configuración.\n\n' +
+      'Esta acción NO se puede deshacer.'
+    );
+    if (!primeraConfirmacion) return;
+    const texto = window.prompt('Para confirmar, escribe BORRAR en mayúsculas:');
+    if (texto !== 'BORRAR') {
+      if (texto !== null) toast.error('Texto de confirmación incorrecto. No se borró nada.');
+      return;
+    }
+    setBorrandoDatos(true);
+    try {
+      await api.post('/empresa/borrar-datos-prueba', { confirmar: 'BORRAR' });
+      toast.success('Datos de prueba eliminados. El CRM quedó listo para operar con datos reales.');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'No se pudo completar el borrado.');
+    } finally {
+      setBorrandoDatos(false);
     }
   }
 
@@ -1162,6 +1191,11 @@ export default function Configuracion() {
           <div className={'reports-sidebar-item' + (seccion === 'importador' ? ' active' : '')} onClick={() => setSeccion('importador')} role="button" tabIndex={0}>
             <Upload size={16} /><span>Importador de Datos Masivos</span>
           </div>
+          {user?.role === 'gerencia' && (
+            <div className={'reports-sidebar-item' + (seccion === 'zona_peligro' ? ' active' : '')} onClick={() => setSeccion('zona_peligro')} role="button" tabIndex={0} style={{ color: 'var(--critical, #dc2626)' }}>
+              <AlertTriangle size={16} /><span>Zona de peligro</span>
+            </div>
+          )}
         </div>
 
         <div className="reports-content">
@@ -1954,6 +1988,30 @@ export default function Configuracion() {
                     </div>
                   </div>
                 ))}
+              </div>
+            </>
+          )}
+
+          {seccion === 'zona_peligro' && user?.role === 'gerencia' && (
+            <>
+              <h3 style={{ marginTop: 0, color: 'var(--critical, #dc2626)' }}>Zona de peligro</h3>
+              <div style={{ border: '1px solid var(--critical, #dc2626)', borderRadius: 8, padding: 16, background: 'rgba(220,38,38,0.06)' }}>
+                <strong>Borrar datos de prueba</strong>
+                <p style={{ fontSize: 12, color: 'var(--ink-muted)' }}>
+                  Elimina todos los clientes, productos, ventas, compras, proveedores, movimientos de stock, caja,
+                  cotizaciones, guías, promociones y demás datos de ejemplo con los que arrancó el CRM, para dejarlo
+                  listo con datos reales. Tus empleados, sedes, roles y configuración se mantienen intactos. Esta
+                  acción no se puede deshacer.
+                </p>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  style={{ width: 'auto', background: 'var(--critical, #dc2626)' }}
+                  disabled={borrandoDatos}
+                  onClick={handleBorrarDatosPrueba}
+                >
+                  {borrandoDatos ? 'Borrando...' : 'Borrar datos de prueba'}
+                </button>
               </div>
             </>
           )}

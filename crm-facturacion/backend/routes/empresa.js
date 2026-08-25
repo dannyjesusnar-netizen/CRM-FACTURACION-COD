@@ -147,4 +147,52 @@ router.get('/comprobante-preview', requireGerencia, async (req, res) => {
   doc.end();
 });
 
+// POST /api/empresa/borrar-datos-prueba -> vacía todas las tablas
+// transaccionales/de ejemplo (ventas, clientes, productos, compras, caja,
+// etc.) para dejar la instancia lista para operar con datos reales. NO
+// toca usuarios, sedes, catálogos base (métodos de pago, tipos de compra,
+// descuentos, canales de movimiento, roles/permisos) ni empresa_config —
+// solo resetea el correlativo de cada serie de documento a 1. Requiere
+// confirmar explícitamente el texto "BORRAR" además de ser Gerencia, por
+// tratarse de una operación irreversible.
+const TABLAS_DATOS_TRANSACCIONALES = [
+  'invoice_item_lotes', 'invoice_items', 'cobros',
+  'nota_venta_cobros', 'nota_venta_items', 'notas_venta',
+  'invoices', 'stock_movements', 'lotes',
+  'caja_saldos_iniciales', 'caja_movimientos', 'caja_turnos',
+  'solicitudes_sede', 'sucursal_stock',
+  'traslado_items', 'traslados',
+  'receta_items', 'recetas', 'producciones', 'equivalencias',
+  'purchase_items', 'purchases', 'purchase_order_items', 'purchase_orders', 'suppliers',
+  'cotizacion_items', 'cotizaciones',
+  'guia_items', 'guias_remitentes',
+  'mensajes_soporte', 'pagos_qr',
+  'promocion_items', 'promociones',
+  'metas_venta_sede',
+  'clients', 'products',
+];
+
+router.post('/borrar-datos-prueba', requireGerencia, (req, res) => {
+  if (req.body?.confirmar !== 'BORRAR') {
+    return res.status(400).json({ error: 'Confirmación requerida. Envía { "confirmar": "BORRAR" } para continuar.' });
+  }
+  const borrarTodo = db.transaction(() => {
+    for (const tabla of TABLAS_DATOS_TRANSACCIONALES) {
+      db.prepare(`DELETE FROM ${tabla}`).run();
+    }
+    db.prepare('UPDATE series_config SET siguiente_numero = 1').run();
+    // "CLIENTES VARIOS" es el cliente genérico universal para ventas sin
+    // datos de cliente — initSchema lo siembra siempre, se repone acá igual.
+    db.prepare('INSERT INTO clients (tipo_documento, numero_documento, nombre) VALUES (?, ?, ?)')
+      .run('DNI', '10000000', 'CLIENTES VARIOS');
+  });
+  db.pragma('foreign_keys = OFF');
+  try {
+    borrarTodo();
+  } finally {
+    db.pragma('foreign_keys = ON');
+  }
+  res.json({ ok: true });
+});
+
 module.exports = router;
