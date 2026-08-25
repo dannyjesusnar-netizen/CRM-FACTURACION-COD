@@ -127,12 +127,18 @@ export default function Promociones() {
     }
   }
 
+  // Si el producto ya está en el combo, volver a agregarlo suma 1 a su
+  // cantidad en vez de bloquear — así "2 creatinas" se logra buscando y
+  // agregando "Creatina" dos veces, igual que el resto de la app (o
+  // escribiendo la cantidad directamente en la columna Cantidad).
   function addProductoCombo(p) {
-    if (comboForm.items.some((it) => it.product_id === p.id)) {
-      toast.info('Ese producto ya está en el combo.');
-      return;
-    }
-    setComboForm((f) => ({ ...f, items: [...f.items, { product_id: p.id, nombre: p.nombre, precio_unitario: p.precio_unitario, cantidad: 1 }] }));
+    setComboForm((f) => {
+      const idx = f.items.findIndex((it) => it.product_id === p.id);
+      if (idx !== -1) {
+        return { ...f, items: f.items.map((it, i) => (i === idx ? { ...it, cantidad: it.cantidad + 1 } : it)) };
+      }
+      return { ...f, items: [...f.items, { product_id: p.id, nombre: p.nombre, precio_unitario: p.precio_unitario, cantidad: 1 }] };
+    });
   }
 
   function updateItemCombo(idx, cantidad) {
