@@ -323,10 +323,6 @@ export default function Products() {
         <button className="ventas-action-btn" onClick={() => navigate('/promociones')}>Promociones</button>
         <button className="ventas-action-btn" onClick={() => navigate('/movimientos')}>Movimientos</button>
         <button className="ventas-action-btn" onClick={() => navigate('/lotes')}>Lotes y Series</button>
-        <button className="ventas-action-btn" onClick={handleExportar}>Lista de Precios</button>
-        <button className="ventas-action-btn" onClick={() => navigate('/traslados')}>Traslados</button>
-        <button className="ventas-action-btn" onClick={() => navigate('/produccion')}>Producción</button>
-        <button className="ventas-action-btn disabled" title="Próximamente" onClick={() => toast.info('Precio por márgenes estará disponible próximamente.')}>Precio por Márgenes</button>
       </div>
 
       <form className="filter-panel" onSubmit={handleSearch}>
