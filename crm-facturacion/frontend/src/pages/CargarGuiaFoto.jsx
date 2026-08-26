@@ -4,21 +4,43 @@ import { ArrowLeft, Camera, Trash2, Plus } from 'lucide-react';
 import api from '../api';
 import { useToast } from '../context/ToastContext';
 
-// Igual que en Cargar Stock por Fotos, pero con más ancho — una guía
-// completa tiene mucho más texto que una sola etiqueta, así que comprimir
-// demasiado la foto le quita al OCR la nitidez que necesita para separar
-// las líneas de la tabla.
-function comprimirImagen(file, maxWidth = 1800, calidad = 0.8) {
+// A diferencia de una foto de etiqueta (Cargar Stock por Fotos), acá suele
+// llegar una CAPTURA DE PANTALLA de la guía completa (p.ej. el PDF de una
+// Guía de Remisión Electrónica abierto en el celular), con la tabla de
+// ítems en letra chica. La tentación es agrandar la imagen antes del OCR,
+// pero se probó exactamente eso contra una guía real y dio PEOR resultado:
+// escalar una imagen ya de por sí chica no agrega información, solo agranda
+// el borroneo de la interpolación — Tesseract leyó mejor la foto tal cual
+// (o apenas con contraste) que agrandada 2-3x. Por eso acá solo se REDUCE si
+// la foto es más grande de lo necesario (nunca se agranda) y se le sube el
+// contraste, que sí ayudó a separar el texto chico del fondo sin introducir
+// ese borroneo.
+function prepararImagenParaOcr(file, anchoMaximo = 2400, calidad = 0.92) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {
       const img = new Image();
       img.onload = () => {
-        const escala = Math.min(1, maxWidth / img.width);
+        const escala = Math.min(1, anchoMaximo / img.width);
         const canvas = document.createElement('canvas');
         canvas.width = Math.round(img.width * escala);
         canvas.height = Math.round(img.height * escala);
-        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        const ctx = canvas.getContext('2d');
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+        const datos = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const px = datos.data;
+        for (let i = 0; i < px.length; i += 4) {
+          const gris = 0.3 * px[i] + 0.59 * px[i + 1] + 0.11 * px[i + 2];
+          // Aleja el gris de 128 hacia 0/255 — más blanco y negro, menos gris
+          // intermedio — sin llegar a binarizar del todo (perdería trazos
+          // finos de letra chica).
+          const contraste = Math.min(255, Math.max(0, (gris - 128) * 1.6 + 128));
+          px[i] = px[i + 1] = px[i + 2] = contraste;
+        }
+        ctx.putImageData(datos, 0, 0);
+
         resolve(canvas.toDataURL('image/jpeg', calidad));
       };
       img.onerror = () => reject(new Error('No se pudo leer la imagen.'));
@@ -54,7 +76,7 @@ export default function CargarGuiaFoto() {
     const file = e.target.files?.[0];
     if (!file) return;
     try {
-      const comprimida = await comprimirImagen(file);
+      const comprimida = await prepararImagenParaOcr(file);
       setFotoGuia(comprimida);
       setAnalizando(true);
       setFilas([]);
@@ -133,7 +155,9 @@ export default function CargarGuiaFoto() {
         Toma una sola foto de la guía de remisión completa del proveedor — el sistema intenta separar sus líneas de
         producto y sugerir a qué producto de tu catálogo corresponde cada una. Es una lectura automática y puede
         equivocarse o saltarse líneas: revisa el producto y la cantidad de cada fila (y agrega las que falten) antes
-        de cargarlas al inventario.
+        de cargarlas al inventario. La tabla de productos suele venir con letra chica — si el sistema no detecta
+        nada, prueba tomando la foto solo de esa tabla (haciendo zoom antes de capturar), en vez de la página
+        completa.
       </p>
 
       <div className="panel">
