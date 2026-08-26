@@ -1253,6 +1253,9 @@ export default function Configuracion() {
               <ArrowLeftRight size={16} /><span>Canales de Movimiento</span>
             </div>
           )}
+          <div className="reports-sidebar-item" onClick={() => navigate('/productos/tipos-inventario')} role="button" tabIndex={0}>
+            <Boxes size={16} /><span>Tipos de Inventario</span>
+          </div>
           <div className={'reports-sidebar-item' + (seccion === 'importador' ? ' active' : '')} onClick={() => setSeccion('importador')} role="button" tabIndex={0}>
             <Upload size={16} /><span>Importador de Datos Masivos</span>
           </div>
