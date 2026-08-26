@@ -5,6 +5,7 @@ node_modules/
 **/data/*.db-*
 **/data/tenants/
 **/data/ocr-cache/
+**/data/backups/
 dist/
 screenshots/
 test-e2e.js

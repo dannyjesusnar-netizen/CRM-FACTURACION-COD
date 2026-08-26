@@ -41,6 +41,7 @@ const metasVentaRoutes = require('./routes/metasVenta');
 const tableroRoutes = require('./routes/tablero');
 const planillaRoutes = require('./routes/planilla');
 const { procesarCobrosVencidos } = require('./utils/facturacionPlataforma');
+const backup = require('./utils/backup');
 const db = require('./db');
 const tenantRegistry = require('./tenantRegistry');
 
@@ -166,3 +167,14 @@ setInterval(() => {
   procesarCobrosVencidos().catch((err) => console.error('Error procesando cobros de suscripción:', err));
 }, SEIS_HORAS_MS);
 procesarCobrosVencidos().catch((err) => console.error('Error procesando cobros de suscripción:', err));
+
+// Respaldo automático de la base de datos por defecto (empresa base de esta
+// instancia) — una vez al arrancar y luego cada 24 horas. Se guarda en el
+// mismo disco persistente (DATA_DIR/backups), conservando los últimos 7 (ver
+// utils/backup.js). Gerencia puede además crear uno al instante y descargar
+// cualquiera desde Configuración.
+const UN_DIA_MS = 24 * 60 * 60 * 1000;
+setInterval(() => {
+  backup.crearRespaldo(db).catch((err) => console.error('Error en respaldo automático:', err));
+}, UN_DIA_MS);
+backup.crearRespaldo(db).catch((err) => console.error('Error en respaldo automático:', err));

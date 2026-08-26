@@ -3,6 +3,7 @@ const db = require('../db');
 const tenantRegistry = require('../tenantRegistry');
 const { requireAuth, requireGerencia } = require('../middleware/auth');
 const { buildInvoicePdf } = require('../utils/pdf');
+const backup = require('../utils/backup');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -193,6 +194,28 @@ router.post('/borrar-datos-prueba', requireGerencia, (req, res) => {
     db.pragma('foreign_keys = ON');
   }
   res.json({ ok: true });
+});
+
+// Respaldos de la base de datos: además del respaldo automático diario (ver
+// server.js), Gerencia puede crear uno al instante y descargar cualquiera de
+// los últimos 7 guardados — todo dentro del mismo disco persistente.
+router.get('/respaldos', requireGerencia, (req, res) => {
+  res.json(backup.listarRespaldos());
+});
+
+router.post('/respaldos', requireGerencia, async (req, res) => {
+  try {
+    const nombre = await backup.crearRespaldo(db);
+    res.status(201).json({ nombre });
+  } catch (err) {
+    res.status(500).json({ error: 'No se pudo crear el respaldo.' });
+  }
+});
+
+router.get('/respaldos/:nombre/descargar', requireGerencia, (req, res) => {
+  const ruta = backup.rutaRespaldo(req.params.nombre);
+  if (!ruta) return res.status(404).json({ error: 'Respaldo no encontrado.' });
+  res.download(ruta, req.params.nombre);
 });
 
 module.exports = router;

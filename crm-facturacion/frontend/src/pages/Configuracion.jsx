@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Building2, Users as UsersIcon, Store, ShieldCheck, FileText, Wallet, Hash, Percent,
-  Upload, Download, Boxes, PackagePlus, RefreshCw, UserPlus, Tags, AlertTriangle,
+  Upload, Download, Boxes, PackagePlus, RefreshCw, UserPlus, Tags, AlertTriangle, DatabaseBackup,
 } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
@@ -324,6 +324,10 @@ export default function Configuracion() {
   const [cargaOperativosResult, setCargaOperativosResult] = useState(null);
   const [errorCargaOperativos, setErrorCargaOperativos] = useState('');
 
+  // --- Respaldos de la base de datos ---
+  const [respaldos, setRespaldos] = useState([]);
+  const [creandoRespaldo, setCreandoRespaldo] = useState(false);
+
   // --- Importador de Datos Masivos ---
   const [importadorActivo, setImportadorActivo] = useState(null); // key de IMPORTADORES_MASIVOS o null
   const [exportandoKey, setExportandoKey] = useState(null); // key de EXPORTADORES_MASIVOS en curso o null
@@ -408,6 +412,7 @@ export default function Configuracion() {
       loadOperativos();
       loadSolicitudesSede();
       loadRoles();
+      loadRespaldos();
     }
   }, []);
 
@@ -597,6 +602,39 @@ export default function Configuracion() {
 
   function loadMetodosPago() {
     api.get('/metodos-pago', { params: { todos: 1 } }).then((res) => setMetodosPago(res.data));
+  }
+
+  function loadRespaldos() {
+    api.get('/empresa/respaldos').then((res) => setRespaldos(res.data));
+  }
+
+  async function handleCrearRespaldo() {
+    setCreandoRespaldo(true);
+    try {
+      await api.post('/empresa/respaldos');
+      toast.success('Respaldo creado.');
+      loadRespaldos();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'No se pudo crear el respaldo.');
+    } finally {
+      setCreandoRespaldo(false);
+    }
+  }
+
+  async function handleDescargarRespaldo(nombre) {
+    try {
+      const res = await api.get(`/empresa/respaldos/${nombre}/descargar`, { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = nombre;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      toast.error('No se pudo descargar el respaldo.');
+    }
   }
 
   async function handleBorrarDatosPrueba() {
@@ -1222,6 +1260,11 @@ export default function Configuracion() {
           <div className={'reports-sidebar-item' + (seccion === 'exportador' ? ' active' : '')} onClick={() => setSeccion('exportador')} role="button" tabIndex={0}>
             <Download size={16} /><span>Exportador de Datos Masivos</span>
           </div>
+          {user?.role === 'gerencia' && (
+            <div className={'reports-sidebar-item' + (seccion === 'respaldos' ? ' active' : '')} onClick={() => setSeccion('respaldos')} role="button" tabIndex={0}>
+              <DatabaseBackup size={16} /><span>Respaldos</span>
+            </div>
+          )}
           {user?.role === 'gerencia' && (
             <div className={'reports-sidebar-item' + (seccion === 'zona_peligro' ? ' active' : '')} onClick={() => setSeccion('zona_peligro')} role="button" tabIndex={0} style={{ color: 'var(--critical, #dc2626)' }}>
               <AlertTriangle size={16} /><span>Zona de peligro</span>
@@ -2016,6 +2059,44 @@ export default function Configuracion() {
                   </div>
                 ))}
               </div>
+            </>
+          )}
+
+          {seccion === 'respaldos' && user?.role === 'gerencia' && (
+            <>
+              <h3 style={{ marginTop: 0 }}>Respaldos de la base de datos</h3>
+              <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -8 }}>
+                Todos los días se guarda automáticamente una copia completa de tu base de datos (se conservan las
+                últimas 7). También puedes crear una copia al instante y descargarla cuando quieras.
+              </p>
+              <button
+                type="button"
+                className="btn-primary"
+                style={{ width: 'auto' }}
+                disabled={creandoRespaldo}
+                onClick={handleCrearRespaldo}
+              >
+                {creandoRespaldo ? 'Creando...' : '+ Crear respaldo ahora'}
+              </button>
+              <table className="data-table" style={{ maxWidth: 560, marginTop: 16 }}>
+                <thead>
+                  <tr><th>Fecha</th><th>Tamaño</th><th></th></tr>
+                </thead>
+                <tbody>
+                  {respaldos.map((r) => (
+                    <tr key={r.nombre}>
+                      <td>{new Date(r.creado_en).toLocaleString('es-PE')}</td>
+                      <td>{(r.tamano_bytes / 1024 / 1024).toFixed(2)} MB</td>
+                      <td className="row-actions">
+                        <button className="btn-link" onClick={() => handleDescargarRespaldo(r.nombre)}>Descargar</button>
+                      </td>
+                    </tr>
+                  ))}
+                  {respaldos.length === 0 && (
+                    <tr><td colSpan={3} className="empty-row">Todavía no hay respaldos creados.</td></tr>
+                  )}
+                </tbody>
+              </table>
             </>
           )}
 
