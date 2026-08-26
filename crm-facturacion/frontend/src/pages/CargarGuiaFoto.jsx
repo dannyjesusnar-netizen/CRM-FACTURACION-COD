@@ -7,14 +7,14 @@ import { useToast } from '../context/ToastContext';
 // A diferencia de una foto de etiqueta (Cargar Stock por Fotos), acá suele
 // llegar una CAPTURA DE PANTALLA de la guía completa (p.ej. el PDF de una
 // Guía de Remisión Electrónica abierto en el celular), con la tabla de
-// ítems en letra chica. La tentación es agrandar la imagen antes del OCR,
-// pero se probó exactamente eso contra una guía real y dio PEOR resultado:
-// escalar una imagen ya de por sí chica no agrega información, solo agranda
-// el borroneo de la interpolación — Tesseract leyó mejor la foto tal cual
-// (o apenas con contraste) que agrandada 2-3x. Por eso acá solo se REDUCE si
-// la foto es más grande de lo necesario (nunca se agranda) y se le sube el
-// contraste, que sí ayudó a separar el texto chico del fondo sin introducir
-// ese borroneo.
+// ítems en letra chica. Se probó agrandar la imagen antes del OCR y dio
+// PEOR resultado (solo agranda el borroneo de la interpolación) — y
+// también se probó subirle contraste acá, pero ahora el backend ubica la
+// tabla, la recorta a su resolución real y le aplica su PROPIO contraste
+// específico para esa franja (ver utils/ocrGuia.js) — hacerlo acá también
+// termina sobre-procesando la imagen dos veces y empeora la lectura. Por
+// eso esta función ya solo REDUCE si la foto es más grande de lo
+// necesario (nunca la agranda) y no le toca nada más.
 function prepararImagenParaOcr(file, anchoMaximo = 2400, calidad = 0.92) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -28,19 +28,6 @@ function prepararImagenParaOcr(file, anchoMaximo = 2400, calidad = 0.92) {
         const ctx = canvas.getContext('2d');
         ctx.imageSmoothingQuality = 'high';
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-        const datos = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const px = datos.data;
-        for (let i = 0; i < px.length; i += 4) {
-          const gris = 0.3 * px[i] + 0.59 * px[i + 1] + 0.11 * px[i + 2];
-          // Aleja el gris de 128 hacia 0/255 — más blanco y negro, menos gris
-          // intermedio — sin llegar a binarizar del todo (perdería trazos
-          // finos de letra chica).
-          const contraste = Math.min(255, Math.max(0, (gris - 128) * 1.6 + 128));
-          px[i] = px[i + 1] = px[i + 2] = contraste;
-        }
-        ctx.putImageData(datos, 0, 0);
-
         resolve(canvas.toDataURL('image/jpeg', calidad));
       };
       img.onerror = () => reject(new Error('No se pudo leer la imagen.'));

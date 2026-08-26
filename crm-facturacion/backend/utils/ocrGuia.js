@@ -1,3 +1,4 @@
+const sharp = require('sharp');
 const { getWorker } = require('./ocrWorker');
 
 // Encabezado que casi toda guía de remisión peruana imprime justo antes de
@@ -18,15 +19,21 @@ const PALABRAS_IGNORAR = /(ruc|dni|gu[ií]a|remit|factura|boleta|comprobante|fec
 // SUNAT tal cual aparecen impresas en una Guía de Remisión Electrónica
 // ("UNIDAD (ZZ)", "KILOGRAMO (KGM)", etc. — el código entre paréntesis es un
 // token aparte, se ignora al buscar la unidad).
-const UNIDAD = 'UNIDAD(?:ES)?|UND?\\.?|UNID\\.?|KILOGRAMO|KG\\.?|GRAMO|GR\\.?|LITRO|LT\\.?|MILILITRO|ML\\.?|GAL[oó]N|GLN\\.?|CAJA|PAQUETE|PAQ\\.?|PQT\\.?|BOLSA|BLS\\.?|DOCENA|DOC\\.?|METRO|MTR?\\.?|PAR|CIENTO|MILLAR|NIU';
+// "UN.DAD"/"UNDAD" se agregan porque el OCR confunde consistentemente la "I"
+// de "UNIDAD" con un punto o directamente se la come — se vio en varias
+// pruebas contra guías reales, no es un caso aislado.
+const UNIDAD = 'UNIDAD(?:ES)?|UN\\.?DAD|UND?\\.?|UNID\\.?|KILOGRAMO|KG\\.?|GRAMO|GR\\.?|LITRO|LT\\.?|MILILITRO|ML\\.?|GAL[oó]N|GLN\\.?|CAJA|PAQUETE|PAQ\\.?|PQT\\.?|BOLSA|BLS\\.?|DOCENA|DOC\\.?|METRO|MTR?\\.?|PAR|CIENTO|MILLAR|NIU';
 const UNIDAD_TOKEN = new RegExp(`^(${UNIDAD})$`, 'i');
 
 function limpiarDescripcion(t) {
   return t.replace(/\s{2,}/g, ' ').replace(/^[\s.\-–—:]+|[\s.\-–—:]+$/g, '').trim();
 }
 
+// Permite puntuación suelta pegada al número (ej. "6.00)" cuando el OCR
+// arrastra el paréntesis de cierre de la unidad hacia la cantidad) — el
+// valor real se sigue extrayendo con parseFloat, que ya ignora esa cola.
 function pareceCantidadToken(tok) {
-  return /^\d{1,4}(?:[.,]\d{1,2})?$/.test(tok);
+  return /^\d{1,4}(?:[.,]\d{1,2})?[)\].,;:]*$/.test(tok || '');
 }
 
 // Intenta leer "cantidad + descripción" de una línea de texto reconocida,
@@ -47,10 +54,11 @@ function extraerFila(linea) {
   return null;
 }
 
-// Un token es "unidad" si, al quitarle paréntesis (el código SUNAT que suele
-// venir pegado, ej. "(ZZ)"), calza con la lista de unidades conocida.
+// Un token es "unidad" si, al quitarle símbolos pegados (paréntesis del
+// código SUNAT, puntuación suelta que deja el OCR), calza con la lista de
+// unidades conocida.
 function esTokenUnidad(tok) {
-  return UNIDAD_TOKEN.test((tok || '').replace(/[()]/g, ''));
+  return UNIDAD_TOKEN.test((tok || '').replace(/[()[\].,;:]/g, ''));
 }
 
 // Segundo intento, más permisivo, para filas con más columnas de las que
@@ -123,18 +131,118 @@ function extraerFilas(texto) {
   return filas;
 }
 
+// Convierte lo que llegó (Buffer o data URL) en algo que sharp() pueda leer.
+function paraSharp(imagen) {
+  if (Buffer.isBuffer(imagen)) return imagen;
+  if (typeof imagen === 'string' && imagen.startsWith('data:')) {
+    return Buffer.from(imagen.split(',')[1], 'base64');
+  }
+  return imagen;
+}
+
+// Aplana blocks -> paragraphs -> lines (estructura que devuelve tesseract.js
+// cuando se pide output.blocks) en una lista plana de { text, bbox }.
+function extraerLineasConBbox(data) {
+  const lineas = [];
+  for (const b of data.blocks || []) {
+    for (const p of b.paragraphs || []) {
+      for (const l of p.lines || []) {
+        lineas.push({ text: (l.text || '').trim(), bbox: l.bbox });
+      }
+    }
+  }
+  return lineas;
+}
+
+// Líneas que marcan el final de la tabla de bienes (arranca el resto del
+// documento: peso, datos del traslado, indicadores, etc.) — se usan junto
+// con ENCABEZADO_BIENES para acotar verticalmente dónde está la tabla en la
+// imagen, no solo en el texto.
+const FIN_TABLA = /peso\s*bruto|datos\s*del\s*traslado|modalidad\s*de\s*traslado|indicador\s*de|observ|total\s*de\s*bultos/i;
+
+// Devuelve el rango vertical (en píxeles de la imagen) que ocupa la tabla de
+// bienes, a partir de las líneas con sus coordenadas. null si no se
+// encontró el encabezado "bienes por/a transportar" en esta lectura.
+function encontrarRangoTabla(lineasConBbox) {
+  const idxAncla = lineasConBbox.findIndex((l) => ENCABEZADO_BIENES.test(l.text));
+  if (idxAncla === -1) return null;
+  let idxFin = -1;
+  for (let i = idxAncla + 1; i < lineasConBbox.length; i += 1) {
+    if (FIN_TABLA.test(lineasConBbox[i].text)) { idxFin = i; break; }
+  }
+  const lineasTabla = idxFin === -1 ? lineasConBbox.slice(idxAncla) : lineasConBbox.slice(idxAncla, idxFin);
+  if (lineasTabla.length === 0) return null;
+  return {
+    top: Math.min(...lineasTabla.map((l) => l.bbox.y0)),
+    bottom: Math.max(...lineasTabla.map((l) => l.bbox.y1)),
+  };
+}
+
 // Recibe la foto de una guía de remisión completa (Buffer o data URL) y
 // devuelve el texto reconocido más las filas de producto que se pudieron
-// inferir. Puede devolver un arreglo vacío si el OCR no logró separar
-// ninguna línea reconocible — el usuario siempre puede agregar filas a mano,
-// y el texto completo se expone para poder revisar qué leyó realmente el
-// OCR cuando la lectura automática no encuentra nada.
+// inferir. Hace dos lecturas: la primera sobre la página completa, para
+// ubicar en qué franja de píxeles está la tabla de bienes; si la encuentra,
+// recorta esa franja de la imagen ORIGINAL (a su resolución real, sin el
+// resto de la página) y la agranda solo a ella antes de leerla de nuevo —
+// como ya no hay que repartir la resolución en toda la página, la tabla
+// queda con muchos más píxeles por letra que si se agrandara la imagen
+// entera. Si el recorte no encuentra filas (o el encabezado no aparece en
+// esta foto, p.ej. porque el usuario ya la recortó de entrada), se usa el
+// resultado de la lectura completa. El texto completo se expone siempre
+// para poder revisar qué leyó realmente el OCR cuando la lectura automática
+// no encuentra nada.
 async function analizarGuia(imagen) {
   const worker = await getWorker();
-  const { data } = await worker.recognize(imagen);
+  const { data } = await worker.recognize(imagen, {}, { text: true, blocks: true });
+  const filasCompletas = extraerFilas(data.text);
+
+  const rango = encontrarRangoTabla(extraerLineasConBbox(data));
+  if (rango) {
+    try {
+      const buffer = paraSharp(imagen);
+      const metadata = await sharp(buffer).metadata();
+      const margen = 8;
+      const top = Math.max(0, rango.top - margen);
+      const height = Math.min(metadata.height - top, (rango.bottom - rango.top) + margen * 2);
+      if (height > 0) {
+        const anchoObjetivo = Math.min(metadata.width * 4, 4200);
+        // Además de agrandar, se pasa a blanco y negro puro (sin grises
+        // intermedios): las líneas y el sombreado de las celdas de una tabla
+        // con bordes confunden mucho al OCR (se prueba con y sin esto contra
+        // guías reales — sin binarizar, filas enteras salen ilegibles que
+        // con esto sí se separan, aunque ninguna de las dos formas es
+        // perfecta en una tabla con letra muy chica).
+        const recorte = await sharp(buffer)
+          .extract({ left: 0, top, width: metadata.width, height })
+          .resize({ width: Math.round(anchoObjetivo) })
+          .grayscale()
+          .threshold(150)
+          .jpeg({ quality: 92 })
+          .toBuffer();
+        const { data: dataRecorte } = await worker.recognize(recorte);
+        const filasRecorte = extraerFilas(dataRecorte.text);
+        // Se prefiere el recorte solo si de verdad encontró MÁS filas que la
+        // lectura completa — el recorte no siempre gana (el contraste fijo
+        // que se le aplica puede perjudicar filas que la lectura completa sí
+        // leía bien), así que ante empate o menos filas se descarta y se usa
+        // la lectura completa de abajo.
+        if (filasRecorte.length > filasCompletas.length) {
+          return {
+            texto: `${data.text}\n\n--- Segunda lectura (solo la tabla, ampliada) ---\n${dataRecorte.text}`,
+            filas_detectadas: filasRecorte,
+          };
+        }
+      }
+    } catch (err) {
+      // Si el recorte falla por cualquier motivo (imagen no soportada,
+      // franja inválida, etc.), se sigue con la lectura de la página
+      // completa de abajo — nunca debe tumbar el análisis.
+    }
+  }
+
   return {
     texto: data.text,
-    filas_detectadas: extraerFilas(data.text),
+    filas_detectadas: filasCompletas,
   };
 }
 
