@@ -5,6 +5,7 @@ node_modules/
 **/data/*.db-*
 **/data/tenants/
 **/data/ocr-cache/
+**/data/ocr-lang-data/
 **/data/backups/
 dist/
 screenshots/
