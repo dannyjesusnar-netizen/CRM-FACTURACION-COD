@@ -43,6 +43,8 @@ export default function CargarGuiaFoto() {
   const [filas, setFilas] = useState([]);
   const [motivo, setMotivo] = useState('');
   const [guardando, setGuardando] = useState(false);
+  const [textoDetectado, setTextoDetectado] = useState('');
+  const [mostrarTexto, setMostrarTexto] = useState(false);
 
   useEffect(() => { api.get('/products').then((res) => setProducts(res.data)); }, []);
 
@@ -56,6 +58,7 @@ export default function CargarGuiaFoto() {
       setFotoGuia(comprimida);
       setAnalizando(true);
       setFilas([]);
+      setTextoDetectado('');
       const res = await api.post('/movements/analizar-guia', { foto_data_url: comprimida });
       const detectadas = (res.data.filas || []).map((f) => ({
         id: nuevaFilaId(),
@@ -64,8 +67,10 @@ export default function CargarGuiaFoto() {
         product_id: f.product_id ? String(f.product_id) : '',
       }));
       setFilas(detectadas);
+      setTextoDetectado(res.data.texto || '');
       if (detectadas.length === 0) {
-        toast.info('No se pudo separar ninguna línea de producto en la foto — agrega las filas a mano abajo.');
+        setMostrarTexto(true);
+        toast.info('No se pudo separar ninguna línea de producto en la foto — revisa el texto leído abajo y agrega las filas a mano.');
       } else {
         toast.success(`Se detectaron ${detectadas.length} línea(s). Revisa el producto y la cantidad de cada una antes de cargar.`);
       }
@@ -146,6 +151,20 @@ export default function CargarGuiaFoto() {
 
         <label style={{ marginTop: 10 }}>Motivo / proveedor (opcional, se aplica a todas las filas)</label>
         <input value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Ej: Guía Distribuidora XYZ N.º 000456" />
+
+        {textoDetectado && (
+          <div style={{ marginTop: 12 }}>
+            <button type="button" className="btn-link" onClick={() => setMostrarTexto((v) => !v)}>
+              {mostrarTexto ? 'Ocultar' : 'Ver'} texto que leyó el sistema en la foto
+            </button>
+            {mostrarTexto && (
+              <pre style={{
+                marginTop: 8, padding: 10, background: 'var(--surface)', border: '1px solid var(--border)',
+                borderRadius: 8, fontSize: 11, maxHeight: 240, overflow: 'auto', whiteSpace: 'pre-wrap',
+              }}>{textoDetectado}</pre>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="panel" style={{ marginTop: 20 }}>
