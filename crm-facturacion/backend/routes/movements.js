@@ -349,7 +349,10 @@ router.post('/analizar-guia', requireAccion('inventario', 'ajustes'), async (req
         producto_nombre: match ? match.nombre : null,
       };
     });
-    res.json({ filas });
+    // Se devuelve también el texto crudo del OCR: si no detectó ninguna fila
+    // (o las detectó mal), el frontend lo muestra para poder ver qué leyó
+    // realmente el sistema en esa foto y agregar las filas a mano.
+    res.json({ filas, texto: resultado.texto });
   } catch (err) {
     res.status(500).json({ error: 'No se pudo analizar la foto de la guía.' });
   }
