@@ -20,20 +20,33 @@ import { canInstallPwa, isIosDevice, isRunningStandalone, promptPwaInstall, subs
 const APP_SHAPES = [
   { type: 'dot', top: '5%', left: '3%', size: 11, color: '#fbbf24', delay: '0s' },
   { type: 'plus', top: '9%', left: '96%', size: 15, color: '#6366f1', delay: '0.4s' },
+  { type: 'dot', top: '14%', left: '2%', size: 7, color: '#6366f1', delay: '0.5s' },
+  { type: 'dot', top: '18%', left: '94%', size: 6, color: '#f472b6', delay: '0.65s' },
   { type: 'square', top: '22%', left: '1%', size: 12, color: '#f472b6', delay: '0.8s' },
+  { type: 'square', top: '28%', left: '99%', size: 9, color: '#22c55e', delay: '1.05s' },
+  { type: 'plus', top: '30%', left: '3%', size: 12, color: '#fbbf24', delay: '1.3s' },
   { type: 'dot', top: '35%', left: '98%', size: 9, color: '#22c55e', delay: '0.3s' },
+  { type: 'dot', top: '44%', left: '1%', size: 6, color: '#22c55e', delay: '0.15s' },
+  { type: 'dot', top: '48%', left: '96%', size: 7, color: '#fbbf24', delay: '0.85s' },
   { type: 'plus', top: '52%', left: '2%', size: 13, color: '#22c55e', delay: '1.1s' },
+  { type: 'square', top: '60%', left: '4%', size: 10, color: '#6366f1', delay: '0.95s' },
   { type: 'square', top: '64%', left: '97%', size: 11, color: '#fbbf24', delay: '0.6s' },
+  { type: 'plus', top: '72%', left: '98%', size: 12, color: '#f472b6', delay: '0.35s' },
+  { type: 'dot', top: '70%', left: '2%', size: 7, color: '#fbbf24', delay: '0.45s' },
   { type: 'dot', top: '78%', left: '4%', size: 8, color: '#f472b6', delay: '0.9s' },
+  { type: 'dot', top: '82%', left: '94%', size: 6, color: '#6366f1', delay: '1.15s' },
   { type: 'plus', top: '88%', left: '95%', size: 14, color: '#6366f1', delay: '0.2s' },
   { type: 'dot', top: '92%', left: '15%', size: 9, color: '#6366f1', delay: '0.7s' },
+  { type: 'dot', top: '94%', left: '82%', size: 8, color: '#f472b6', delay: '0.55s' },
 ];
 const APP_ICONS = [
   { type: 'computer', top: '14%', left: '6%', size: 30, delay: '0.1s' },
   { type: 'calculator', top: '18%', left: '92%', size: 26, delay: '0.5s' },
   { type: 'truck', top: '46%', left: '95%', size: 34, delay: '0.75s' },
+  { type: 'phone', top: '58%', left: '94%', size: 24, delay: '0.6s' },
   { type: 'dollar', top: '70%', left: '3%', size: 26, delay: '0.35s' },
   { type: 'soles', top: '82%', left: '92%', size: 26, delay: '1s' },
+  { type: 'dollar', top: '95%', left: '7%', size: 20, delay: '1.15s' },
 ];
 
 const SUBNAV_ITEMS = [
