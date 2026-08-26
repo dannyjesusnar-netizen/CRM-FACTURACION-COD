@@ -9,7 +9,7 @@ import FloatingIcons from './FloatingIcons';
 import OdinWidget from './OdinWidget';
 import {
   TrendingUp, ShoppingCart, Bike, Wallet, Users, ClipboardList, FileText,
-  Moon, Sun, Settings, ChevronDown, Phone, FileSignature, Lock, BarChart3, LogOut,
+  Moon, Sun, Settings, ChevronDown, Phone, Lock, BarChart3, LogOut,
   CreditCard, Smartphone,
 } from 'lucide-react';
 import { canInstallPwa, isIosDevice, isRunningStandalone, promptPwaInstall, subscribePwaInstall } from '../utils/pwaInstall';
@@ -130,9 +130,6 @@ export default function Layout() {
             <div className={'user-dropdown' + (menuOpen ? ' open' : '')}>
               <div className="user-dropdown-item" onClick={() => toast.info('Soporte: escríbenos y te ayudamos (próximamente).')}>
                 <Phone size={15} className="dropdown-icon" /> Soporte
-              </div>
-              <div className="user-dropdown-item" onClick={() => toast.info('Términos y condiciones (próximamente).')}>
-                <FileSignature size={15} className="dropdown-icon" /> Términos y condiciones
               </div>
               <div className="user-dropdown-item" onClick={() => navigate('/cambiar-contrasena')}>
                 <Lock size={15} className="dropdown-icon" /> Cambiar contraseña
