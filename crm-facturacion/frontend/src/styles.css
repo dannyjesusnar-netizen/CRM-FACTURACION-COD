@@ -174,6 +174,7 @@ body {
 .app-body {
   flex: 1; display: flex; overflow: hidden; position: relative;
   background:
+    radial-gradient(circle, rgba(99, 102, 241, 0.05) 1px, transparent 1.6px) 0 0 / 26px 26px,
     radial-gradient(420px 320px at 4% 8%, rgba(147, 197, 253, 0.30), transparent 70%),
     radial-gradient(380px 300px at 96% 5%, rgba(129, 140, 248, 0.18), transparent 70%),
     radial-gradient(460px 360px at 92% 92%, rgba(147, 197, 253, 0.26), transparent 70%),
@@ -182,6 +183,7 @@ body {
 }
 html.dark .app-body {
   background:
+    radial-gradient(circle, rgba(129, 140, 248, 0.10) 1px, transparent 1.6px) 0 0 / 26px 26px,
     radial-gradient(420px 320px at 4% 8%, rgba(147, 197, 253, 0.12), transparent 70%),
     radial-gradient(380px 300px at 96% 5%, rgba(129, 140, 248, 0.12), transparent 70%),
     radial-gradient(460px 360px at 92% 92%, rgba(147, 197, 253, 0.1), transparent 70%),
