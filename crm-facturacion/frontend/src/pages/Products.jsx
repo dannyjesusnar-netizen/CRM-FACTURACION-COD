@@ -325,7 +325,6 @@ export default function Products() {
         <button className="ventas-action-btn" onClick={() => navigate('/promociones')}>Promociones</button>
         <button className="ventas-action-btn" onClick={() => navigate('/movimientos')}>Movimientos</button>
         <button className="ventas-action-btn" onClick={() => navigate('/lotes')}>Lotes y Series</button>
-        <button className="ventas-action-btn" onClick={() => navigate('/productos/tipos-inventario')}>Tipos de Inventario</button>
       </div>
 
       <form className="filter-panel" onSubmit={handleSearch}>
