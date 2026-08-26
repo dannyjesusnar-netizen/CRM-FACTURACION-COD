@@ -4,6 +4,7 @@ const { requireAuth, resolveSucursal } = require('../middleware/auth');
 const { round2, ajustarStockSucursal, getStockSucursal, setStockSucursal } = require('../utils/stock');
 const { requirePermiso, requireAccion, esGerenciaOSupervisor } = require('../utils/permisos');
 const { analizarEtiqueta } = require('../utils/ocrEtiqueta');
+const { analizarGuia } = require('../utils/ocrGuia');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -291,6 +292,66 @@ router.post('/analizar-etiqueta', requireAccion('inventario', 'ajustes'), async 
     res.json(resultado);
   } catch (err) {
     res.status(500).json({ error: 'No se pudo analizar la foto. Completa el lote y vencimiento manualmente.' });
+  }
+});
+
+// Quita tildes/mayúsculas y deja solo letras/números para poder comparar el
+// texto leído por OCR contra el catálogo sin que un acento o un símbolo
+// distinto arruine la comparación.
+function normalizarTexto(s) {
+  return (s || '')
+    .toString()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// Sugiere el producto del catálogo cuyo nombre comparte más palabras (de 3+
+// letras) con la descripción leída en la guía. Es solo una sugerencia — el
+// usuario siempre puede cambiarla o dejarla en blanco antes de confirmar.
+function mejorProductoParaDescripcion(descripcion, productos) {
+  const palabras = normalizarTexto(descripcion).split(' ').filter((w) => w.length >= 3);
+  if (palabras.length === 0) return null;
+  let mejor = null;
+  let mejorScore = 0;
+  for (const p of productos) {
+    const nombreNorm = normalizarTexto(p.nombre);
+    const score = palabras.reduce((acc, palabra) => acc + (nombreNorm.includes(palabra) ? 1 : 0), 0);
+    if (score > mejorScore) { mejorScore = score; mejor = p; }
+  }
+  return mejor;
+}
+
+// POST /api/movements/analizar-guia { foto_data_url } -> lee una foto de la
+// guía de remisión COMPLETA del proveedor e intenta separar sus líneas de
+// producto (cantidad + descripción), sugiriendo a qué producto del catálogo
+// corresponde cada una. A diferencia de "analizar-etiqueta" (una sola foto
+// por producto), acá se sube una sola foto de todo el documento — la lectura
+// de una tabla escaneada es mucho menos confiable, así que el frontend
+// siempre muestra las filas para revisión antes de cargarlas al inventario.
+router.post('/analizar-guia', requireAccion('inventario', 'ajustes'), async (req, res) => {
+  const { foto_data_url } = req.body || {};
+  if (!esDataUrlImagen(foto_data_url)) {
+    return res.status(400).json({ error: 'foto_data_url debe ser una imagen válida.' });
+  }
+  try {
+    const resultado = await analizarGuia(foto_data_url);
+    const productos = db.prepare("SELECT id, codigo, nombre FROM products WHERE tipo = 'producto'").all();
+    const filas = resultado.filas_detectadas.map((f) => {
+      const match = mejorProductoParaDescripcion(f.descripcion, productos);
+      return {
+        descripcion_detectada: f.descripcion,
+        cantidad_detectada: f.cantidad,
+        product_id: match ? match.id : null,
+        producto_codigo: match ? match.codigo : null,
+        producto_nombre: match ? match.nombre : null,
+      };
+    });
+    res.json({ filas });
+  } catch (err) {
+    res.status(500).json({ error: 'No se pudo analizar la foto de la guía.' });
   }
 });
 

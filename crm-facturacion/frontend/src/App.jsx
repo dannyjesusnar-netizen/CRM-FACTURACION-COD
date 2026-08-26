@@ -16,6 +16,7 @@ import Products from './pages/Products';
 import Promociones from './pages/Promociones';
 import Movements from './pages/Movements';
 import CargarStockFotos from './pages/CargarStockFotos';
+import CargarGuiaFoto from './pages/CargarGuiaFoto';
 import RegistrarMovimiento from './pages/RegistrarMovimiento';
 import Lotes from './pages/Lotes';
 import Caja from './pages/Caja';
@@ -77,6 +78,7 @@ export default function App() {
             <Route path="/promociones" element={<RequirePermiso modulo="inventario"><Promociones /></RequirePermiso>} />
             <Route path="/movimientos" element={<RequirePermiso modulo="inventario"><Movements /></RequirePermiso>} />
             <Route path="/movimientos/fotos" element={<RequirePermiso modulo="inventario"><CargarStockFotos /></RequirePermiso>} />
+            <Route path="/movimientos/guia-foto" element={<RequirePermiso modulo="inventario"><CargarGuiaFoto /></RequirePermiso>} />
             <Route path="/movimientos/registrar" element={<RequirePermiso modulo="inventario"><RegistrarMovimiento /></RequirePermiso>} />
             <Route path="/lotes" element={<RequirePermiso modulo="inventario"><Lotes /></RequirePermiso>} />
             <Route path="/caja" element={<RequirePermiso modulo="caja"><Caja /></RequirePermiso>} />
