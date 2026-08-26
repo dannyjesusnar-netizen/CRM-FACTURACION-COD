@@ -216,23 +216,39 @@ router.get('/resumen-sedes', (req, res) => {
   });
 });
 
+// Ítems vendidos del mes/sede, juntando Boletas/Facturas (invoice_items, con
+// nota de crédito restando) y Notas de Venta Interna (nota_venta_items) —
+// esta última es la única que admite forma_pago "Abonado" (crédito), así que
+// sin este UNION esas ventas quedaban fuera de Total por Marca/Producto
+// aunque sí se cuentan (en base devengado, igual que una factura a crédito)
+// en Ranking y Resumen Sedes.
+const ITEMS_VENDIDOS_SUBQUERY = `
+  SELECT ii.product_id,
+    CASE WHEN i.tipo_comprobante = 'nota_credito' THEN -ii.cantidad ELSE ii.cantidad END AS cantidad,
+    CASE WHEN i.tipo_comprobante = 'nota_credito' THEN -ii.subtotal ELSE ii.subtotal END AS subtotal
+  FROM invoice_items ii
+  JOIN invoices i ON i.id = ii.invoice_id
+  WHERE i.estado = 'emitido' AND strftime('%Y', i.fecha_emision) = ? AND strftime('%m', i.fecha_emision) = ?
+    AND (? IS NULL OR i.sucursal_id = ?)
+  UNION ALL
+  SELECT nvi.product_id, nvi.cantidad AS cantidad, nvi.subtotal AS subtotal
+  FROM nota_venta_items nvi
+  JOIN notas_venta nv ON nv.id = nvi.nota_venta_id
+  WHERE nv.estado = 'emitido' AND strftime('%Y', nv.fecha_emision) = ? AND strftime('%m', nv.fecha_emision) = ?
+    AND (? IS NULL OR nv.sucursal_id = ?)
+`;
+
 // Total por marca (Proveedor asignado al producto).
 router.get('/total-por-marca', (req, res) => {
   const { anio, mesPad } = anioMes(req);
   const sucursalId = sedeFiltro(req);
   const rows = db.prepare(`
-    SELECT ${MARCA_EXPR} AS marca,
-      SUM(CASE WHEN i.tipo_comprobante = 'nota_credito' THEN -ii.cantidad ELSE ii.cantidad END) AS cantidad,
-      SUM(CASE WHEN i.tipo_comprobante = 'nota_credito' THEN -ii.subtotal ELSE ii.subtotal END) AS venta
-    FROM invoice_items ii
-    JOIN invoices i ON i.id = ii.invoice_id
-    LEFT JOIN products p ON p.id = ii.product_id
-    WHERE i.estado = 'emitido'
-      AND strftime('%Y', i.fecha_emision) = ? AND strftime('%m', i.fecha_emision) = ?
-      AND (? IS NULL OR i.sucursal_id = ?)
+    SELECT ${MARCA_EXPR} AS marca, SUM(x.cantidad) AS cantidad, SUM(x.subtotal) AS venta
+    FROM (${ITEMS_VENDIDOS_SUBQUERY}) x
+    LEFT JOIN products p ON p.id = x.product_id
     GROUP BY ${MARCA_EXPR}
     ORDER BY venta DESC
-  `).all(String(anio), mesPad, sucursalId, sucursalId);
+  `).all(String(anio), mesPad, sucursalId, sucursalId, String(anio), mesPad, sucursalId, sucursalId);
   res.json(conPorcentaje(rows));
 });
 
@@ -241,18 +257,12 @@ router.get('/total-por-producto', (req, res) => {
   const { anio, mesPad } = anioMes(req);
   const sucursalId = sedeFiltro(req);
   const rows = db.prepare(`
-    SELECT COALESCE(p.categoria, 'Sin categoría') AS categoria,
-      SUM(CASE WHEN i.tipo_comprobante = 'nota_credito' THEN -ii.cantidad ELSE ii.cantidad END) AS cantidad,
-      SUM(CASE WHEN i.tipo_comprobante = 'nota_credito' THEN -ii.subtotal ELSE ii.subtotal END) AS venta
-    FROM invoice_items ii
-    JOIN invoices i ON i.id = ii.invoice_id
-    LEFT JOIN products p ON p.id = ii.product_id
-    WHERE i.estado = 'emitido'
-      AND strftime('%Y', i.fecha_emision) = ? AND strftime('%m', i.fecha_emision) = ?
-      AND (? IS NULL OR i.sucursal_id = ?)
+    SELECT COALESCE(p.categoria, 'Sin categoría') AS categoria, SUM(x.cantidad) AS cantidad, SUM(x.subtotal) AS venta
+    FROM (${ITEMS_VENDIDOS_SUBQUERY}) x
+    LEFT JOIN products p ON p.id = x.product_id
     GROUP BY COALESCE(p.categoria, 'Sin categoría')
     ORDER BY venta DESC
-  `).all(String(anio), mesPad, sucursalId, sucursalId);
+  `).all(String(anio), mesPad, sucursalId, sucursalId, String(anio), mesPad, sucursalId, sucursalId);
   res.json(conPorcentaje(rows));
 });
 
