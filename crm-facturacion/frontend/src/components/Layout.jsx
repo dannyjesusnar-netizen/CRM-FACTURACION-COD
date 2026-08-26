@@ -9,7 +9,7 @@ import FloatingIcons from './FloatingIcons';
 import OdinWidget from './OdinWidget';
 import {
   TrendingUp, ShoppingCart, Bike, Wallet, Users, ClipboardList, FileText,
-  Moon, Sun, Settings, ChevronDown, Phone, FileSignature, Lock, Video, BarChart3, LogOut,
+  Moon, Sun, Settings, ChevronDown, Phone, FileSignature, Lock, BarChart3, LogOut,
   CreditCard, Smartphone,
 } from 'lucide-react';
 import { canInstallPwa, isIosDevice, isRunningStandalone, promptPwaInstall, subscribePwaInstall } from '../utils/pwaInstall';
@@ -147,9 +147,6 @@ export default function Layout() {
                   <CreditCard size={15} className="dropdown-icon" /> Mis pagos
                 </div>
               )}
-              <div className="user-dropdown-item" onClick={() => toast.info('Capacitación en línea disponible próximamente.')}>
-                <Video size={15} className="dropdown-icon" /> Capacitación en línea
-              </div>
               {user?.permisos?.dashboard !== false && (
                 <div className="user-dropdown-item" onClick={() => navigate('/dashboard')}>
                   <BarChart3 size={15} className="dropdown-icon" /> Dashboard
