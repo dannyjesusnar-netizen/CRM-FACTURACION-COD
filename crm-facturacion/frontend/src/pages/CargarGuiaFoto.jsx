@@ -57,6 +57,7 @@ export default function CargarGuiaFoto() {
   const [creandoProductoFilaId, setCreandoProductoFilaId] = useState(null);
   const [formNuevoProducto, setFormNuevoProducto] = useState({ codigo: '', nombre: '', unidad: 'NIU', precio_unitario: '' });
   const [guardandoProducto, setGuardandoProducto] = useState(false);
+  const [proveedorDetectado, setProveedorDetectado] = useState(null);
 
   useEffect(() => { api.get('/products').then((res) => setProducts(res.data)); }, []);
 
@@ -67,6 +68,7 @@ export default function CargarGuiaFoto() {
       id: nuevaFilaId(),
       descripcion_detectada: f.descripcion_detectada,
       cantidad: f.cantidad_detectada,
+      unidad: f.unidad_detectada || 'NIU',
       product_id: f.product_id ? String(f.product_id) : '',
     }));
   }
@@ -80,6 +82,7 @@ export default function CargarGuiaFoto() {
       setAnalizando(true);
       setFilas([]);
       setTextoDetectado('');
+      setProveedorDetectado(null);
       const res = await api.post('/movements/analizar-guia', { foto_data_url: comprimida });
       const detectadas = filasDesdeRespuesta(res.data.filas);
       setFilas(detectadas);
@@ -109,12 +112,16 @@ export default function CargarGuiaFoto() {
     setFilas([]);
     setTextoDetectado('');
     setFotoGuia('');
+    setProveedorDetectado(null);
     const formData = new FormData();
     formData.append('file', file);
     try {
       const res = await api.post('/movements/analizar-guia-archivo', formData);
       const detectadas = filasDesdeRespuesta(res.data.filas);
       setFilas(detectadas);
+      if (res.data.razon_social || res.data.ruc) {
+        setProveedorDetectado({ id: res.data.proveedor_id || null, razon_social: res.data.razon_social, ruc: res.data.ruc });
+      }
       if (detectadas.length === 0) {
         toast.info('El archivo se leyó pero no se encontraron líneas de producto — agrega las filas a mano.');
       } else {
@@ -187,7 +194,7 @@ export default function CargarGuiaFoto() {
   }
 
   function abrirCrearProducto(fila) {
-    setFormNuevoProducto({ codigo: '', nombre: fila.descripcion_detectada || '', unidad: 'NIU', precio_unitario: '' });
+    setFormNuevoProducto({ codigo: '', nombre: fila.descripcion_detectada || '', unidad: fila.unidad || 'NIU', precio_unitario: '' });
     setCreandoProductoFilaId(fila.id);
   }
 
@@ -205,6 +212,7 @@ export default function CargarGuiaFoto() {
     try {
       const res = await api.post('/products', {
         codigo: codigo.trim(), nombre: nombre.trim(), unidad, precio_unitario: Number(precio_unitario),
+        proveedor_id: proveedorDetectado?.id || undefined,
       });
       setProducts((prev) => [...prev, res.data]);
       setFilas((prev) => prev.map((f) => (f.id === creandoProductoFilaId ? { ...f, product_id: String(res.data.id) } : f)));
@@ -251,6 +259,16 @@ export default function CargarGuiaFoto() {
           </label>
         </div>
         {analizando && <p style={{ fontSize: 12, color: 'var(--ink-muted)' }}>Analizando la guía… esto puede tardar unos segundos.</p>}
+
+        {proveedorDetectado && (
+          <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: 8 }}>
+            Proveedor detectado en la guía: <strong>{proveedorDetectado.razon_social || proveedorDetectado.ruc}</strong>
+            {proveedorDetectado.ruc ? ` (RUC ${proveedorDetectado.ruc})` : ''}
+            {proveedorDetectado.id
+              ? ' — ya está registrado; los productos que crees desde esta guía quedarán con este proveedor asignado.'
+              : ' — no está registrado en Proveedores; los productos nuevos se crearán sin proveedor asignado.'}
+          </p>
+        )}
 
         <label style={{ marginTop: 10 }}>Motivo / proveedor (opcional, se aplica a todas las filas)</label>
         <input value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Ej: Guía Distribuidora XYZ N.º 000456" />
@@ -337,6 +355,9 @@ export default function CargarGuiaFoto() {
                 <div>
                   <label>Unidad medida</label>
                   <select value={formNuevoProducto.unidad} onChange={(e) => setFormNuevoProducto((f) => ({ ...f, unidad: e.target.value }))}>
+                    {!['NIU', 'KGM', 'LTR', 'ZZ'].includes(formNuevoProducto.unidad) && (
+                      <option value={formNuevoProducto.unidad}>{formNuevoProducto.unidad} (detectada en la guía)</option>
+                    )}
                     <option value="NIU">UNIDAD</option>
                     <option value="KGM">KILOGRAMO</option>
                     <option value="LTR">LITRO</option>

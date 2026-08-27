@@ -395,17 +395,29 @@ router.post('/analizar-guia-archivo', requireAccion('inventario', 'ajustes'), up
     return {
       descripcion_detectada: it.descripcion,
       cantidad_detectada: it.cantidad,
+      unidad_detectada: it.unidad || null,
       product_id: match ? match.id : null,
       producto_codigo: match ? match.codigo : null,
       producto_nombre: match ? match.nombre : null,
     };
   });
 
+  // La guía trae el RUC/razón social del REMITENTE — si ya existe un
+  // proveedor registrado con ese RUC se devuelve su id, para poder
+  // asignárselo automáticamente a los productos nuevos que se creen desde
+  // esta guía (igual que ya hace "Registrar Compra" con parse-guia). Si no
+  // existe, no se crea uno acá: el usuario lo asigna después desde Productos
+  // o Proveedores, para no meter un flujo de alta de proveedor en esta
+  // pantalla.
+  const proveedor = resultado.ruc ? db.prepare('SELECT id FROM suppliers WHERE ruc = ?').get(resultado.ruc) : null;
+
   res.json({
     filas,
     fuente: resultado.fuente,
     advertencia: resultado.advertencia || null,
-    proveedor: resultado.razon_social || null,
+    ruc: resultado.ruc || null,
+    razon_social: resultado.razon_social || null,
+    proveedor_id: proveedor ? proveedor.id : null,
     guia: resultado.guia_serie && resultado.guia_numero ? `${resultado.guia_serie}-${resultado.guia_numero}` : null,
   });
 });
