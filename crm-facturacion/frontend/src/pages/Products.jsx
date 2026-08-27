@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import api from '../api';
 import { useToast } from '../context/ToastContext';
 import { useAuth } from '../context/AuthContext';
-import { leerArchivoComoTextoCsv, descargarComoExcel } from '../utils/excelImport';
+import { leerArchivoComoTextoCsv, descargarComoExcel, exportarTabla } from '../utils/excelImport';
+import ExportButton from '../components/ExportButton';
 
 const CARGA_MASIVA_COLUMNAS = ['codigo', 'nombre', 'categoria', 'unidad', 'precio_unitario', 'stock', 'stock_minimo', 'precio_compra'];
 
@@ -118,16 +119,10 @@ export default function Products() {
     load();
   }
 
-  function handleExportar() {
+  async function handleExportar(formato) {
     const header = ['Código', 'Producto', 'Categoría', 'U.M.', 'Mínimo', 'Stock', 'Precio'];
     const rows = products.map((p) => [p.codigo, p.nombre, p.categoria, p.unidad, p.stock_minimo ?? '', p.stock ?? '', p.precio_unitario]);
-    const csv = [header, ...rows].map((r) => r.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
-    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = 'lista_de_precios.csv';
-    document.body.appendChild(a); a.click(); a.remove();
-    URL.revokeObjectURL(url);
+    await exportarTabla('lista_de_precios', header, rows, formato);
     toast.success('Lista de precios exportada.');
   }
 
@@ -349,7 +344,7 @@ export default function Products() {
         </div>
         <div className="filter-actions">
           <button type="submit" className="btn-secondary">Buscar</button>
-          <button type="button" className="btn-export" onClick={handleExportar}>Exportar</button>
+          <ExportButton onExport={handleExportar} />
         </div>
       </form>
 

@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import api from '../api';
 import { useToast } from '../context/ToastContext';
 import { useAuth } from '../context/AuthContext';
+import ExportButton from '../components/ExportButton';
+import { exportarTabla } from '../utils/excelImport';
 
 const TIPO_LABEL = { factura: 'Factura', boleta: 'Boleta', nota_credito: 'Nota de crédito' };
 
@@ -105,7 +107,7 @@ export default function Invoices() {
     load();
   }
 
-  function handleExportar() {
+  async function handleExportar(formato) {
     const header = ['Fecha', 'Serie', 'Nro', 'Comprobante', 'Nro Doc', 'Nombre o Razon Social', 'Importe', 'Total', 'Estado'];
     const rows = invoices.map((inv) => [
       inv.fecha_emision,
@@ -118,17 +120,8 @@ export default function Invoices() {
       inv.total,
       inv.estado,
     ]);
-    const csv = [header, ...rows].map((r) => r.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
-    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `ventas_${desde}_a_${hasta}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-    toast.success('Archivo CSV exportado.');
+    await exportarTabla(`ventas_${desde}_a_${hasta}`, header, rows, formato);
+    toast.success(`Archivo ${formato === 'excel' ? 'Excel' : 'CSV'} exportado.`);
   }
 
   async function handleReatribuir(inv, atribuidoAId) {
@@ -209,7 +202,7 @@ export default function Invoices() {
         </div>
         <div className="filter-actions">
           <button type="submit" className="btn-secondary">Buscar</button>
-          <button type="button" className="btn-export" onClick={handleExportar}>Exportar</button>
+          <ExportButton onExport={handleExportar} />
         </div>
       </form>
 

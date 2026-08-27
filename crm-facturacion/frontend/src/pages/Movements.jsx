@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import api from '../api';
 import { useToast } from '../context/ToastContext';
-import { leerArchivoComoTextoCsv, descargarComoExcel } from '../utils/excelImport';
+import { leerArchivoComoTextoCsv, descargarComoExcel, exportarTabla } from '../utils/excelImport';
+import ExportButton from '../components/ExportButton';
 
 const TIPO_LABEL = {
   venta: 'Venta', anulacion: 'Anulación', ajuste: 'Ajuste manual',
@@ -106,23 +107,14 @@ export default function Movements() {
     load();
   }
 
-  function handleExportar() {
+  async function handleExportar(formato) {
     const header = ['Fecha', 'Documento', 'Producto', 'Tipo', 'Canal', 'Cliente/Proveedor', 'Observación', 'Cantidad', 'Stock resultante', 'Usuario'];
     const rows = movements.map((m) => [
       m.created_at, m.referencia || '', `${m.producto_codigo} - ${m.producto_nombre}`,
       TIPO_LABEL[m.tipo] || m.tipo, m.canal || '', m.cliente_proveedor || '', m.motivo || '', m.cantidad, m.stock_resultante ?? '', m.usuario_nombre || '',
     ]);
-    const csv = [header, ...rows].map((r) => r.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
-    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `movimientos_${desde}_a_${hasta}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-    toast.success('Archivo CSV exportado.');
+    await exportarTabla(`movimientos_${desde}_a_${hasta}`, header, rows, formato);
+    toast.success(`Archivo ${formato === 'excel' ? 'Excel' : 'CSV'} exportado.`);
   }
 
   function openConteo() {
@@ -321,7 +313,7 @@ export default function Movements() {
         </div>
         <div className="filter-actions">
           <button type="submit" className="btn-secondary">Buscar</button>
-          <button type="button" className="btn-export" onClick={handleExportar}>Exportar</button>
+          <ExportButton onExport={handleExportar} />
         </div>
       </form>
 

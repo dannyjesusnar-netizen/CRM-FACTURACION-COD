@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import api from '../api';
 import { useToast } from '../context/ToastContext';
+import ExportButton from '../components/ExportButton';
+import { exportarTabla } from '../utils/excelImport';
 
 function emptyItem() {
   return { product_id: '', cantidad: 1, lote_id: '' };
@@ -125,23 +127,14 @@ export default function Traslados() {
     }
   }
 
-  function handleExportar() {
+  async function handleExportar(formato) {
     const header = ['Fecha', 'Código', 'Operación', 'Sucursal Origen', 'Emisor', 'Sucursal Destino', 'Estado', 'Observaciones'];
     const rows = traslados.map((t) => [
       t.created_at, t.codigo, 'Traslado', t.sucursal_origen_nombre, t.emisor_nombre || '',
       t.sucursal_destino_nombre, t.estado, t.observaciones || '',
     ]);
-    const csv = [header, ...rows].map((r) => r.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
-    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `traslados_${desde}_a_${hasta}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-    toast.success('Archivo CSV exportado.');
+    await exportarTabla(`traslados_${desde}_a_${hasta}`, header, rows, formato);
+    toast.success(`Archivo ${formato === 'excel' ? 'Excel' : 'CSV'} exportado.`);
   }
 
   return (
@@ -178,7 +171,7 @@ export default function Traslados() {
         </div>
         <div className="filter-actions">
           <button type="submit" className="btn-secondary">Buscar</button>
-          <button type="button" className="btn-export" onClick={handleExportar}>Exportar</button>
+          <ExportButton onExport={handleExportar} />
         </div>
       </form>
 

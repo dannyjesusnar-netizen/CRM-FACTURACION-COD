@@ -2,10 +2,12 @@ import { useEffect, useState } from 'react';
 import { Bar } from 'react-chartjs-2';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Tooltip, Legend } from 'chart.js';
 import {
-  Download, ShoppingCart, Calculator, User, TrendingUp, Package, BarChart3, Users, Wallet,
+  ShoppingCart, Calculator, User, TrendingUp, Package, BarChart3, Users, Wallet,
 } from 'lucide-react';
 import api from '../api';
 import { useToast } from '../context/ToastContext';
+import ExportButton from '../components/ExportButton';
+import { exportarTabla } from '../utils/excelImport';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend);
 
@@ -33,19 +35,6 @@ function todayStr() {
 
 function money(n) {
   return `S/ ${Number(n || 0).toFixed(2)}`;
-}
-
-function downloadCsv(filename, header, rows) {
-  const csv = [header, ...rows].map((r) => r.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
-  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
 }
 
 function SucursalYAnio({ anio, setAnio, extra }) {
@@ -192,15 +181,16 @@ export default function Reports() {
   const totalProductosSoles = productos.reduce((s, p) => s + p.monto_soles, 0);
   const totalProductosDolares = productos.reduce((s, p) => s + p.monto_dolares, 0);
 
-  function exportTributario() {
-    downloadCsv(
-      `informe_tributario_${tributarioAnio}.csv`,
+  async function exportTributario(formato) {
+    await exportarTabla(
+      `informe_tributario_${tributarioAnio}`,
       ['Periodo', 'Ventas Netas', 'ISC Ventas', 'Recargos', 'ICBPER Ventas', 'Compras Netas', 'IGV Ventas', 'IGV Compras', 'IGV Mes', 'Saldo IGV', 'Renta', 'Percepción Compras', 'Utilidad Contable'],
       tributario.map((r) => [
         r.periodo, r.ventas_netas.toFixed(2), r.isc_ventas.toFixed(2), r.recargos.toFixed(2), r.icbper_ventas.toFixed(2),
         r.compras_netas.toFixed(2), r.igv_ventas.toFixed(2), r.igv_compras.toFixed(2), r.igv_mes.toFixed(2),
         r.saldo_igv.toFixed(2), r.renta.toFixed(2), r.percepcion_compras.toFixed(2), r.utilidad_contable.toFixed(2),
-      ])
+      ]),
+      formato
     );
     toast.success('Informe tributario exportado.');
   }
@@ -250,11 +240,7 @@ export default function Reports() {
                 <SucursalYAnio
                   anio={tributarioAnio}
                   setAnio={setTributarioAnio}
-                  extra={(
-                    <button className="btn-export" onClick={exportTributario}>
-                      <Download size={14} style={{ marginRight: 6, verticalAlign: 'text-bottom' }} />Exportar
-                    </button>
-                  )}
+                  extra={<ExportButton onExport={exportTributario} />}
                 />
               </div>
               <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -6 }}>
