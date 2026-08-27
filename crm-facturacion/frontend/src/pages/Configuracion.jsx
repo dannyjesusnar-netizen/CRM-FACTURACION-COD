@@ -94,8 +94,8 @@ const IMPORTADORES_MASIVOS = [
     titulo: 'Productos nuevos',
     Icon: PackagePlus,
     endpoint: '/products/carga-masiva',
-    columnas: ['codigo', 'nombre', 'categoria', 'unidad', 'precio_unitario', 'precio_compra', 'stock', 'stock_minimo', 'codigo_barras'],
-    filaEjemplo: ['PROD002', 'Proteína Whey 1kg', 'Suplementos', 'NIU', '120', '80', '30', '5', '7501234567890'],
+    columnas: ['codigo', 'nombre', 'categoria', 'unidad', 'precio_unitario', 'precio_compra', 'stock', 'stock_minimo'],
+    filaEjemplo: ['PROD002', 'Proteína Whey 1kg', 'Suplementos', 'NIU', '120', '80', '30', '5'],
     descripcion: 'Crea productos nuevos por código. Si el código ya existe, actualiza sus datos (mismo criterio de siempre).',
   },
   {
@@ -104,8 +104,8 @@ const IMPORTADORES_MASIVOS = [
     Icon: RefreshCw,
     endpoint: '/products/carga-masiva',
     extraBody: { crear_nuevos: false },
-    columnas: ['codigo', 'nombre', 'categoria', 'unidad', 'precio_unitario', 'precio_compra', 'stock', 'stock_minimo', 'codigo_barras'],
-    filaEjemplo: ['PROD001', 'Creatina Monohidratada 300g', 'Suplementos', 'NIU', '89.9', '55', '40', '5', '7501234500001'],
+    columnas: ['codigo', 'nombre', 'categoria', 'unidad', 'precio_unitario', 'precio_compra', 'stock', 'stock_minimo'],
+    filaEjemplo: ['PROD001', 'Creatina Monohidratada 300g', 'Suplementos', 'NIU', '89.9', '55', '40', '5'],
     descripcion: 'Actualiza productos que YA existen por código. Si un código no existe, esa fila queda en error (a diferencia de "Productos nuevos", esta opción nunca crea productos).',
   },
   {
@@ -146,7 +146,7 @@ const EXPORTADORES_MASIVOS = [
     titulo: 'Productos',
     Icon: Boxes,
     endpoint: '/products',
-    columnas: ['codigo', 'nombre', 'categoria', 'unidad', 'precio_unitario', 'precio_compra', 'stock', 'stock_minimo', 'codigo_barras'],
+    columnas: ['codigo', 'nombre', 'categoria', 'unidad', 'precio_unitario', 'precio_compra', 'stock', 'stock_minimo'],
     descripcion: 'Todo el catálogo de productos activos, con stock de la sede activa.',
   },
   {
