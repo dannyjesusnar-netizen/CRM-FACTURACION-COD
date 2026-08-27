@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Camera, Trash2, Plus } from 'lucide-react';
+import { ArrowLeft, Camera, FileText, Trash2, Plus } from 'lucide-react';
 import api from '../api';
 import { useToast } from '../context/ToastContext';
 
@@ -59,6 +59,15 @@ export default function CargarGuiaFoto() {
 
   const productosDisponibles = products.filter((p) => p.tipo === 'producto');
 
+  function filasDesdeRespuesta(filasRes) {
+    return (filasRes || []).map((f) => ({
+      id: nuevaFilaId(),
+      descripcion_detectada: f.descripcion_detectada,
+      cantidad: f.cantidad_detectada,
+      product_id: f.product_id ? String(f.product_id) : '',
+    }));
+  }
+
   async function handleFotoChange(e) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -69,12 +78,7 @@ export default function CargarGuiaFoto() {
       setFilas([]);
       setTextoDetectado('');
       const res = await api.post('/movements/analizar-guia', { foto_data_url: comprimida });
-      const detectadas = (res.data.filas || []).map((f) => ({
-        id: nuevaFilaId(),
-        descripcion_detectada: f.descripcion_detectada,
-        cantidad: f.cantidad_detectada,
-        product_id: f.product_id ? String(f.product_id) : '',
-      }));
+      const detectadas = filasDesdeRespuesta(res.data.filas);
       setFilas(detectadas);
       setTextoDetectado(res.data.texto || '');
       if (detectadas.length === 0) {
@@ -85,6 +89,36 @@ export default function CargarGuiaFoto() {
       }
     } catch (err) {
       toast.error('No se pudo analizar la foto de la guía. Agrega las filas a mano.');
+    } finally {
+      setAnalizando(false);
+    }
+  }
+
+  // A diferencia de la foto, acá se sube el ARCHIVO real de la guía (el XML
+  // que emite SUNAT, o un PDF con texto embebido — no una foto/captura de
+  // pantalla): se lee el texto directamente, sin OCR de por medio, así que
+  // es mucho más confiable en documentos con tablas de letra chica.
+  async function handleArchivoChange(e) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setAnalizando(true);
+    setFilas([]);
+    setTextoDetectado('');
+    setFotoGuia('');
+    const formData = new FormData();
+    formData.append('file', file);
+    try {
+      const res = await api.post('/movements/analizar-guia-archivo', formData);
+      const detectadas = filasDesdeRespuesta(res.data.filas);
+      setFilas(detectadas);
+      if (detectadas.length === 0) {
+        toast.info('El archivo se leyó pero no se encontraron líneas de producto — agrega las filas a mano.');
+      } else {
+        toast.success(res.data.advertencia || `Se detectaron ${detectadas.length} línea(s) desde el archivo. Revisa el producto y la cantidad antes de cargar.`);
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'No se pudo leer el archivo de la guía.');
     } finally {
       setAnalizando(false);
     }
@@ -136,28 +170,33 @@ export default function CargarGuiaFoto() {
         <button className="icon-link" title="Volver a Movimientos" onClick={() => navigate('/movimientos')} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}>
           <ArrowLeft size={20} />
         </button>
-        CARGAR GUÍA POR FOTO
+        CARGAR GUÍA
       </h1>
       <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -8 }}>
-        Toma una sola foto de la guía de remisión completa del proveedor — el sistema intenta separar sus líneas de
-        producto y sugerir a qué producto de tu catálogo corresponde cada una. Es una lectura automática y puede
-        equivocarse o saltarse líneas: revisa el producto y la cantidad de cada fila (y agrega las que falten) antes
-        de cargarlas al inventario. La tabla de productos suele venir con letra chica — si el sistema no detecta
-        nada, prueba tomando la foto solo de esa tabla (haciendo zoom antes de capturar), en vez de la página
-        completa.
+        Si tienes el archivo real de la guía (el XML que emite SUNAT, o un PDF con texto — no una foto), súbelo: se
+        lee el texto directamente y es mucho más confiable. Si solo tienes una foto o captura de pantalla, el sistema
+        intenta leerla igual, pero es una lectura automática que puede equivocarse o saltarse líneas, sobre todo si la
+        tabla de productos viene con letra chica. En ambos casos revisa el producto y la cantidad de cada fila (y
+        agrega las que falten) antes de cargarlas al inventario.
       </p>
 
       <div className="panel">
-        <h3 style={{ marginTop: 0 }}>Foto de la guía</h3>
+        <h3 style={{ marginTop: 0 }}>Archivo o foto de la guía</h3>
         {fotoGuia && (
           <div style={{ margin: '6px 0' }}>
             <img src={fotoGuia} alt="Guía" style={{ maxWidth: '100%', maxHeight: 260, borderRadius: 8, border: '1px solid var(--border)' }} />
           </div>
         )}
-        <label className="btn-primary qr-foto-btn" style={{ marginTop: 4 }}>
-          <Camera size={20} /> {fotoGuia ? 'Cambiar foto' : 'Tomar / subir foto de la guía'}
-          <input type="file" accept="image/*" capture="environment" onChange={handleFotoChange} style={{ display: 'none' }} />
-        </label>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+          <label className="btn-primary qr-foto-btn" style={{ marginTop: 4, width: 'auto' }}>
+            <FileText size={20} /> Subir XML o PDF de la guía
+            <input type="file" accept=".xml,.pdf,application/pdf,text/xml,application/xml" onChange={handleArchivoChange} style={{ display: 'none' }} />
+          </label>
+          <label className="btn-secondary qr-foto-btn" style={{ marginTop: 4, width: 'auto' }}>
+            <Camera size={20} /> {fotoGuia ? 'Cambiar foto' : 'Tomar / subir foto de la guía'}
+            <input type="file" accept="image/*" capture="environment" onChange={handleFotoChange} style={{ display: 'none' }} />
+          </label>
+        </div>
         {analizando && <p style={{ fontSize: 12, color: 'var(--ink-muted)' }}>Analizando la guía… esto puede tardar unos segundos.</p>}
 
         <label style={{ marginTop: 10 }}>Motivo / proveedor (opcional, se aplica a todas las filas)</label>
