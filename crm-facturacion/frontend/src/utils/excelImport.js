@@ -76,3 +76,29 @@ export async function descargarComoExcel(filename, headers, filasEjemplo) {
   a.remove();
   URL.revokeObjectURL(url);
 }
+
+// Descarga un CSV clásico (con BOM para que Excel reconozca los acentos) —
+// misma forma que ya armaba a mano cada pantalla con botón "Exportar".
+function descargarComoCsv(filename, headers, filas) {
+  const csv = [headers, ...filas].map((fila) => fila.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+// Punto único para las pantallas con botón "Exportar": genera el archivo en
+// el formato que haya elegido el usuario (ver componentes/ExportButton),
+// reutilizando las mismas columnas/filas que cada pantalla ya arma.
+export async function exportarTabla(filenameBase, headers, filas, formato) {
+  if (formato === 'excel') {
+    await descargarComoExcel(`${filenameBase}.xlsx`, headers, filas);
+  } else {
+    descargarComoCsv(`${filenameBase}.csv`, headers, filas);
+  }
+}

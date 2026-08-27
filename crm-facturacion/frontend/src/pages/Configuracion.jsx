@@ -7,7 +7,8 @@ import {
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
-import { leerArchivoComoTextoCsv, descargarComoExcel } from '../utils/excelImport';
+import { leerArchivoComoTextoCsv, descargarComoExcel, exportarTabla } from '../utils/excelImport';
+import ExportButton from '../components/ExportButton';
 
 const DEPARTAMENTOS_PERU = [
   'Amazonas', 'Áncash', 'Apurímac', 'Arequipa', 'Ayacucho', 'Cajamarca', 'Callao', 'Cusco',
@@ -895,7 +896,7 @@ export default function Configuracion() {
     }
   }
 
-  function exportarEmpleadosCsv() {
+  async function exportarEmpleadosCsv(formato) {
     const header = ['Nombres', 'Apellidos', 'Rol', 'Sede', 'DNI', 'Correo', 'Teléfono', 'Estado'];
     const rows = usuarios.map((u) => [
       u.nombres || '', u.apellidos || '',
@@ -903,16 +904,7 @@ export default function Configuracion() {
       u.sucursal_nombre || 'Todas las sedes',
       u.dni || '', u.email || '', u.telefono || '', u.activo ? 'Habilitado' : 'Deshabilitado',
     ]);
-    const csv = [header, ...rows].map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'empleados.csv';
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
+    await exportarTabla('empleados', header, rows, formato);
   }
 
   function openNewOperativo() {
@@ -1674,7 +1666,7 @@ export default function Configuracion() {
               <div className="report-toolbar">
                 <h3 style={{ margin: 0 }}>Empleados</h3>
                 <div style={{ display: 'flex', gap: 10 }}>
-                  <button className="btn-export" onClick={exportarEmpleadosCsv}>Exportar</button>
+                  <ExportButton onExport={exportarEmpleadosCsv} />
                   <button className="btn-primary" style={{ width: 'auto' }} onClick={openNewUser}>Nuevo Empleado</button>
                 </div>
               </div>

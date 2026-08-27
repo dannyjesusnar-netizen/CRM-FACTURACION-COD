@@ -4,6 +4,8 @@ import { ArrowLeft } from 'lucide-react';
 import api from '../api';
 import { useToast } from '../context/ToastContext';
 import MetodoPagoQr from '../components/MetodoPagoQr';
+import ExportButton from '../components/ExportButton';
+import { exportarTabla } from '../utils/excelImport';
 
 function round2(n) {
   return Math.round((n + Number.EPSILON) * 100) / 100;
@@ -77,7 +79,7 @@ export default function CuentasPorCobrar() {
   const totalAdeudadoPEN = round2(deudasFiltradas.filter((d) => d.moneda !== 'USD').reduce((s, d) => s + d.saldo, 0));
   const totalAdeudadoUSD = round2(deudasFiltradas.filter((d) => d.moneda === 'USD').reduce((s, d) => s + d.saldo, 0));
 
-  function handleExportar() {
+  async function handleExportar(formato) {
     const header = ['Fecha', 'Comprobante', 'Tipo', 'Cliente', 'Documento', 'Total', 'Pagado', 'Saldo'];
     const rows = deudasFiltradas.map((d) => [
       d.fecha_emision,
@@ -89,17 +91,8 @@ export default function CuentasPorCobrar() {
       d.monto_pagado,
       d.saldo,
     ]);
-    const csv = [header, ...rows].map((r) => r.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
-    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'cuentas_por_cobrar.csv';
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-    toast.success('Archivo CSV exportado.');
+    await exportarTabla('cuentas_por_cobrar', header, rows, formato);
+    toast.success(`Archivo ${formato === 'excel' ? 'Excel' : 'CSV'} exportado.`);
   }
 
   return (
@@ -120,7 +113,7 @@ export default function CuentasPorCobrar() {
           <label>Buscar por nombre o número doc.</label>
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Nro. doc/nombre.." />
         </div>
-        <button type="button" className="btn-primary" onClick={handleExportar}>Exportar</button>
+        <ExportButton onExport={handleExportar} className="btn-primary" />
       </div>
 
       <table className="data-table">
