@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import api from '../api';
@@ -28,6 +28,15 @@ export default function CuentasPorCobrar() {
   const [error, setError] = useState('');
   const [metodosPago, setMetodosPago] = useState([]);
   const [q, setQ] = useState('');
+  const [desde, setDesde] = useState('');
+  const [hasta, setHasta] = useState('');
+  const [vista, setVista] = useState('detalle'); // 'detalle' | 'resumen'
+  const [expandido, setExpandido] = useState(null); // client_id expandido en la vista Resumen
+
+  const [marcando, setMarcando] = useState(null); // grupo de cliente para "Marcar todo pagado"
+  const [medioMarcar, setMedioMarcar] = useState('efectivo');
+  const [observacionMarcar, setObservacionMarcar] = useState('');
+  const [errorMarcar, setErrorMarcar] = useState('');
 
   useEffect(() => {
     load();
@@ -69,15 +78,64 @@ export default function CuentasPorCobrar() {
 
   // Filtro por persona que debe: nombre o número de documento del cliente.
   const qNorm = q.trim().toLowerCase();
-  const deudasFiltradas = qNorm
-    ? deudas.filter((d) =>
-        (d.cliente_nombre || '').toLowerCase().includes(qNorm) ||
-        (d.cliente_documento || '').toLowerCase().includes(qNorm))
-    : deudas;
+  const deudasFiltradas = deudas.filter((d) => {
+    if (qNorm) {
+      const coincide = (d.cliente_nombre || '').toLowerCase().includes(qNorm) ||
+        (d.cliente_documento || '').toLowerCase().includes(qNorm);
+      if (!coincide) return false;
+    }
+    if (desde && d.fecha_emision < desde) return false;
+    if (hasta && d.fecha_emision > hasta) return false;
+    return true;
+  });
 
   // Nunca sumar soles y dólares como si fueran la misma unidad.
   const totalAdeudadoPEN = round2(deudasFiltradas.filter((d) => d.moneda !== 'USD').reduce((s, d) => s + d.saldo, 0));
   const totalAdeudadoUSD = round2(deudasFiltradas.filter((d) => d.moneda === 'USD').reduce((s, d) => s + d.saldo, 0));
+
+  // Vista Resumen: cuánto debe cada cliente en total, agrupando sus
+  // comprobantes pendientes (puede tener varias facturas/notas a la vez).
+  const resumenPorCliente = [];
+  const indicePorCliente = new Map();
+  for (const d of deudasFiltradas) {
+    const key = d.client_id;
+    let g = indicePorCliente.get(key);
+    if (!g) {
+      g = {
+        client_id: key, cliente_nombre: d.cliente_nombre, cliente_documento: d.cliente_documento,
+        cliente_tipo_documento: d.cliente_tipo_documento, items: [], totalPEN: 0, totalUSD: 0,
+      };
+      indicePorCliente.set(key, g);
+      resumenPorCliente.push(g);
+    }
+    g.items.push(d);
+    if (d.moneda === 'USD') g.totalUSD = round2(g.totalUSD + d.saldo);
+    else g.totalPEN = round2(g.totalPEN + d.saldo);
+  }
+  resumenPorCliente.sort((a, b) => (b.totalPEN + b.totalUSD) - (a.totalPEN + a.totalUSD));
+
+  function abrirMarcarTodo(grupo) {
+    setMarcando(grupo);
+    setMedioMarcar('efectivo');
+    setObservacionMarcar('');
+    setErrorMarcar('');
+  }
+
+  async function handleMarcarTodoPagado(e) {
+    e.preventDefault();
+    setErrorMarcar('');
+    try {
+      for (const d of marcando.items) {
+        const base = d._source === 'nota_venta' ? '/notas-venta' : '/invoices';
+        await api.post(`${base}/${d.id}/cobros`, { monto: d.saldo, medio: medioMarcar, observacion: observacionMarcar || 'Pago de fin de mes' });
+      }
+      toast.success(`Se marcó como pagado ${marcando.items.length} comprobante(s) de ${marcando.cliente_nombre}.`);
+      setMarcando(null);
+      load();
+    } catch (err) {
+      setErrorMarcar(err.response?.data?.error || 'No se pudo completar el pago de todos los comprobantes.');
+    }
+  }
 
   async function handleExportar(formato) {
     const header = ['Fecha', 'Comprobante', 'Tipo', 'Cliente', 'Documento', 'Total', 'Pagado', 'Saldo'];
@@ -113,36 +171,99 @@ export default function CuentasPorCobrar() {
           <label>Buscar por nombre o número doc.</label>
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Nro. doc/nombre.." />
         </div>
+        <div className="filter-field">
+          <label>Desde</label>
+          <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} />
+        </div>
+        <div className="filter-field">
+          <label>Hasta</label>
+          <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} />
+        </div>
         <ExportButton onExport={handleExportar} className="btn-primary" />
       </div>
 
-      <table className="data-table">
-        <thead>
-          <tr><th>Fecha</th><th>Comprobante</th><th>Tipo</th><th>Cliente</th><th>Documento</th><th>Total</th><th>Pagado</th><th>Saldo</th><th></th></tr>
-        </thead>
-        <tbody>
-          {deudasFiltradas.map((d) => (
-            <tr key={`${d._source}-${d.id}`}>
-              <td>{d.fecha_emision}</td>
-              <td>{d.serie}-{String(d.numero).padStart(6, '0')}</td>
-              <td>{tipoLabel(d)}</td>
-              <td>{d.cliente_nombre}</td>
-              <td>{d.cliente_tipo_documento} {d.cliente_documento}</td>
-              <td>S/ {d.total.toFixed(2)}</td>
-              <td>S/ {d.monto_pagado.toFixed(2)}</td>
-              <td><strong>S/ {d.saldo.toFixed(2)}</strong></td>
-              <td className="row-actions">
-                <button className="btn-link" onClick={() => openCobro(d)}>Registrar cobro</button>
-              </td>
-            </tr>
-          ))}
-          {deudasFiltradas.length === 0 && (
-            <tr><td colSpan={9} className="empty-row">
-              {deudas.length === 0 ? 'No hay cuentas por cobrar pendientes.' : 'Ningún cliente coincide con la búsqueda.'}
-            </td></tr>
-          )}
-        </tbody>
-      </table>
+      <div className="view-tabs">
+        <button type="button" className={'view-tab-btn' + (vista === 'detalle' ? ' active' : '')} onClick={() => setVista('detalle')}>
+          Detalle
+        </button>
+        <button type="button" className={'view-tab-btn' + (vista === 'resumen' ? ' active' : '')} onClick={() => setVista('resumen')}>
+          Resumen por cliente
+        </button>
+      </div>
+
+      {vista === 'detalle' && (
+        <table className="data-table">
+          <thead>
+            <tr><th>Fecha</th><th>Comprobante</th><th>Tipo</th><th>Cliente</th><th>Documento</th><th>Total</th><th>Pagado</th><th>Saldo</th><th></th></tr>
+          </thead>
+          <tbody>
+            {deudasFiltradas.map((d) => (
+              <tr key={`${d._source}-${d.id}`}>
+                <td>{d.fecha_emision}</td>
+                <td>{d.serie}-{String(d.numero).padStart(6, '0')}</td>
+                <td>{tipoLabel(d)}</td>
+                <td>{d.cliente_nombre}</td>
+                <td>{d.cliente_tipo_documento} {d.cliente_documento}</td>
+                <td>S/ {d.total.toFixed(2)}</td>
+                <td>S/ {d.monto_pagado.toFixed(2)}</td>
+                <td><strong>S/ {d.saldo.toFixed(2)}</strong></td>
+                <td className="row-actions">
+                  <button className="btn-link" onClick={() => openCobro(d)}>Registrar cobro</button>
+                </td>
+              </tr>
+            ))}
+            {deudasFiltradas.length === 0 && (
+              <tr><td colSpan={9} className="empty-row">
+                {deudas.length === 0 ? 'No hay cuentas por cobrar pendientes.' : 'Ningún comprobante coincide con el filtro.'}
+              </td></tr>
+            )}
+          </tbody>
+        </table>
+      )}
+
+      {vista === 'resumen' && (
+        <table className="data-table">
+          <thead>
+            <tr><th>Cliente</th><th>Documento</th><th style={{ textAlign: 'right' }}>Comprobantes</th><th style={{ textAlign: 'right' }}>Total adeudado</th><th></th></tr>
+          </thead>
+          <tbody>
+            {resumenPorCliente.map((g) => (
+              <Fragment key={g.client_id}>
+                <tr>
+                  <td>{g.cliente_nombre}</td>
+                  <td>{g.cliente_tipo_documento} {g.cliente_documento}</td>
+                  <td style={{ textAlign: 'right' }}>{g.items.length}</td>
+                  <td style={{ textAlign: 'right' }}>
+                    <strong>S/ {g.totalPEN.toFixed(2)}</strong>
+                    {g.totalUSD > 0 && <> + <strong>$ {g.totalUSD.toFixed(2)}</strong></>}
+                  </td>
+                  <td className="row-actions">
+                    <button className="btn-link" onClick={() => setExpandido(expandido === g.client_id ? null : g.client_id)}>
+                      {expandido === g.client_id ? 'Ocultar' : 'Ver detalle'}
+                    </button>
+                    <button className="btn-link" onClick={() => abrirMarcarTodo(g)}>Marcar todo pagado</button>
+                  </td>
+                </tr>
+                {expandido === g.client_id && g.items.map((d) => (
+                  <tr key={`${d._source}-${d.id}`} className="caja-row-auto">
+                    <td colSpan={2} style={{ paddingLeft: 28 }}>{d.fecha_emision} · {d.serie}-{String(d.numero).padStart(6, '0')} · {tipoLabel(d)}</td>
+                    <td></td>
+                    <td style={{ textAlign: 'right' }}>S/ {d.saldo.toFixed(2)}</td>
+                    <td className="row-actions">
+                      <button className="btn-link" onClick={() => openCobro(d)}>Registrar cobro</button>
+                    </td>
+                  </tr>
+                ))}
+              </Fragment>
+            ))}
+            {resumenPorCliente.length === 0 && (
+              <tr><td colSpan={5} className="empty-row">
+                {deudas.length === 0 ? 'No hay cuentas por cobrar pendientes.' : 'Ningún cliente coincide con el filtro.'}
+              </td></tr>
+            )}
+          </tbody>
+        </table>
+      )}
 
       {cobrando && (
         <div className="modal-overlay" onClick={() => setCobrando(null)}>
@@ -169,6 +290,35 @@ export default function CuentasPorCobrar() {
               <div className="modal-actions">
                 <button type="button" className="btn-secondary" onClick={() => setCobrando(null)}>Cancelar</button>
                 <button type="submit" className="btn-primary">Registrar cobro</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {marcando && (
+        <div className="modal-overlay" onClick={() => setMarcando(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h2>Marcar todo pagado — {marcando.cliente_nombre}</h2>
+            <p style={{ fontSize: 12, color: 'var(--ink-muted)' }}>
+              {marcando.items.length} comprobante{marcando.items.length !== 1 ? 's' : ''} pendiente{marcando.items.length !== 1 ? 's' : ''} · Total: S/ {marcando.totalPEN.toFixed(2)}
+              {marcando.totalUSD > 0 && <> + $ {marcando.totalUSD.toFixed(2)}</>}
+            </p>
+            <form onSubmit={handleMarcarTodoPagado}>
+              <label>Medio de pago</label>
+              <select value={medioMarcar} onChange={(e) => setMedioMarcar(e.target.value)}>
+                {metodosPago.map((m) => (
+                  <option key={m.codigo} value={m.codigo}>{m.icono} {m.nombre}</option>
+                ))}
+              </select>
+              <label>Observación (opcional)</label>
+              <input value={observacionMarcar} onChange={(e) => setObservacionMarcar(e.target.value)} placeholder="Ej: Pago de fin de mes" />
+              {errorMarcar && <div className="form-error">{errorMarcar}</div>}
+              <div className="modal-actions">
+                <button type="button" className="btn-secondary" onClick={() => setMarcando(null)}>Cancelar</button>
+                <button type="submit" className="btn-primary">
+                  Marcar {marcando.items.length} como pagado{marcando.items.length !== 1 ? 's' : ''}
+                </button>
               </div>
             </form>
           </div>
