@@ -160,9 +160,10 @@ function buildA4Pdf(invoice, items, empresa, acento, logo, qr, cobros) {
   let infoY = 44 + doc.heightOfString(nombreEmpresa, { width: nombreWidth }) + 6;
   doc.font('Helvetica').fontSize(7.5).fillColor('#444');
   if (empresa.direccion_fiscal) {
+    const lineaPrincipal = `Sede principal: ${empresa.direccion_fiscal}`;
     doc.circle(textX + 3, infoY + 3, 2.5).fill(acento).fillColor('#444');
-    doc.text(empresa.direccion_fiscal, textX + 10, infoY, { width: infoWidth });
-    infoY += doc.heightOfString(empresa.direccion_fiscal, { width: infoWidth }) + 3;
+    doc.text(lineaPrincipal, textX + 10, infoY, { width: infoWidth });
+    infoY += doc.heightOfString(lineaPrincipal, { width: infoWidth }) + 3;
   }
   const contactoLinea = [empresa.email ? `Email: ${empresa.email}` : null, empresa.telefono ? `Cel: ${empresa.telefono}` : null].filter(Boolean).join('   ');
   if (contactoLinea) {
@@ -170,10 +171,14 @@ function buildA4Pdf(invoice, items, empresa, acento, logo, qr, cobros) {
     doc.text(contactoLinea, textX + 10, infoY, { width: infoWidth });
     infoY += 12;
   }
-  if (invoice.sucursal_direccion && invoice.sucursal_direccion !== empresa.direccion_fiscal) {
+  // Se muestra siempre que haya dato, aunque coincida con la dirección
+  // principal — el lector necesita saber en qué sede se emitió, no solo
+  // dónde queda la matriz (antes solo aparecía cuando eran distintas).
+  if (invoice.sucursal_direccion) {
+    const lineaSede = `Sede de emisión (${invoice.sucursal_nombre || ''}): ${invoice.sucursal_direccion}`;
     doc.circle(textX + 3, infoY + 3, 2.5).fill(acento).fillColor('#444');
-    doc.text(`Sede ${invoice.sucursal_nombre || ''}: ${invoice.sucursal_direccion}`, textX + 10, infoY, { width: infoWidth });
-    infoY += doc.heightOfString(`Sede ${invoice.sucursal_nombre || ''}: ${invoice.sucursal_direccion}`, { width: infoWidth }) + 3;
+    doc.text(lineaSede, textX + 10, infoY, { width: infoWidth });
+    infoY += doc.heightOfString(lineaSede, { width: infoWidth }) + 3;
   }
 
   doc.roundedRect(390, 38, 165, 78, 5).stroke(acento);
@@ -499,9 +504,10 @@ function buildTicketPdf(invoice, items, empresa, acento, logo, qr, cobros) {
   linea(empresa.razon_social || 'CRM Facturacion', { align: 'center', gap: 4 });
   doc.font('Helvetica').fontSize(7).fillColor('#333');
   if (empresa.ruc) linea(`RUC: ${empresa.ruc}`, { align: 'center' });
-  if (empresa.direccion_fiscal) linea(empresa.direccion_fiscal, { align: 'center' });
+  if (empresa.direccion_fiscal) linea(`Sede principal: ${empresa.direccion_fiscal}`, { align: 'center' });
   const contacto = [empresa.telefono, empresa.email].filter(Boolean).join(' / ');
   if (contacto) linea(contacto, { align: 'center' });
+  if (invoice.sucursal_direccion) linea(`Sede de emisión (${invoice.sucursal_nombre || ''}): ${invoice.sucursal_direccion}`, { align: 'center' });
   y += 4;
   doc.moveTo(margin, y).lineTo(width - margin, y).stroke('#000');
   y += 8;
