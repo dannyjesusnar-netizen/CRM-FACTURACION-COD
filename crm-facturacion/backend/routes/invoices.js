@@ -51,8 +51,10 @@ router.get('/deudas', requireVerCuentasPorCobrar, (req, res) => {
     SELECT i.id, i.tipo_comprobante, i.serie, i.numero, i.fecha_emision, i.moneda, i.total, i.monto_pagado,
            (i.total - i.monto_pagado) AS saldo,
            c.id AS client_id, c.nombre AS cliente_nombre, c.numero_documento AS cliente_documento,
-           c.tipo_documento AS cliente_tipo_documento, c.telefono AS cliente_telefono
+           c.tipo_documento AS cliente_tipo_documento, c.telefono AS cliente_telefono,
+           u.full_name AS vendedor_nombre
     FROM invoices i JOIN clients c ON c.id = i.client_id
+    LEFT JOIN users u ON u.id = i.created_by
     WHERE i.sucursal_id = ? AND i.forma_pago = 'abonado' AND i.estado = 'emitido'
       AND (i.total - i.monto_pagado) > 0.005
     ORDER BY i.fecha_emision ASC, i.id ASC

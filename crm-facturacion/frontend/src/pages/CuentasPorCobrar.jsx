@@ -138,13 +138,14 @@ export default function CuentasPorCobrar() {
   }
 
   async function handleExportar(formato) {
-    const header = ['Fecha', 'Comprobante', 'Tipo', 'Cliente', 'Documento', 'Total', 'Pagado', 'Saldo'];
+    const header = ['Fecha', 'Comprobante', 'Tipo', 'Cliente', 'Documento', 'Vendedor', 'Total', 'Pagado', 'Saldo'];
     const rows = deudasFiltradas.map((d) => [
       d.fecha_emision,
       `${d.serie}-${String(d.numero).padStart(6, '0')}`,
       tipoLabel(d),
       d.cliente_nombre,
       `${d.cliente_tipo_documento || ''} ${d.cliente_documento || ''}`.trim(),
+      d.vendedor_nombre || '',
       d.total,
       d.monto_pagado,
       d.saldo,
@@ -194,7 +195,7 @@ export default function CuentasPorCobrar() {
       {vista === 'detalle' && (
         <table className="data-table">
           <thead>
-            <tr><th>Fecha</th><th>Comprobante</th><th>Tipo</th><th>Cliente</th><th>Documento</th><th>Total</th><th>Pagado</th><th>Saldo</th><th></th></tr>
+            <tr><th>Fecha</th><th>Comprobante</th><th>Tipo</th><th>Cliente</th><th>Documento</th><th>Vendedor</th><th>Total</th><th>Pagado</th><th>Saldo</th><th></th></tr>
           </thead>
           <tbody>
             {deudasFiltradas.map((d) => (
@@ -204,6 +205,7 @@ export default function CuentasPorCobrar() {
                 <td>{tipoLabel(d)}</td>
                 <td>{d.cliente_nombre}</td>
                 <td>{d.cliente_tipo_documento} {d.cliente_documento}</td>
+                <td>{d.vendedor_nombre || '—'}</td>
                 <td>S/ {d.total.toFixed(2)}</td>
                 <td>S/ {d.monto_pagado.toFixed(2)}</td>
                 <td><strong>S/ {d.saldo.toFixed(2)}</strong></td>
@@ -213,7 +215,7 @@ export default function CuentasPorCobrar() {
               </tr>
             ))}
             {deudasFiltradas.length === 0 && (
-              <tr><td colSpan={9} className="empty-row">
+              <tr><td colSpan={10} className="empty-row">
                 {deudas.length === 0 ? 'No hay cuentas por cobrar pendientes.' : 'Ningún comprobante coincide con el filtro.'}
               </td></tr>
             )}
