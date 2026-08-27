@@ -54,6 +54,9 @@ export default function CargarGuiaFoto() {
   const [guardando, setGuardando] = useState(false);
   const [textoDetectado, setTextoDetectado] = useState('');
   const [mostrarTexto, setMostrarTexto] = useState(false);
+  const [creandoProductoFilaId, setCreandoProductoFilaId] = useState(null);
+  const [formNuevoProducto, setFormNuevoProducto] = useState({ codigo: '', nombre: '', unidad: 'NIU', precio_unitario: '' });
+  const [guardandoProducto, setGuardandoProducto] = useState(false);
 
   useEffect(() => { api.get('/products').then((res) => setProducts(res.data)); }, []);
 
@@ -136,31 +139,81 @@ export default function CargarGuiaFoto() {
     setFilas((prev) => prev.map((f) => (f.id === id ? { ...f, [campo]: valor } : f)));
   }
 
+  function filaLista(f) {
+    return !!f.product_id && Number(f.cantidad) > 0;
+  }
+
+  // Carga solo las filas que ya tienen producto y cantidad válida — las que
+  // falten (típicamente productos de la guía que todavía no existen en el
+  // catálogo) se quedan en la tabla en vez de bloquear TODA la carga, para
+  // que el resto de la guía no quede detenido por un par de productos nuevos.
   async function handleConfirmar() {
-    if (filas.length === 0) { toast.error('Agrega al menos una fila antes de cargar.'); return; }
-    const filasInvalidas = filas.filter((f) => !f.product_id || !(Number(f.cantidad) > 0));
-    if (filasInvalidas.length > 0) {
-      toast.error('Selecciona un producto y una cantidad válida en todas las filas antes de cargar.');
+    const listas = filas.filter(filaLista);
+    if (listas.length === 0) {
+      toast.error('Selecciona el producto de al menos una fila (o créalo) antes de cargar.');
       return;
     }
     setGuardando(true);
     try {
-      const rows = filas.map((f) => {
+      const rows = listas.map((f) => {
         const producto = products.find((p) => String(p.id) === String(f.product_id));
-        return { codigo: producto?.codigo, cantidad: Number(f.cantidad), motivo: motivo.trim() || 'Guía de remisión (foto)' };
+        return { codigo: producto?.codigo, cantidad: Number(f.cantidad), motivo: motivo.trim() || 'Guía de remisión' };
       });
       const res = await api.post('/movements/importar-lotes', { rows });
+      const codigosAplicados = new Set((res.data.aplicados || []).map((a) => a.codigo));
+      const idsAplicados = new Set(
+        listas
+          .filter((f) => {
+            const producto = products.find((p) => String(p.id) === String(f.product_id));
+            return producto && codigosAplicados.has(producto.codigo);
+          })
+          .map((f) => f.id)
+      );
       if (res.data.aplicados?.length > 0) toast.success(`${res.data.aplicados.length} producto(s) cargados al inventario.`);
       if (res.data.errores?.length > 0) toast.error(`${res.data.errores.length} fila(s) con errores: ${res.data.errores.map((e) => e.error).join(' | ')}`);
-      if (!res.data.errores || res.data.errores.length === 0) {
-        setFilas([]);
+      const restantes = filas.filter((f) => !idsAplicados.has(f.id));
+      setFilas(restantes);
+      if (restantes.length === 0) {
         setFotoGuia('');
         setMotivo('');
+      } else if (idsAplicados.size > 0) {
+        toast.info(`Quedan ${restantes.length} fila(s) por completar (falta el producto o la cantidad).`);
       }
     } catch (err) {
       toast.error(err.response?.data?.error || 'No se pudo cargar el inventario.');
     } finally {
       setGuardando(false);
+    }
+  }
+
+  function abrirCrearProducto(fila) {
+    setFormNuevoProducto({ codigo: '', nombre: fila.descripcion_detectada || '', unidad: 'NIU', precio_unitario: '' });
+    setCreandoProductoFilaId(fila.id);
+  }
+
+  // El stock NO se pide acá: al confirmar la carga, "Cargar al inventario"
+  // toma la cantidad de la misma fila y se la asigna a este producto recién
+  // creado, igual que a cualquier otro — no hace falta duplicar el dato.
+  async function handleCrearProducto(e) {
+    e.preventDefault();
+    const { codigo, nombre, unidad, precio_unitario } = formNuevoProducto;
+    if (!codigo.trim() || !nombre.trim() || !(Number(precio_unitario) > 0)) {
+      toast.error('Código, nombre y un precio de venta mayor a 0 son requeridos.');
+      return;
+    }
+    setGuardandoProducto(true);
+    try {
+      const res = await api.post('/products', {
+        codigo: codigo.trim(), nombre: nombre.trim(), unidad, precio_unitario: Number(precio_unitario),
+      });
+      setProducts((prev) => [...prev, res.data]);
+      setFilas((prev) => prev.map((f) => (f.id === creandoProductoFilaId ? { ...f, product_id: String(res.data.id) } : f)));
+      toast.success('Producto creado y seleccionado en la fila.');
+      setCreandoProductoFilaId(null);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'No se pudo crear el producto.');
+    } finally {
+      setGuardandoProducto(false);
     }
   }
 
@@ -242,6 +295,11 @@ export default function CargarGuiaFoto() {
                         <option key={p.id} value={p.id}>{p.codigo} — {p.nombre}</option>
                       ))}
                     </select>
+                    {!f.product_id && (
+                      <button type="button" className="btn-link" style={{ fontSize: 11, display: 'block', marginTop: 4 }} onClick={() => abrirCrearProducto(f)}>
+                        + Crear producto nuevo
+                      </button>
+                    )}
                   </td>
                   <td>
                     <input type="number" step="1" min="1" value={f.cantidad} onChange={(e) => actualizarFila(f.id, 'cantidad', e.target.value)} style={{ width: 90 }} />
@@ -260,11 +318,47 @@ export default function CargarGuiaFoto() {
           </table>
         </div>
         <div className="modal-actions" style={{ justifyContent: 'flex-start', marginTop: 16 }}>
-          <button type="button" className="btn-primary" style={{ width: 'auto' }} disabled={guardando || filas.length === 0} onClick={handleConfirmar}>
-            {guardando ? 'Cargando...' : 'Cargar todo al inventario'}
+          <button type="button" className="btn-primary" style={{ width: 'auto' }} disabled={guardando || filas.filter(filaLista).length === 0} onClick={handleConfirmar}>
+            {guardando ? 'Cargando...' : 'Cargar al inventario'}
           </button>
         </div>
       </div>
+
+      {creandoProductoFilaId && (
+        <div className="modal-overlay" onClick={() => setCreandoProductoFilaId(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h2>Crear producto</h2>
+            <form onSubmit={handleCrearProducto}>
+              <label>Código</label>
+              <input required value={formNuevoProducto.codigo} onChange={(e) => setFormNuevoProducto((f) => ({ ...f, codigo: e.target.value }))} />
+              <label style={{ marginTop: 10 }}>Nombre</label>
+              <input required value={formNuevoProducto.nombre} onChange={(e) => setFormNuevoProducto((f) => ({ ...f, nombre: e.target.value }))} />
+              <div className="form-row" style={{ marginTop: 10 }}>
+                <div>
+                  <label>Unidad medida</label>
+                  <select value={formNuevoProducto.unidad} onChange={(e) => setFormNuevoProducto((f) => ({ ...f, unidad: e.target.value }))}>
+                    <option value="NIU">UNIDAD</option>
+                    <option value="KGM">KILOGRAMO</option>
+                    <option value="LTR">LITRO</option>
+                    <option value="ZZ">SERVICIO</option>
+                  </select>
+                </div>
+                <div>
+                  <label>Precio venta S/</label>
+                  <input required type="number" step="0.01" min="0.01" value={formNuevoProducto.precio_unitario} onChange={(e) => setFormNuevoProducto((f) => ({ ...f, precio_unitario: e.target.value }))} />
+                </div>
+              </div>
+              <p style={{ fontSize: 11, color: 'var(--ink-muted)', marginTop: 8 }}>
+                El stock se carga solo al confirmar "Cargar al inventario" — no hace falta indicarlo acá.
+              </p>
+              <div className="modal-actions">
+                <button type="button" className="btn-secondary" onClick={() => setCreandoProductoFilaId(null)}>Cancelar</button>
+                <button type="submit" className="btn-primary" disabled={guardandoProducto}>{guardandoProducto ? 'Creando...' : 'Crear y seleccionar'}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
