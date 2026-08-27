@@ -75,36 +75,48 @@ async function parseGuiaXml(buffer) {
   };
 }
 
-// PDF: sin estructura fija, así que se hace lectura de texto + heurísticas.
-// Siempre se marca con advertencia para que el usuario revise antes de guardar.
-async function parseGuiaPdf(buffer) {
-  let text;
-  try {
-    const parser = new PDFParse({ data: buffer });
-    const result = await parser.getText();
-    text = result.text || '';
-  } catch {
-    return { fuente: 'pdf', error: 'No se pudo leer el PDF.' };
-  }
-  if (!text.trim()) {
-    return {
-      fuente: 'pdf',
-      error: 'Este PDF no tiene texto legible (parece ser una imagen escaneada). Sube el XML de la guía, o ingresa los productos manualmente.',
-    };
-  }
+const UNIDADES_CONOCIDAS = ['UND', 'NIU', 'KG', 'KGM', 'LT', 'LTR', 'CJA', 'PAQ', 'GAL', 'BLL', 'ZZ'];
 
-  const rucMatch = text.match(/RUC\s*:?\s*(\d{11})/i);
-  const guiaMatch = text.match(/\b([A-Z]{1}\d{3})\s*-\s*(\d{1,8})\b/);
-  const nombreMatch = text.match(/(?:Se[ñn]or\(es\)|Raz[oó]n Social|Proveedor)\s*:?\s*([^\n\r]{3,80})/i);
-
-  // Línea típica de detalle: "1  Producto XYZ 500gr  10.00  UND". El nombre
-  // del producto suele traer números (presentaciones, medidas), así que en
-  // vez de prohibir dígitos en la descripción se usa la POSICIÓN de los
-  // tokens: primer token = correlativo, último (o penúltimo, si hay unidad)
-  // = cantidad, y todo lo demás en medio es la descripción.
-  const UNIDADES_CONOCIDAS = ['UND', 'NIU', 'KG', 'KGM', 'LT', 'LTR', 'CJA', 'PAQ', 'GAL', 'BLL', 'ZZ'];
+// Muchos PDFs de la Guía de Remisión Electrónica de SUNAT (los que salen de
+// "imprimir a PDF" el visor web) conservan tabuladores entre columnas, con
+// las columnas en un orden distinto al de una factura de línea corrida:
+// "Descripción \t código GTIN + Unidad (código) \t ítem NO/SI cantidad".
+// Se detecta esta forma primero por ser la más común y sin ambigüedad
+// (a diferencia del heurístico por espacios de más abajo, pensado para
+// otros formatos de proveedor con una sola línea de texto por ítem).
+function extraerItemsPorTabulador(lineas) {
   const items = [];
-  const lineas = text.split(/\r?\n/);
+  for (const linea of lineas) {
+    if (!linea.includes('\t')) continue;
+    const partes = linea.split('\t').map((p) => p.trim()).filter(Boolean);
+    if (partes.length < 2) continue;
+
+    const ultima = partes[partes.length - 1];
+    const mItem = ultima.match(/^\d{1,4}\s+(?:NO|SI)\s+(\d+(?:[.,]\d+)?)$/i);
+    if (!mItem) continue;
+    const cantidad = Number(mItem[1].replace(',', '.'));
+    if (!cantidad || cantidad <= 0) continue;
+
+    const descripcion = partes[0];
+    if (!descripcion || descripcion.length < 3 || !/[a-zA-Z]/.test(descripcion)) continue;
+
+    let unidad = 'NIU';
+    for (const parte of partes.slice(1, -1)) {
+      const mUnidad = parte.match(new RegExp(`\\b(${UNIDADES_CONOCIDAS.join('|')})\\b`, 'i'));
+      if (mUnidad) { unidad = mUnidad[1].toUpperCase(); break; }
+    }
+    items.push({ descripcion, codigo: null, cantidad, unidad });
+  }
+  return items;
+}
+
+// Línea típica de detalle de otros formatos: "1  Producto XYZ 500gr  10.00
+// UND". El nombre del producto suele traer números (presentaciones,
+// medidas), así que en vez de prohibir dígitos en la descripción se usa la
+// POSICIÓN de los tokens: primer token = correlativo, último (o penúltimo,
+// si hay unidad) = cantidad, y todo lo demás en medio es la descripción.
+function extraerItemsPorEspacios(lineas) {
+  const items = [];
   for (const linea of lineas) {
     const l = linea.trim();
     if (!l || l.length < 4) continue;
@@ -126,14 +138,48 @@ async function parseGuiaPdf(buffer) {
 
     items.push({ descripcion, codigo: null, cantidad, unidad });
   }
+  return items;
+}
+
+// PDF: sin estructura fija, así que se hace lectura de texto + heurísticas.
+// Siempre se marca con advertencia para que el usuario revise antes de guardar.
+async function parseGuiaPdf(buffer) {
+  let text;
+  try {
+    const parser = new PDFParse({ data: buffer });
+    const result = await parser.getText();
+    text = result.text || '';
+  } catch {
+    return { fuente: 'pdf', error: 'No se pudo leer el PDF.' };
+  }
+  if (!text.trim()) {
+    return {
+      fuente: 'pdf',
+      error: 'Este PDF no tiene texto legible (parece ser una imagen escaneada). Sube el XML de la guía, o ingresa los productos manualmente.',
+    };
+  }
+
+  const rucMatch = text.match(/RUC\s*(?:N[°ºo.]?)?\s*:?\s*(\d{11})/i);
+  const guiaMatch = text.match(/\b([A-Z]{1,4}\d{2,4})\s*-\s*(\d{1,8})\b/);
+  // Nombre del remitente: la primera línea que termina en un sufijo societario
+  // (S.A.C., S.A., E.I.R.L., etc.) — en el layout del visor de SUNAT esa línea
+  // aparece cerca del encabezado, antes de los datos del destinatario (que sí
+  // trae RUC pegado en la misma línea y por eso no calza con este patrón).
+  const lineaEmpresa = text.split(/\r?\n/).find((l) => /\b(S\.?A\.?C?\.?|E\.?I\.?R\.?L\.?|S\.?R\.?L\.?)\s*$/i.test(l.trim()) && l.trim().length <= 80);
+  const nombreMatch = text.match(/(?:Se[ñn]or\(es\)|Raz[oó]n Social|Proveedor)\s*:?\s*([^\n\r]{3,80})/i);
+  const razonSocial = lineaEmpresa ? lineaEmpresa.trim() : (nombreMatch ? nombreMatch[1].trim() : null);
+
+  const lineas = text.split(/\r?\n/);
+  const items = extraerItemsPorTabulador(lineas);
+  const itemsFinal = items.length > 0 ? items : extraerItemsPorEspacios(lineas);
 
   return {
     fuente: 'pdf',
     ruc: rucMatch ? rucMatch[1] : null,
-    razon_social: nombreMatch ? nombreMatch[1].trim() : null,
+    razon_social: razonSocial,
     guia_serie: guiaMatch ? guiaMatch[1].toUpperCase() : null,
     guia_numero: guiaMatch ? String(Number(guiaMatch[2])) : null,
-    items,
+    items: itemsFinal,
     advertencia: 'Extracción aproximada desde PDF: revisa productos, cantidades y proveedor antes de guardar.',
   };
 }
