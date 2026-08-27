@@ -5,7 +5,7 @@ import { useToast } from '../context/ToastContext';
 import { useAuth } from '../context/AuthContext';
 import { leerArchivoComoTextoCsv, descargarComoExcel } from '../utils/excelImport';
 
-const CARGA_MASIVA_COLUMNAS = ['codigo', 'nombre', 'categoria', 'unidad', 'precio_unitario', 'stock', 'stock_minimo', 'precio_compra', 'codigo_barras'];
+const CARGA_MASIVA_COLUMNAS = ['codigo', 'nombre', 'categoria', 'unidad', 'precio_unitario', 'stock', 'stock_minimo', 'precio_compra'];
 
 function parseCsvProductos(text) {
   const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
@@ -24,7 +24,7 @@ function parseCsvProductos(text) {
 }
 
 const EMPTY_FORM = {
-  codigo: '', codigo_barras: '', nombre: '', descripcion: '', categoria: 'General',
+  codigo: '', nombre: '', descripcion: '', categoria: 'General',
   unidad: 'NIU', afectacion_igv: 'gravado', control: 'ninguno', tipo_inventario: 'MERCADERÍAS',
   tipo_clasificacion: 'Otros', subtipo_clasificacion: 'Otros', peso: '', favorito: false,
   precio_compra: '', precio_unitario: '', stock: '', stock_minimo: '', palabras_clave: '', proveedor_id: '',
@@ -142,7 +142,6 @@ export default function Products() {
   function openEdit(p) {
     setForm({
       codigo: p.codigo,
-      codigo_barras: p.codigo_barras || '',
       nombre: p.nombre,
       descripcion: p.descripcion || '',
       categoria: p.categoria || 'General',
@@ -264,7 +263,7 @@ export default function Products() {
       const texto = await leerArchivoComoTextoCsv(file);
       const rows = parseCsvProductos(texto);
       setCargaRows(rows);
-      if (rows.length === 0) setErrorCarga('No se encontraron filas válidas (columnas esperadas: código, nombre, categoría, unidad, precio_unitario, stock, stock_mínimo, precio_compra, código_barras).');
+      if (rows.length === 0) setErrorCarga('No se encontraron filas válidas (columnas esperadas: código, nombre, categoría, unidad, precio_unitario, stock, stock_mínimo, precio_compra).');
     } catch {
       setErrorCarga('No se pudo leer el archivo. Verifica que sea un CSV o Excel (.xlsx) válido.');
     }
@@ -288,7 +287,7 @@ export default function Products() {
 
   function descargarPlantillaCargaMasiva() {
     const header = CARGA_MASIVA_COLUMNAS;
-    const ejemplo = ['P100', 'Producto de ejemplo', 'General', 'NIU', '19.90', '10', '2', '12.00', ''];
+    const ejemplo = ['P100', 'Producto de ejemplo', 'General', 'NIU', '19.90', '10', '2', '12.00'];
     const csv = [header, ejemplo].map((r) => r.join(',')).join('\n');
     const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -299,7 +298,7 @@ export default function Products() {
   }
 
   function descargarPlantillaCargaMasivaExcel() {
-    const ejemplo = ['P100', 'Producto de ejemplo', 'General', 'NIU', 19.90, 10, 2, 12.00, ''];
+    const ejemplo = ['P100', 'Producto de ejemplo', 'General', 'NIU', 19.90, 10, 2, 12.00];
     descargarComoExcel('plantilla_carga_masiva_productos.xlsx', CARGA_MASIVA_COLUMNAS, [ejemplo]);
   }
 
@@ -371,7 +370,6 @@ export default function Products() {
                 <th>Producto</th>
                 <th>Categoría</th>
                 <th>U.M.</th>
-                <th>Cod. Barra</th>
                 <th>Afectación IGV</th>
                 <th>Proveedor</th>
                 <th>Favorito</th>
@@ -392,7 +390,6 @@ export default function Products() {
                     <td>{p.nombre}</td>
                     <td>{p.categoria || '—'}</td>
                     <td>{p.unidad}</td>
-                    <td>{p.codigo_barras || '—'}</td>
                     <td>{afectacionLabel}</td>
                     <td>{p.proveedor_nombre || '—'}</td>
                     <td>{p.favorito ? <span className="badge badge-good">Sí</span> : 'No'}</td>
@@ -434,8 +431,11 @@ export default function Products() {
                   <input required value={form.codigo} onChange={(e) => setForm({ ...form, codigo: e.target.value })} />
                 </div>
                 <div>
-                  <label>Código barras</label>
-                  <input value={form.codigo_barras} onChange={(e) => setForm({ ...form, codigo_barras: e.target.value })} />
+                  <label>Categoria</label>
+                  <input value={form.categoria} onChange={(e) => setForm({ ...form, categoria: e.target.value })} list="categorias-list" />
+                  <datalist id="categorias-list">
+                    {categorias.map((c) => <option key={c} value={c} />)}
+                  </datalist>
                 </div>
               </div>
 
@@ -447,41 +447,31 @@ export default function Products() {
                   </select>
                 </div>
                 <div>
-                  <label>Categoria</label>
-                  <input value={form.categoria} onChange={(e) => setForm({ ...form, categoria: e.target.value })} list="categorias-list" />
-                  <datalist id="categorias-list">
-                    {categorias.map((c) => <option key={c} value={c} />)}
-                  </datalist>
-                </div>
-              </div>
-
-              <div className="form-row">
-                <div>
                   <label>Afectación IGV</label>
                   <select value={form.afectacion_igv} onChange={(e) => setForm({ ...form, afectacion_igv: e.target.value })}>
                     {AFECTACIONES_IGV.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                   </select>
                 </div>
+              </div>
+
+              <div className="form-row">
                 <div>
                   <label>Tipo</label>
                   <input value={form.tipo_clasificacion} onChange={(e) => setForm({ ...form, tipo_clasificacion: e.target.value })} />
                 </div>
-              </div>
-
-              <div className="form-row">
                 <div>
                   <label>Control</label>
                   <select value={form.control} onChange={(e) => setForm({ ...form, control: e.target.value })}>
                     {CONTROLES.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                   </select>
                 </div>
+              </div>
+
+              <div className="form-row">
                 <div>
                   <label>Subtipo</label>
                   <input value={form.subtipo_clasificacion} onChange={(e) => setForm({ ...form, subtipo_clasificacion: e.target.value })} />
                 </div>
-              </div>
-
-              <div className="form-row">
                 <div>
                   <label>Tipo inventario</label>
                   <select value={form.tipo_inventario} onChange={(e) => setForm({ ...form, tipo_inventario: e.target.value })}>
@@ -491,13 +481,13 @@ export default function Products() {
                     {tiposInventario.map((t) => <option key={t.id} value={t.nombre}>{t.nombre}</option>)}
                   </select>
                 </div>
+              </div>
+
+              <div className="form-row">
                 <div>
                   <label>Peso</label>
                   <input type="number" step="0.01" value={form.peso} onChange={(e) => setForm({ ...form, peso: e.target.value })} />
                 </div>
-              </div>
-
-              <div className="form-row">
                 <div>
                   <label>Favorito</label>
                   <select value={form.favorito ? '1' : '0'} onChange={(e) => setForm({ ...form, favorito: e.target.value === '1' })}>
@@ -505,19 +495,22 @@ export default function Products() {
                     <option value="1">Sí</option>
                   </select>
                 </div>
+              </div>
+
+              <div className="form-row">
                 {esServicio ? <div /> : (
                   <div>
                     <label>Stock inicial</label>
                     <input type="number" step="1" value={form.stock} onChange={(e) => setForm({ ...form, stock: e.target.value })} />
                   </div>
                 )}
-              </div>
-
-              <div className="form-row">
                 <div>
                   <label>Precio Compra S/</label>
                   <input type="number" step="0.01" value={form.precio_compra} onChange={(e) => setForm({ ...form, precio_compra: e.target.value })} />
                 </div>
+              </div>
+
+              <div className="form-row">
                 <div>
                   <label>Precio venta S/</label>
                   <input required type="number" step="0.01" value={form.precio_unitario} onChange={(e) => setForm({ ...form, precio_unitario: e.target.value })} />
