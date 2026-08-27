@@ -1,12 +1,15 @@
 const express = require('express');
+const multer = require('multer');
 const db = require('../db');
 const { requireAuth, resolveSucursal } = require('../middleware/auth');
 const { round2, ajustarStockSucursal, getStockSucursal, setStockSucursal } = require('../utils/stock');
 const { requirePermiso, requireAccion, esGerenciaOSupervisor } = require('../utils/permisos');
 const { analizarEtiqueta } = require('../utils/ocrEtiqueta');
 const { analizarGuia } = require('../utils/ocrGuia');
+const { parseGuiaXml, parseGuiaPdf } = require('../utils/guiaParser');
 
 const router = express.Router();
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 router.use(requireAuth);
 router.use(requirePermiso('inventario'));
 router.use(resolveSucursal);
@@ -356,6 +359,55 @@ router.post('/analizar-guia', requireAccion('inventario', 'ajustes'), async (req
   } catch (err) {
     res.status(500).json({ error: 'No se pudo analizar la foto de la guía.' });
   }
+});
+
+// POST /api/movements/analizar-guia-archivo (multipart, campo "file") -> lee
+// el XML (SUNAT/UBL) o PDF con texto embebido de la guía, SIN usar OCR: es la
+// misma lectura estructurada que ya usa "Registrar Compra", reutilizada acá
+// para poder cargar el inventario directo cuando se tiene el archivo real de
+// la guía (no una foto/captura de pantalla) — mucho más confiable que leer
+// una tabla chica desde una imagen.
+router.post('/analizar-guia-archivo', requireAccion('inventario', 'ajustes'), upload.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Sube un archivo de guía (XML o PDF).' });
+  const nombreArchivo = (req.file.originalname || '').toLowerCase();
+  const esXml = nombreArchivo.endsWith('.xml') || req.file.mimetype === 'text/xml' || req.file.mimetype === 'application/xml';
+  const esPdf = nombreArchivo.endsWith('.pdf') || req.file.mimetype === 'application/pdf';
+
+  let resultado;
+  if (esXml) {
+    resultado = await parseGuiaXml(req.file.buffer);
+  } else if (esPdf) {
+    resultado = await parseGuiaPdf(req.file.buffer);
+  } else {
+    return res.status(400).json({
+      error: 'Formato no soportado. Sube el XML de la guía o un PDF con texto (no una foto/escaneo).',
+    });
+  }
+  if (resultado.error) return res.status(422).json({ error: resultado.error });
+
+  const productos = db.prepare("SELECT id, codigo, nombre, codigo_barras FROM products WHERE tipo = 'producto'").all();
+  const filas = (resultado.items || []).map((it) => {
+    let match = null;
+    if (it.codigo) {
+      match = productos.find((p) => p.codigo === it.codigo || p.codigo_barras === it.codigo);
+    }
+    if (!match) match = mejorProductoParaDescripcion(it.descripcion, productos);
+    return {
+      descripcion_detectada: it.descripcion,
+      cantidad_detectada: it.cantidad,
+      product_id: match ? match.id : null,
+      producto_codigo: match ? match.codigo : null,
+      producto_nombre: match ? match.nombre : null,
+    };
+  });
+
+  res.json({
+    filas,
+    fuente: resultado.fuente,
+    advertencia: resultado.advertencia || null,
+    proveedor: resultado.razon_social || null,
+    guia: resultado.guia_serie && resultado.guia_numero ? `${resultado.guia_serie}-${resultado.guia_numero}` : null,
+  });
 });
 
 module.exports = router;
