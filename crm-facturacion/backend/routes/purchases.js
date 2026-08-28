@@ -123,8 +123,12 @@ router.get('/:id', (req, res) => {
   ).get(req.params.id, req.sucursalId);
   if (!purchase) return res.status(404).json({ error: 'Compra no encontrada.' });
   const items = db.prepare(
-    `SELECT pi.*, pr.nombre AS producto_nombre, pr.codigo AS producto_codigo
-     FROM purchase_items pi JOIN products pr ON pr.id = pi.product_id WHERE pi.purchase_id = ?`
+    `SELECT pi.*, pr.nombre AS producto_nombre, pr.codigo AS producto_codigo,
+            l.codigo_lote, l.fecha_vencimiento
+     FROM purchase_items pi
+     JOIN products pr ON pr.id = pi.product_id
+     LEFT JOIN lotes l ON l.id = pi.lote_id
+     WHERE pi.purchase_id = ?`
   ).all(req.params.id);
   res.json({ ...purchase, items });
 });
@@ -192,6 +196,8 @@ router.post('/', requireAccion('compras', 'registrar_compra'), (req, res) => {
     if (cantidad <= 0) return res.status(400).json({ error: 'La cantidad de cada item debe ser mayor a 0.' });
     const afectacion_igv = AFECTACIONES_IGV.includes(it.afectacion_igv) ? it.afectacion_igv : 'gravado';
     const unidad = (it.unidad || 'UND').toString().slice(0, 20);
+    const codigo_lote = (it.codigo_lote || '').toString().trim();
+    const fecha_vencimiento = (it.fecha_vencimiento || '').toString().trim();
 
     const lineBruta = round2(cantidad * costo_unitario);
     const lineNeta = round2(lineBruta * (1 - descuentoPct / 100));
@@ -206,6 +212,7 @@ router.post('/', requireAccion('compras', 'registrar_compra'), (req, res) => {
     preparedItems.push({
       product_id: product.id, cantidad, costo_unitario, subtotal: lineBruta,
       observacion: it.observacion || null, unidad, afectacion_igv,
+      codigo_lote: codigo_lote || null, fecha_vencimiento: fecha_vencimiento || null,
     });
   }
 
@@ -249,23 +256,45 @@ router.post('/', requireAccion('compras', 'registrar_compra'), (req, res) => {
     );
     const purchaseId = info.lastInsertRowid;
     const insertItem = db.prepare(
-      `INSERT INTO purchase_items (purchase_id, product_id, cantidad, costo_unitario, subtotal, observacion, unidad, afectacion_igv)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO purchase_items (purchase_id, product_id, cantidad, costo_unitario, subtotal, observacion, unidad, afectacion_igv, lote_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
     );
     const referencia = `COMPRA-${String(numero).padStart(5, '0')}`;
 
     for (const it of preparedItems) {
+      let loteId = null;
+      if (it.codigo_lote) {
+        // Cada compra con código de lote crea el lote de una vez, con la
+        // misma fecha de vencimiento indicada — igual que si se creara a
+        // mano desde Inventario > Lotes, pero sin el paso extra.
+        loteId = db.prepare(
+          `INSERT INTO lotes (product_id, codigo_lote, tipo, fecha_vencimiento, cantidad_inicial, cantidad_actual, created_by)
+           VALUES (?, ?, 'lote', ?, ?, ?, ?)`
+        ).run(it.product_id, it.codigo_lote, it.fecha_vencimiento, it.cantidad, it.cantidad, req.user?.id || null).lastInsertRowid;
+      }
+
       insertItem.run(
         purchaseId, it.product_id, it.cantidad, it.costo_unitario, it.subtotal,
-        it.observacion, it.unidad, it.afectacion_igv
+        it.observacion, it.unidad, it.afectacion_igv, loteId
       );
-      incrementarStock(it.product_id, it.cantidad, {
-        tipoMovimiento: 'compra',
-        motivo: `Compra a ${supplier.nombre}`,
-        referencia,
-        userId: req.user?.id,
-        sucursalId: req.sucursalId,
-      });
+
+      if (loteId) {
+        db.prepare('UPDATE products SET stock = stock + ? WHERE id = ?').run(it.cantidad, it.product_id);
+        const nuevoStock = db.prepare('SELECT stock FROM products WHERE id = ?').get(it.product_id).stock;
+        ajustarStockSucursal(it.product_id, req.sucursalId, it.cantidad);
+        db.prepare(
+          `INSERT INTO stock_movements (product_id, lote_id, tipo, cantidad, stock_resultante, motivo, referencia, created_by, sucursal_id)
+           VALUES (?, ?, 'ingreso_lote', ?, ?, ?, ?, ?, ?)`
+        ).run(it.product_id, loteId, it.cantidad, nuevoStock, `Compra a ${supplier.nombre}`, referencia, req.user?.id || null, req.sucursalId);
+      } else {
+        incrementarStock(it.product_id, it.cantidad, {
+          tipoMovimiento: 'compra',
+          motivo: `Compra a ${supplier.nombre}`,
+          referencia,
+          userId: req.user?.id,
+          sucursalId: req.sucursalId,
+        });
+      }
     }
     return purchaseId;
   });
@@ -307,6 +336,9 @@ router.post('/:id/anular', requireAccion('compras', 'anular_compra'), (req, res)
   db.transaction(() => {
     db.prepare("UPDATE purchases SET estado = 'anulada' WHERE id = ?").run(req.params.id);
     for (const it of items) {
+      if (it.lote_id) {
+        db.prepare('UPDATE lotes SET cantidad_actual = MAX(0, cantidad_actual - ?) WHERE id = ?').run(it.cantidad, it.lote_id);
+      }
       incrementarStock(it.product_id, -it.cantidad, {
         tipoMovimiento: 'anulacion_compra',
         motivo: 'Anulación de compra',

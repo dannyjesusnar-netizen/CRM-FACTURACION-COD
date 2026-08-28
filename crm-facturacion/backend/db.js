@@ -909,6 +909,7 @@ CREATE TABLE IF NOT EXISTS movimiento_canales (
     ['observacion', 'TEXT'],
     ['unidad', "TEXT NOT NULL DEFAULT 'UND'"],
     ['afectacion_igv', "TEXT NOT NULL DEFAULT 'gravado'"],
+    ['lote_id', 'INTEGER REFERENCES lotes(id)'],
   ];
   for (const [col, def] of PURCHASE_ITEM_NEW_COLUMNS) {
     if (!purchaseItemColumns.includes(col)) {
