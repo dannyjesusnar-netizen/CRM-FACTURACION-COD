@@ -39,7 +39,10 @@ function round2(n) {
 }
 
 function emptyItem() {
-  return { product_id: '', cantidad: 1, costo_unitario: 0, unidad: 'UND', afectacion_igv: 'gravado', observacion: '' };
+  return {
+    product_id: '', cantidad: 1, costo_unitario: 0, unidad: 'UND', afectacion_igv: 'gravado', observacion: '',
+    codigo_lote: '', fecha_vencimiento: '',
+  };
 }
 
 function emptySupplier() {
@@ -220,6 +223,8 @@ export default function Compras() {
         unidad: it.unidad,
         afectacion_igv: it.afectacion_igv,
         observacion: it.observacion,
+        codigo_lote: formMode === 'compra' ? it.codigo_lote : '',
+        fecha_vencimiento: formMode === 'compra' ? it.fecha_vencimiento : '',
       })),
       observaciones,
       serie: docSerie,
@@ -304,6 +309,8 @@ export default function Compras() {
           unidad: it.unidad || 'UND',
           afectacion_igv: 'gravado',
           observacion: it.product_id ? '' : it.descripcion,
+          codigo_lote: '',
+          fecha_vencimiento: '',
         })));
       }
       toast.success(data.advertencia || 'Guía leída. Revisa los datos e ingresa los costos.');
@@ -586,6 +593,8 @@ export default function Compras() {
                       <th>Costo Unit.</th>
                       <th>IGV</th>
                       <th>Importe</th>
+                      {formMode === 'compra' && <th>Lote (opcional)</th>}
+                      {formMode === 'compra' && <th>Vencimiento</th>}
                       <th></th>
                     </tr>
                   </thead>
@@ -622,6 +631,18 @@ export default function Compras() {
                           </select>
                         </td>
                         <td>S/ {(Number(it.cantidad || 0) * Number(it.costo_unitario || 0)).toFixed(2)}</td>
+                        {formMode === 'compra' && (
+                          <td>
+                            <input placeholder="Ej: LOTE-01" style={{ width: 100 }} value={it.codigo_lote}
+                              onChange={(e) => updateItem(idx, { codigo_lote: e.target.value })} />
+                          </td>
+                        )}
+                        {formMode === 'compra' && (
+                          <td>
+                            <input type="date" disabled={!it.codigo_lote} style={{ width: 135 }} value={it.fecha_vencimiento}
+                              onChange={(e) => updateItem(idx, { fecha_vencimiento: e.target.value })} />
+                          </td>
+                        )}
                         <td>
                           {items.length > 1 && (
                             <button type="button" className="btn-link danger" onClick={() => removeItem(idx)}>x</button>
