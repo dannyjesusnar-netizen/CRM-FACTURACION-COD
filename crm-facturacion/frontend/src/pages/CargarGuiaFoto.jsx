@@ -70,6 +70,8 @@ export default function CargarGuiaFoto() {
       cantidad: f.cantidad_detectada,
       unidad: f.unidad_detectada || 'NIU',
       product_id: f.product_id ? String(f.product_id) : '',
+      codigo_lote: '',
+      fecha_vencimiento: '',
     }));
   }
 
@@ -135,7 +137,9 @@ export default function CargarGuiaFoto() {
   }
 
   function agregarFilaManual() {
-    setFilas((prev) => [...prev, { id: nuevaFilaId(), descripcion_detectada: '', cantidad: '', product_id: '' }]);
+    setFilas((prev) => [...prev, {
+      id: nuevaFilaId(), descripcion_detectada: '', cantidad: '', product_id: '', codigo_lote: '', fecha_vencimiento: '',
+    }]);
   }
 
   function eliminarFila(id) {
@@ -164,7 +168,13 @@ export default function CargarGuiaFoto() {
     try {
       const rows = listas.map((f) => {
         const producto = products.find((p) => String(p.id) === String(f.product_id));
-        return { codigo: producto?.codigo, cantidad: Number(f.cantidad), motivo: motivo.trim() || 'Guía de remisión' };
+        return {
+          codigo: producto?.codigo,
+          cantidad: Number(f.cantidad),
+          motivo: motivo.trim() || 'Guía de remisión',
+          codigo_lote: f.codigo_lote?.trim() || undefined,
+          fecha_vencimiento: f.codigo_lote?.trim() ? (f.fecha_vencimiento || undefined) : undefined,
+        };
       });
       const res = await api.post('/movements/importar-lotes', { rows });
       const codigosAplicados = new Set((res.data.aplicados || []).map((a) => a.codigo));
@@ -299,7 +309,7 @@ export default function CargarGuiaFoto() {
           <table className="data-table compact">
             <thead>
               <tr>
-                <th>Texto leído</th><th>Producto</th><th>Cantidad</th><th></th>
+                <th>Texto leído</th><th>Producto</th><th>Cantidad</th><th>Lote (opcional)</th><th>Vencimiento</th><th></th>
               </tr>
             </thead>
             <tbody>
@@ -322,6 +332,14 @@ export default function CargarGuiaFoto() {
                   <td>
                     <input type="number" step="1" min="1" value={f.cantidad} onChange={(e) => actualizarFila(f.id, 'cantidad', e.target.value)} style={{ width: 90 }} />
                   </td>
+                  <td>
+                    <input placeholder="Ej: LOTE-01" style={{ width: 100 }} value={f.codigo_lote}
+                      onChange={(e) => actualizarFila(f.id, 'codigo_lote', e.target.value)} />
+                  </td>
+                  <td>
+                    <input type="date" disabled={!f.codigo_lote} style={{ width: 135 }} value={f.fecha_vencimiento}
+                      onChange={(e) => actualizarFila(f.id, 'fecha_vencimiento', e.target.value)} />
+                  </td>
                   <td className="row-actions">
                     <button className="btn-link danger" onClick={() => eliminarFila(f.id)} title="Quitar de la lista">
                       <Trash2 size={14} />
@@ -330,7 +348,7 @@ export default function CargarGuiaFoto() {
                 </tr>
               ))}
               {filas.length === 0 && (
-                <tr><td colSpan={4} className="empty-row">Todavía no hay filas — toma la foto de la guía o agrega una fila manual.</td></tr>
+                <tr><td colSpan={6} className="empty-row">Todavía no hay filas — toma la foto de la guía o agrega una fila manual.</td></tr>
               )}
             </tbody>
           </table>
