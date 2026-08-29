@@ -238,6 +238,7 @@ const DOC_LABELS = {
   factura: 'Factura Electrónica',
   boleta: 'Boleta Electrónica',
   nota_credito: 'Nota de Crédito',
+  nota_venta: 'Nota de Venta Interna',
   cotizacion: 'Cotización',
   guia_remitente: 'Guía Remitente',
   orden_compra: 'Orden de Compra',
@@ -247,7 +248,7 @@ const DOC_LABELS = {
 // Cómo se reparte la tabla de "Series y correlativos" en columnas, igual que
 // la pantalla de referencia: Ventas en dos columnas lado a lado, Compras aparte.
 const SERIES_VENTAS_COL1 = ['factura', 'nota_credito', 'guia_remitente'];
-const SERIES_VENTAS_COL2 = ['boleta', 'cotizacion'];
+const SERIES_VENTAS_COL2 = ['boleta', 'cotizacion', 'nota_venta'];
 const SERIES_COMPRAS = ['orden_compra', 'orden_servicio'];
 
 function SerieTable({ tipos, series, updateSerieField }) {
