@@ -426,10 +426,11 @@ export default function Configuracion() {
 
   useEffect(() => {
     if (sucursales.length && !sucursalSeleccionadaId) {
-      const principal = sucursales.find((s) => s.es_principal) || sucursales[0];
-      setSucursalSeleccionadaId(String(principal.id));
+      const activa = sucursalActiva && sucursales.find((s) => String(s.id) === String(sucursalActiva.id));
+      const inicial = activa || sucursales.find((s) => s.es_principal) || sucursales[0];
+      setSucursalSeleccionadaId(String(inicial.id));
     }
-  }, [sucursales, sucursalSeleccionadaId]);
+  }, [sucursales, sucursalSeleccionadaId, sucursalActiva]);
 
   useEffect(() => {
     const s = sucursales.find((x) => String(x.id) === String(sucursalSeleccionadaId));
