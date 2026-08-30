@@ -326,6 +326,34 @@ html.dark .sidenav-item:hover:not(.disabled) { background: rgba(47, 157, 255, 0.
   position: absolute; animation: authFloat 4.5s ease-in-out infinite;
   filter: drop-shadow(0 4px 10px rgba(51, 65, 85, 0.12));
 }
+
+/* ---------- Selecciona un negocio: rueda de sedes ----------
+   Lista con scroll-snap donde la fila que queda al centro del visor se
+   agranda/resalta (vía JS, en SeleccionarSede.jsx) — como un selector de
+   fecha/hora nativo — para elegir mejor entre muchas sedes. */
+.sede-wheel { position: relative; }
+.sede-wheel-viewport {
+  overflow-y: auto;
+  scroll-snap-type: y mandatory;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.sede-wheel-viewport::-webkit-scrollbar { display: none; }
+.sede-wheel-highlight {
+  position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%);
+  border-radius: 10px; border: 1.5px solid var(--brand-blue);
+  background: rgba(99, 102, 241, 0.06);
+  pointer-events: none; z-index: 0;
+}
+.sede-wheel-item {
+  position: relative; z-index: 1;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 16px; cursor: pointer;
+  scroll-snap-align: center;
+  transform-origin: center;
+  transition: transform 0.1s linear, opacity 0.1s linear;
+}
+.sede-wheel-item.active { font-weight: 600; }
 .login-card {
   background: var(--surface); padding: 42px 38px; border-radius: 16px; width: 380px;
   box-shadow: var(--shadow-xl);
