@@ -6,7 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { leerArchivoComoTextoCsv, descargarComoExcel, exportarTabla } from '../utils/excelImport';
 import ExportButton from '../components/ExportButton';
 
-const CARGA_MASIVA_COLUMNAS = ['codigo', 'nombre', 'categoria', 'unidad', 'precio_unitario', 'stock', 'stock_minimo', 'precio_compra'];
+const CARGA_MASIVA_COLUMNAS = ['codigo', 'nombre', 'categoria', 'unidad', 'precio_unitario', 'stock', 'stock_minimo', 'precio_compra', 'codigo_barras'];
 
 function parseCsvProductos(text) {
   const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
@@ -258,7 +258,7 @@ export default function Products() {
       const texto = await leerArchivoComoTextoCsv(file);
       const rows = parseCsvProductos(texto);
       setCargaRows(rows);
-      if (rows.length === 0) setErrorCarga('No se encontraron filas válidas (columnas esperadas: código, nombre, categoría, unidad, precio_unitario, stock, stock_mínimo, precio_compra).');
+      if (rows.length === 0) setErrorCarga('No se encontraron filas válidas (columnas esperadas: código, nombre, categoría, unidad, precio_unitario, stock, stock_mínimo, precio_compra, código_barras).');
     } catch {
       setErrorCarga('No se pudo leer el archivo. Verifica que sea un CSV o Excel (.xlsx) válido.');
     }
@@ -282,7 +282,7 @@ export default function Products() {
 
   function descargarPlantillaCargaMasiva() {
     const header = CARGA_MASIVA_COLUMNAS;
-    const ejemplo = ['P100', 'Producto de ejemplo', 'General', 'NIU', '19.90', '10', '2', '12.00'];
+    const ejemplo = ['P100', 'Producto de ejemplo', 'General', 'NIU', '19.90', '10', '2', '12.00', '7501234567890'];
     const csv = [header, ejemplo].map((r) => r.join(',')).join('\n');
     const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -293,7 +293,7 @@ export default function Products() {
   }
 
   function descargarPlantillaCargaMasivaExcel() {
-    const ejemplo = ['P100', 'Producto de ejemplo', 'General', 'NIU', 19.90, 10, 2, 12.00];
+    const ejemplo = ['P100', 'Producto de ejemplo', 'General', 'NIU', 19.90, 10, 2, 12.00, '7501234567890'];
     descargarComoExcel('plantilla_carga_masiva_productos.xlsx', CARGA_MASIVA_COLUMNAS, [ejemplo]);
   }
 
