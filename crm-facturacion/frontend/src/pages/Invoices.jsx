@@ -20,6 +20,7 @@ function envioBadgeLabel(inv) {
   if (inv.sunat_estado === 'aceptado') return 'Aceptado SUNAT';
   if (inv.sunat_estado === 'rechazado') return 'Rechazado SUNAT';
   if (inv.sunat_estado === 'error') return 'Error de envío';
+  if (inv.sunat_estado === 'pendiente') return 'Pendiente SUNAT';
   return 'Pendiente';
 }
 

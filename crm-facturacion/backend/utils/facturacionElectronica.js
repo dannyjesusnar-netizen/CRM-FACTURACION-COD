@@ -148,10 +148,6 @@ async function emitirComprobante(invoice, items, client) {
       body: JSON.stringify(payload),
     });
     const data = await res.json().catch(() => null);
-    // Log temporal para ver la forma real de la respuesta de Nubefact —
-    // su documentación pública no cubre todos los campos que puede devolver
-    // (p. ej. cómo distingue "pendiente en modo demo" de "rechazado real").
-    console.log('Respuesta de Nubefact:', JSON.stringify(data));
 
     if (!res.ok || !data) {
       return {
@@ -173,10 +169,29 @@ async function emitirComprobante(invoice, items, client) {
       };
     }
 
+    // aceptada_por_sunat=false no siempre es un rechazo: Nubefact devuelve
+    // ese mismo valor tanto cuando SUNAT rechazó el comprobante (con un
+    // motivo real en sunat_description/sunat_note/sunat_responsecode) como
+    // cuando todavía no hay respuesta de SUNAT — sobre todo en modo demo,
+    // donde Nubefact firma y genera el documento pero nunca llega a
+    // consultar a SUNAT, y esos tres campos quedan null para siempre.
+    // Solo lo marcamos "rechazado" cuando de verdad viene un motivo.
+    const motivoRechazo = data.sunat_description || data.sunat_note || data.sunat_soap_error || null;
+    if (motivoRechazo) {
+      return {
+        modo_emision: 'real',
+        sunat_estado: 'rechazado',
+        sunat_mensaje: motivoRechazo,
+      };
+    }
+
     return {
       modo_emision: 'real',
-      sunat_estado: 'rechazado',
-      sunat_mensaje: data.sunat_description || data.sunat_note || 'SUNAT rechazó el comprobante.',
+      sunat_estado: 'pendiente',
+      sunat_hash: data.codigo_hash || null,
+      sunat_pdf_url: data.enlace_del_pdf || null,
+      sunat_xml_url: data.enlace_del_xml || null,
+      sunat_mensaje: 'Nubefact generó el comprobante; SUNAT todavía no confirmó su validación (normal mientras la cuenta esté en modo demo).',
     };
   } catch (err) {
     return { modo_emision: 'real', sunat_estado: 'error', sunat_mensaje: err.message };
