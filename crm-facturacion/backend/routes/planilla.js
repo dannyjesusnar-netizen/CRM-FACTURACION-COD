@@ -2,6 +2,7 @@ const express = require('express');
 const db = require('../db');
 const { requireAuth, resolveSucursal } = require('../middleware/auth');
 const { requirePermiso, esGerenciaOSupervisor } = require('../utils/permisos');
+const { hoyPeru } = require('../utils/fechas');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -9,7 +10,7 @@ router.use(requirePermiso('caja'));
 router.use(resolveSucursal);
 
 function todayStr() {
-  return new Date().toISOString().slice(0, 10);
+  return hoyPeru();
 }
 
 // GET /api/planilla?desde=&hasta=&empleado_id=

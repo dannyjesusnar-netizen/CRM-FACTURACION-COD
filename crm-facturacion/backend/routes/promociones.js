@@ -2,6 +2,7 @@ const express = require('express');
 const db = require('../db');
 const { requireAuth, resolveSucursal } = require('../middleware/auth');
 const { requirePermiso, requireAccion } = require('../utils/permisos');
+const { hoyPeru } = require('../utils/fechas');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -66,7 +67,7 @@ router.get('/', requirePermiso('inventario'), (req, res) => {
 // permiso de inventario a propósito: cualquiera que registra una venta debe
 // poder consultarlas, no solo quien administra el inventario.
 router.get('/activas', (req, res) => {
-  const hoy = new Date().toISOString().slice(0, 10);
+  const hoy = hoyPeru();
   const promos = db.prepare(
     `SELECT * FROM promociones
      WHERE activo = 1 AND fecha_inicio <= ? AND fecha_fin >= ?

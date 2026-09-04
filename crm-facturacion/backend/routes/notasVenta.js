@@ -6,6 +6,7 @@ const { siguienteNumero } = require('../utils/series');
 const { resolverDescuentoPct } = require('../utils/descuentos');
 const { consumirStock, incrementarStock, StockInsuficienteError } = require('../utils/stock');
 const { buildNotaVentaPdf } = require('../utils/pdf');
+const { hoyPeru } = require('../utils/fechas');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -89,7 +90,7 @@ router.post('/:id/cobros', requireRegistrarCobro, (req, res) => {
   }
   const client = db.prepare('SELECT nombre FROM clients WHERE id = ?').get(nv.client_id);
   const referencia = `${nv.serie}-${String(nv.numero).padStart(6, '0')}`;
-  const hoy = new Date().toISOString().slice(0, 10);
+  const hoy = hoyPeru();
 
   const registrar = db.transaction(() => {
     db.prepare('UPDATE notas_venta SET monto_pagado = monto_pagado + ? WHERE id = ?').run(montoNum, nv.id);
@@ -249,7 +250,7 @@ router.post('/', requireAccion('ventas', 'nota_venta'), (req, res) => {
   const montoPagado = esAbonado ? Math.min(total, Math.max(0, round2(Number(montoPagadoBody || 0)))) : total;
 
   const { serie, numero: numeroSugerido } = siguienteNumero('nota_venta', req.sucursalId);
-  const fechaEmisionFinal = fecha_emision || new Date().toISOString().slice(0, 10);
+  const fechaEmisionFinal = fecha_emision || hoyPeru();
   const referencia = `${serie}-${String(numeroManual || numeroSugerido).padStart(6, '0')}`;
 
   const insertAll = db.transaction(() => {

@@ -3,6 +3,7 @@ const db = require('../db');
 const { requireAuth, resolveSucursal } = require('../middleware/auth');
 const { ajustarStockSucursal } = require('../utils/stock');
 const { requirePermiso, requireAccion } = require('../utils/permisos');
+const { hoyPeru } = require('../utils/fechas');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -33,7 +34,7 @@ router.get('/', (req, res) => {
   sql += " ORDER BY (l.fecha_vencimiento IS NULL), date(l.fecha_vencimiento) ASC, p.nombre ASC";
   const rows = db.prepare(sql).all(...params);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = hoyPeru();
   const alertaLimite = new Date(Date.now() + DIAS_ALERTA_VENCIMIENTO * 86400000).toISOString().slice(0, 10);
   const withStatus = rows.map((r) => {
     let estado_vencimiento = 'ok';

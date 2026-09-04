@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../db');
 const { requireAuth, requireGerencia, resolveSucursal } = require('../middleware/auth');
+const { hoyPeru } = require('../utils/fechas');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -33,7 +34,7 @@ router.get('/', requireGerencia, (req, res) => {
 // asignada = todas), para el selector en Registrar Venta. Sin requireGerencia
 // a propósito: cualquiera que registra una venta debe poder elegirlos.
 router.get('/activos', (req, res) => {
-  const hoy = new Date().toISOString().slice(0, 10);
+  const hoy = hoyPeru();
   const descuentos = db.prepare(
     `SELECT * FROM descuentos
      WHERE activo = 1 AND fecha_inicio <= ? AND fecha_fin >= ?
