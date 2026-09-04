@@ -42,7 +42,7 @@ function round2(n) {
 function emptyItem() {
   return {
     product_id: '', cantidad: 1, costo_unitario: 0, unidad: 'UND', afectacion_igv: 'gravado', observacion: '',
-    codigo_lote: '', fecha_vencimiento: '',
+    descripcion_guia: '', codigo_lote: '', fecha_vencimiento: '',
   };
 }
 
@@ -224,6 +224,7 @@ export default function Compras() {
         unidad: it.unidad,
         afectacion_igv: it.afectacion_igv,
         observacion: it.observacion,
+        descripcion_guia: it.descripcion_guia || '',
         codigo_lote: formMode === 'compra' ? it.codigo_lote : '',
         fecha_vencimiento: formMode === 'compra' ? it.fecha_vencimiento : '',
       })),
@@ -310,6 +311,7 @@ export default function Compras() {
           unidad: it.unidad || 'UND',
           afectacion_igv: 'gravado',
           observacion: it.product_id ? '' : it.descripcion,
+          descripcion_guia: it.product_id ? '' : it.descripcion,
           codigo_lote: '',
           fecha_vencimiento: '',
         })));

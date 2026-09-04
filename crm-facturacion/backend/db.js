@@ -282,6 +282,20 @@ CREATE TABLE IF NOT EXISTS producciones (
   created_at TEXT DEFAULT (datetime('now'))
 );
 
+-- Recuerda qué producto del catálogo corresponde a un nombre tal como lo
+-- escribe un proveedor en su guía (que casi nunca coincide exactamente con
+-- el nombre interno que usa el cliente). Se llena solo, la primera vez que
+-- alguien vincula manualmente un ítem sin match automático a un producto
+-- existente (ver utils/productoAlias.js) — desde ahí en adelante, cualquier
+-- guía/foto que traiga ese mismo texto empareja sola, sin volver a preguntar.
+CREATE TABLE IF NOT EXISTS product_aliases (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  product_id INTEGER NOT NULL REFERENCES products(id),
+  alias_normalizado TEXT NOT NULL UNIQUE,
+  alias_original TEXT NOT NULL,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS equivalencias (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   product_id INTEGER NOT NULL REFERENCES products(id),

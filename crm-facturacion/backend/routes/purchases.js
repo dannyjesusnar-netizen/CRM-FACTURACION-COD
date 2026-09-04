@@ -6,6 +6,7 @@ const { incrementarStock, ajustarStockSucursal, getStockSucursal, round2 } = req
 const { requirePermiso, requireAccion } = require('../utils/permisos');
 const { parseGuiaXml, parseGuiaPdf } = require('../utils/guiaParser');
 const { hoyPeru } = require('../utils/fechas');
+const { buscarProductoPorAlias, guardarAlias } = require('../utils/productoAlias');
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -26,6 +27,10 @@ function emparejarProductos(items) {
     let match = null;
     if (it.codigo) {
       match = productos.find((p) => p.codigo === it.codigo || p.codigo_barras === it.codigo);
+    }
+    if (!match && it.descripcion) {
+      const aliasId = buscarProductoPorAlias(it.descripcion);
+      if (aliasId) match = productos.find((p) => p.id === aliasId) || null;
     }
     if (!match && it.descripcion) {
       const desc = normalizar(it.descripcion);
@@ -192,6 +197,10 @@ router.post('/', requireAccion('compras', 'registrar_compra'), (req, res) => {
     if (product.tipo !== 'producto' || product.stock === null) {
       return res.status(400).json({ error: `${product.nombre} es un servicio y no maneja stock.` });
     }
+    // Si este item venía de una guía sin match automático (ver
+    // emparejarProductos) y el usuario lo vinculó a mano a este producto,
+    // recordamos esa relación para la próxima guía que traiga el mismo texto.
+    if (it.descripcion_guia) guardarAlias(product.id, it.descripcion_guia);
     const cantidad = Number(it.cantidad || 0);
     const costo_unitario = Number(it.costo_unitario || 0);
     if (cantidad <= 0) return res.status(400).json({ error: 'La cantidad de cada item debe ser mayor a 0.' });
