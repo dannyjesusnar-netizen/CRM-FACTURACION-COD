@@ -6,6 +6,7 @@ import {
   Cloud, CloudOff,
 } from 'lucide-react';
 import api from '../api';
+import { hoyPeru } from '../utils/fechas';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { leerArchivoComoTextoCsv, descargarComoExcel, exportarTabla } from '../utils/excelImport';
@@ -213,7 +214,7 @@ const ESTADO_SOLICITUD_LABEL = { pendiente: 'Pendiente', aprobada: 'Aprobada', r
 const ESTADO_SOLICITUD_BADGE = { pendiente: 'badge-warning', aprobada: 'badge-good', rechazada: 'badge-critical' };
 
 function todayStr() {
-  return new Date().toISOString().slice(0, 10);
+  return hoyPeru();
 }
 
 function emptyDescuentoForm() {

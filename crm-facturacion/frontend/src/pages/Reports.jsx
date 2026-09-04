@@ -5,6 +5,7 @@ import {
   ShoppingCart, Calculator, User, TrendingUp, Package, BarChart3, Users, Wallet,
 } from 'lucide-react';
 import api from '../api';
+import { hoyPeru } from '../utils/fechas';
 import { useToast } from '../context/ToastContext';
 import ExportButton from '../components/ExportButton';
 import { exportarTabla } from '../utils/excelImport';
@@ -30,7 +31,7 @@ const SECCIONES = [
 ];
 
 function todayStr() {
-  return new Date().toISOString().slice(0, 10);
+  return hoyPeru();
 }
 
 function money(n) {

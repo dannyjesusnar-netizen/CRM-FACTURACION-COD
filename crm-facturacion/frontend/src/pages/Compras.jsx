@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api';
+import { hoyPeru } from '../utils/fechas';
 import { useToast } from '../context/ToastContext';
 import { useAuth } from '../context/AuthContext';
 import PeriodoContable from '../components/PeriodoContable';
@@ -50,7 +51,7 @@ function emptySupplier() {
 }
 
 function todayStr() {
-  return new Date().toISOString().slice(0, 10);
+  return hoyPeru();
 }
 
 export default function Compras() {

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Printer, Camera, QrCode, Trash2, CheckCircle2, Pencil } from 'lucide-react';
 import api from '../api';
+import { hoyPeru } from '../utils/fechas';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 
@@ -15,7 +16,7 @@ function emptyMedios() {
 }
 
 function todayStr() {
-  return new Date().toISOString().slice(0, 10);
+  return hoyPeru();
 }
 
 // Redimensiona/comprime la foto en el navegador antes de subirla — una foto

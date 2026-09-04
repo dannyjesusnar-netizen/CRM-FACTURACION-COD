@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import api from '../api';
+import { hoyPeru } from '../utils/fechas';
 import { useToast } from '../context/ToastContext';
 import ProductSearchBar from '../components/ProductSearchBar';
 import ClientPicker from '../components/ClientPicker';
@@ -9,7 +10,7 @@ import MetodoPagoQr from '../components/MetodoPagoQr';
 const TITULOS = { factura: 'Factura', boleta: 'Boleta', cotizacion: 'Cotización' };
 
 function todayStr() {
-  return new Date().toISOString().slice(0, 10);
+  return hoyPeru();
 }
 
 function round2(n) {

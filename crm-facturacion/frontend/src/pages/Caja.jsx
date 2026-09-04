@@ -2,10 +2,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
 import api from '../api';
+import { hoyPeru } from '../utils/fechas';
 import { useToast } from '../context/ToastContext';
 
 function todayStr() {
-  return new Date().toISOString().slice(0, 10);
+  return hoyPeru();
 }
 
 const INGRESO_LABELS = { ventas: 'Ventas', cuentas_cobrar: 'Cuentas x Cobrar', transferencia: 'Transferencias', otros: 'Otros Ingresos' };

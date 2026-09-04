@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import api from '../api';
+import { hoyPeru } from '../utils/fechas';
 import { useToast } from '../context/ToastContext';
 
 function todayStr() {
-  return new Date().toISOString().slice(0, 10);
+  return hoyPeru();
 }
 
 function fmtHora(iso) {

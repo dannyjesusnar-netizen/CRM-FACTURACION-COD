@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import api from '../api';
+import { hoyPeru } from '../utils/fechas';
 import { useToast } from '../context/ToastContext';
 import { useAuth } from '../context/AuthContext';
 
@@ -9,7 +10,7 @@ const ESTADO_LABEL = { pendiente: 'Pendiente', recibida: 'Recibida', anulada: 'A
 const ESTADO_BADGE = { pendiente: 'badge-warning', recibida: 'badge-good', anulada: 'badge-critical' };
 
 function todayStr() {
-  return new Date().toISOString().slice(0, 10);
+  return hoyPeru();
 }
 
 export default function RecepcionCompras() {

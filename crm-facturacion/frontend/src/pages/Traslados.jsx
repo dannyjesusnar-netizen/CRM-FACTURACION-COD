@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import api from '../api';
+import { hoyPeru } from '../utils/fechas';
 import { useToast } from '../context/ToastContext';
 import ExportButton from '../components/ExportButton';
 import { exportarTabla } from '../utils/excelImport';
@@ -11,7 +12,7 @@ function emptyItem() {
 }
 
 function todayStr() {
-  return new Date().toISOString().slice(0, 10);
+  return hoyPeru();
 }
 
 export default function Traslados() {
