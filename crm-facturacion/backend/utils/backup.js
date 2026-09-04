@@ -1,13 +1,19 @@
 const path = require('path');
 const fs = require('fs');
 const { DATA_DIR } = require('../db');
+const backblaze = require('./backblaze');
 
-// Los respaldos viven en el mismo disco persistente (DATA_DIR), en su propia
-// carpeta — no dependen de ningún servicio externo. Usamos better-sqlite3's
-// .backup() (no una simple copia de archivo) porque la base trabaja en modo
-// WAL: los cambios recientes pueden estar todavía en el .db-wal y no en el
-// .db principal, así que copiar el archivo a mano podría dejar el respaldo
-// incompleto.
+// Los respaldos viven primero en el mismo disco persistente (DATA_DIR), en
+// su propia carpeta. Usamos better-sqlite3's .backup() (no una simple copia
+// de archivo) porque la base trabaja en modo WAL: los cambios recientes
+// pueden estar todavía en el .db-wal y no en el .db principal, así que
+// copiar el archivo a mano podría dejar el respaldo incompleto.
+//
+// Si además se configuró Backblaze B2 (ver utils/backblaze.js), cada
+// respaldo se sube también ahí — así, si el disco de Render se pierde o se
+// corrompe, el respaldo más reciente sigue existiendo en otro lugar. Es
+// opcional: sin esas variables de entorno, todo sigue funcionando igual que
+// antes, solo con el respaldo local.
 const BACKUPS_DIR = path.join(DATA_DIR, 'backups');
 if (!fs.existsSync(BACKUPS_DIR)) fs.mkdirSync(BACKUPS_DIR, { recursive: true });
 
@@ -28,6 +34,13 @@ async function crearRespaldo(sourceDb) {
   const destino = path.join(BACKUPS_DIR, nombreArchivo);
   await sourceDb.backup(destino);
   limpiarRespaldosViejos();
+  if (backblaze.estaConfigurado()) {
+    // No se espera (await) a propósito: si Backblaze falla o está lento, el
+    // respaldo local ya quedó guardado y no debe verse afectado.
+    backblaze.subirArchivo(destino, nombreArchivo)
+      .then(() => backblaze.limpiarViejosRemotos())
+      .catch((err) => console.error('Error subiendo el respaldo a Backblaze B2:', err.message));
+  }
   return nombreArchivo;
 }
 

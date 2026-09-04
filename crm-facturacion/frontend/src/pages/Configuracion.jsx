@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Building2, Users as UsersIcon, Store, ShieldCheck, FileText, Wallet, Hash, Percent,
   Upload, Download, Boxes, PackagePlus, RefreshCw, UserPlus, Tags, AlertTriangle, DatabaseBackup,
+  Cloud, CloudOff,
 } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
@@ -329,6 +330,7 @@ export default function Configuracion() {
   // --- Respaldos de la base de datos ---
   const [respaldos, setRespaldos] = useState([]);
   const [creandoRespaldo, setCreandoRespaldo] = useState(false);
+  const [nubeConfigurada, setNubeConfigurada] = useState(false);
 
   // --- Importador de Datos Masivos ---
   const [importadorActivo, setImportadorActivo] = useState(null); // key de IMPORTADORES_MASIVOS o null
@@ -609,6 +611,7 @@ export default function Configuracion() {
 
   function loadRespaldos() {
     api.get('/empresa/respaldos').then((res) => setRespaldos(res.data));
+    api.get('/empresa/respaldos-nube').then((res) => setNubeConfigurada(res.data.configurado));
   }
 
   async function handleCrearRespaldo() {
@@ -2063,6 +2066,17 @@ export default function Configuracion() {
                 Todos los días se guarda automáticamente una copia completa de tu base de datos (se conservan las
                 últimas 7). También puedes crear una copia al instante y descargarla cuando quieras.
               </p>
+              <div
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, marginBottom: 16,
+                  color: nubeConfigurada ? 'var(--good)' : 'var(--ink-muted)',
+                }}
+              >
+                {nubeConfigurada ? <Cloud size={15} /> : <CloudOff size={15} />}
+                {nubeConfigurada
+                  ? 'Copia automática en la nube (Backblaze B2): activa.'
+                  : 'Copia automática en la nube: no configurada (ver README, sección "Copia de seguridad en la nube").'}
+              </div>
               <button
                 type="button"
                 className="btn-primary"

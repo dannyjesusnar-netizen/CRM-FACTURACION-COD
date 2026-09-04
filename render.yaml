@@ -40,3 +40,13 @@ services:
         sync: false
       - key: IZIPAY_HMAC_KEY
         sync: false
+      # Backblaze B2: sube automáticamente cada respaldo diario de la base de
+      # datos fuera de este disco (capa gratuita de 10GB). Opcional — sin
+      # estas variables, los respaldos siguen guardándose solo localmente.
+      # Ver crm-facturacion/README.md, sección "Copia de seguridad en la nube".
+      - key: B2_KEY_ID
+        sync: false
+      - key: B2_APPLICATION_KEY
+        sync: false
+      - key: B2_BUCKET_ID
+        sync: false

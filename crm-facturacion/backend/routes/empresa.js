@@ -4,6 +4,7 @@ const tenantRegistry = require('../tenantRegistry');
 const { requireAuth, requireGerencia } = require('../middleware/auth');
 const { buildInvoicePdf } = require('../utils/pdf');
 const backup = require('../utils/backup');
+const backblaze = require('../utils/backblaze');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -201,6 +202,13 @@ router.post('/borrar-datos-prueba', requireGerencia, (req, res) => {
 // los últimos 7 guardados — todo dentro del mismo disco persistente.
 router.get('/respaldos', requireGerencia, (req, res) => {
   res.json(backup.listarRespaldos());
+});
+
+// Le dice al frontend si, además del respaldo local, cada copia también se
+// sube automáticamente a Backblaze B2 (ver utils/backblaze.js). Se activa
+// solo configurando variables de entorno — no hay nada que guardar en la BD.
+router.get('/respaldos-nube', requireGerencia, (req, res) => {
+  res.json({ configurado: backblaze.estaConfigurado() });
 });
 
 router.post('/respaldos', requireGerencia, async (req, res) => {
