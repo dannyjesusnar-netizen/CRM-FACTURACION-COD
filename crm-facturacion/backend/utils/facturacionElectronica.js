@@ -6,31 +6,31 @@
 //   1. Tener RUC activo y estar registrada como emisor electrónico en SUNAT.
 //   2. Contratar un OSE (Operador de Servicios Electrónicos) — esta
 //      implementación de referencia usa la API de Nubefact
-//      (https://nubefact.com), un OSE peruano con planes desde ~S/30/mes.
-//   3. Configurar las variables de entorno NUBEFACT_RUC, NUBEFACT_TOKEN y
-//      NUBEFACT_ENV ('sandbox' o 'production') en el servidor (Render u
-//      otro). Sin esas variables, el sistema sigue en modo simulado
-//      exactamente como antes: NUNCA se marca un comprobante como
-//      aceptado por SUNAT sin una confirmación real del OSE.
+//      (https://nubefact.com), un OSE peruano con planes desde ~S/40/mes.
+//   3. Configurar las variables de entorno NUBEFACT_RUTA y NUBEFACT_TOKEN en
+//      el servidor (Render u otro). Sin esas variables, el sistema sigue en
+//      modo simulado exactamente como antes: NUNCA se marca un comprobante
+//      como aceptado por SUNAT sin una confirmación real del OSE.
 //
-// IMPORTANTE: los nombres de campos de la API de Nubefact usados aquí
-// están tomados de su documentación pública, pero esta integración no
-// pudo probarse contra una cuenta real (no había credenciales disponibles
-// al escribirla). Antes de usarla en producción, pruébala primero con
-// NUBEFACT_ENV=sandbox y revisa la respuesta real contra la documentación
-// vigente de Nubefact (https://nubefact.com/api/) — ajusta esta función
-// si algún nombre de campo cambió.
+// A diferencia de otros OSE, Nubefact NO usa una URL base fija + tu RUC: te
+// asigna una RUTA única por empresa/local (algo como
+// https://api.nubefact.com/api/v1/<id-de-tu-cuenta>), visible en su panel en
+// "API - Integración". Esa misma RUTA y TOKEN sirven tanto en modo demo
+// (los comprobantes NO se envían a SUNAT) como en modo producción — el
+// cambio de uno a otro se activa desde el propio panel de Nubefact ("Activar
+// con la SUNAT"), no cambiando de URL. Por eso no hay aquí ninguna variable
+// de tipo NUBEFACT_ENV.
+//
+// IMPORTANTE: al pasar de modo demo a producción en el panel de Nubefact,
+// hay que reiniciar la numeración de comprobantes desde el correlativo 1 —
+// lo emitido en demo no vale y no debe mezclarse con series ya usadas en
+// real.
 
-const NUBEFACT_RUC = process.env.NUBEFACT_RUC;
+const NUBEFACT_RUTA = process.env.NUBEFACT_RUTA;
 const NUBEFACT_TOKEN = process.env.NUBEFACT_TOKEN;
-const NUBEFACT_ENV = process.env.NUBEFACT_ENV || 'sandbox';
-
-const NUBEFACT_BASE_URL = NUBEFACT_ENV === 'production'
-  ? 'https://api.nubefact.com/api/v1'
-  : 'https://api.sandbox.nubefact.com/api/v1';
 
 function estaConfigurado() {
-  return Boolean(NUBEFACT_RUC && NUBEFACT_TOKEN);
+  return Boolean(NUBEFACT_RUTA && NUBEFACT_TOKEN);
 }
 
 const TIPO_COMPROBANTE_NUBEFACT = { factura: 1, boleta: 2, nota_credito: 3 };
@@ -139,7 +139,7 @@ async function emitirComprobante(invoice, items, client) {
 
   try {
     const payload = construirPayload(invoice, items, client);
-    const res = await fetch(`${NUBEFACT_BASE_URL}/${NUBEFACT_RUC}`, {
+    const res = await fetch(NUBEFACT_RUTA, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

@@ -184,40 +184,53 @@ El sistema ya incluye un adaptador para **Nubefact** en
 variables de entorno de abajo, todo sigue funcionando exactamente igual que
 hoy (modo simulado). Para activarlo:
 
-1. Contrata Nubefact (u otro OSE) y obtén tu **RUC** y **token de API**
-   (primero en sandbox: `https://sandbox.nubefact.com`).
-2. Agrega estas variables de entorno al backend (en Render: Settings →
+1. Contrata Nubefact (plan API, desde ~S/40/mes por 500 documentos) en
+   [nubefact.com](https://www.nubefact.com). Tu cuenta arranca automáticamente
+   en **modo demo**: totalmente funcional para probar (hasta 50 comprobantes
+   de ejemplo), pero nada se envía a SUNAT todavía.
+2. En su panel, ve a **"API - Integración"** y copia tu **RUTA** y tu
+   **TOKEN** — a diferencia de otros OSE, Nubefact asigna una URL única por
+   empresa (algo como `https://api.nubefact.com/api/v1/<id-de-tu-cuenta>`),
+   no una URL genérica. Esa misma RUTA y TOKEN sirven igual en modo demo y en
+   producción — no hay credenciales separadas para cada uno.
+3. Agrega estas variables de entorno al backend (en Render: Settings →
    Environment):
 
    | Variable | Valor |
    | --- | --- |
-   | `NUBEFACT_RUC` | tu RUC (el mismo con el que te registraste como emisor electrónico) |
-   | `NUBEFACT_TOKEN` | el token de API que te da Nubefact |
-   | `NUBEFACT_ENV` | `sandbox` para pruebas, `production` cuando ya validaste que todo funciona |
+   | `NUBEFACT_RUTA` | la URL exacta que te muestra Nubefact en "API - Integración" |
+   | `NUBEFACT_TOKEN` | el token que te muestra ahí mismo |
 
-3. Reinicia el servicio. Al emitir una Factura, Boleta o Nota de Crédito, el
+4. Reinicia el servicio. Al emitir una Factura, Boleta o Nota de Crédito, el
    sistema ahora intentará enviarla a SUNAT vía Nubefact automáticamente. La
    venta **siempre se guarda localmente primero** (stock, kardex, numeración);
    si el envío al OSE falla por cualquier motivo, la venta no se pierde —
    queda marcada como "Error de envío" (visible en Ventas) en vez de
    mostrarse falsamente como aceptada.
-4. En Ventas verás el estado real de cada comprobante: **Simulado** (sin
+5. En Ventas verás el estado real de cada comprobante: **Simulado** (sin
    credenciales configuradas), **Aceptado SUNAT**, **Rechazado SUNAT**, o
    **Error de envío** — con enlaces directos al PDF/XML/CDR oficiales que
    devuelve Nubefact cuando el envío es aceptado.
 
 ### ⚠️ Antes de pasar a producción
 
-La integración con Nubefact se construyó siguiendo su documentación pública,
-pero **no pudo probarse contra una cuenta real** (no había credenciales
-disponibles al momento de escribirla). Antes de usarla con clientes reales:
+La integración con Nubefact se construyó siguiendo su documentación pública.
+Antes de usarla con clientes reales:
 
-1. Prueba primero con `NUBEFACT_ENV=sandbox` y una venta de bajo valor.
+1. Configura `NUBEFACT_RUTA`/`NUBEFACT_TOKEN` con tu cuenta todavía en
+   **modo demo** (el estado por defecto al registrarte) y emite una venta de
+   bajo valor — el comprobante no llega a SUNAT, pero confirma que el
+   formato del envío es correcto.
 2. Revisa la respuesta real de Nubefact contra su documentación vigente
-   (https://nubefact.com/api/) y ajusta `backend/utils/facturacionElectronica.js`
-   si algún nombre de campo cambió.
-3. Solo después de confirmar que el sandbox funciona correctamente, cambia
-   `NUBEFACT_ENV` a `production` con tus credenciales reales.
+   (https://ayuda.nubefact.com) y ajusta
+   `backend/utils/facturacionElectronica.js` si algún nombre de campo
+   cambió.
+3. Solo después de confirmar que el modo demo funciona correctamente, activa
+   **"Activar con la SUNAT (Modo Producción)"** en el panel de Nubefact —
+   las mismas `NUBEFACT_RUTA`/`NUBEFACT_TOKEN` siguen sirviendo, no hace
+   falta cambiar ninguna variable. Al pasar a producción, reinicia también
+   la numeración de tus series desde el correlativo 1 (ver "Series y
+   correlativos" en Configuración) — lo emitido en demo no cuenta.
 
 Si prefieres otro OSE en vez de Nubefact, el adaptador está aislado en un solo
 archivo (`backend/utils/facturacionElectronica.js`) para que sea sencillo
