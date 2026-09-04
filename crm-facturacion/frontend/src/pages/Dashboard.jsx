@@ -12,7 +12,7 @@ import {
   Legend,
   Filler,
 } from 'chart.js';
-import { Circle, Triangle, Diamond, Camera, Download } from 'lucide-react';
+import { Circle, Triangle, Diamond, Camera, Download, FileSpreadsheet } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
@@ -68,14 +68,19 @@ function pctBadge(pct) {
 // de Ventas — el color lo elige Gerencia (empresa.color_tablero_ventas).
 // onCopiar (opcional) agrega un botón de cámara para copiar/descargar el
 // panel completo como imagen (ver copiarPanelComoImagen).
-function PanelHeader({ children, color, onCopiar, onDescargarExcel }) {
+function PanelHeader({ children, color, onCopiar, onDescargarExcel, onDescargarDetalle }) {
   return (
     <div className="panel-banda" style={{ background: color }}>
       <h3>{children}</h3>
       <div className="panel-banda-actions">
         {onDescargarExcel && (
-          <button type="button" className="panel-banda-copy-btn" onClick={onDescargarExcel} title="Descargar en Excel">
+          <button type="button" className="panel-banda-copy-btn" onClick={onDescargarExcel} title="Descargar resumen (Excel)">
             <Download size={14} />
+          </button>
+        )}
+        {onDescargarDetalle && (
+          <button type="button" className="panel-banda-copy-btn" onClick={onDescargarDetalle} title="Descargar detalle de cada venta (Excel)">
+            <FileSpreadsheet size={14} />
           </button>
         )}
         {onCopiar && (
@@ -95,6 +100,30 @@ function descargarPanelComoExcel(filename, headers, filas, toast) {
   descargarComoExcel(filename, headers, filas).catch(() => {
     toast.error('No se pudo generar el Excel.');
   });
+}
+
+const TIPO_COMPROBANTE_LABEL = {
+  factura: 'Factura', boleta: 'Boleta', nota_credito: 'Nota de Crédito', nota_venta: 'Nota de Venta Interna',
+};
+
+// A diferencia de descargarPanelComoExcel (que exporta lo que ya está en
+// pantalla), esto pide al backend el detalle venta por venta — no se
+// mantiene precargado en el estado del Dashboard porque solo hace falta al
+// momento de exportar.
+async function descargarDetalleRankingComoExcel(categoria, filename, columnaPersona, params, toast) {
+  try {
+    const res = await api.get('/tablero/ranking-personal/detalle', { params: { ...params, categoria } });
+    await descargarComoExcel(
+      filename,
+      [columnaPersona, 'Sede', 'Fecha', 'Comprobante', 'Serie', 'Número', 'Cliente', 'Total'],
+      res.data.map((r) => [
+        r.entrenador, r.sede || '', r.fecha, TIPO_COMPROBANTE_LABEL[r.tipo_comprobante] || r.tipo_comprobante,
+        r.serie, r.numero, r.cliente || '', r.total,
+      ])
+    );
+  } catch {
+    toast.error('No se pudo generar el detalle en Excel.');
+  }
 }
 
 // Convierte un panel completo (incluida la franja de color y todas las
@@ -417,6 +446,13 @@ export default function Dashboard() {
                       ['Trainer', 'Sede', 'Turno', 'Venta', 'Meta', '%'],
                       rankingTrainers.map((r) => [r.nombre, r.sede || '', r.turno === 'manana' ? 'Mañana' : r.turno === 'tarde' ? 'Tarde' : '', r.venta, r.meta, r.porcentaje ?? ''
                       ]),
+                      toast
+                    )}
+                    onDescargarDetalle={() => descargarDetalleRankingComoExcel(
+                      'trainer',
+                      'detalle-ventas-trainers.xlsx',
+                      'Trainer',
+                      { anio: tableroAnio, mes: tableroMes, sucursal_id: tableroSedeId || undefined },
                       toast
                     )}
                   >Ranking Trainers</PanelHeader>
