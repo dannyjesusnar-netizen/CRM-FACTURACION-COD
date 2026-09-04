@@ -148,6 +148,10 @@ async function emitirComprobante(invoice, items, client) {
       body: JSON.stringify(payload),
     });
     const data = await res.json().catch(() => null);
+    // Log temporal para ver la forma real de la respuesta de Nubefact —
+    // su documentación pública no cubre todos los campos que puede devolver
+    // (p. ej. cómo distingue "pendiente en modo demo" de "rechazado real").
+    console.log('Respuesta de Nubefact:', JSON.stringify(data));
 
     if (!res.ok || !data) {
       return {
