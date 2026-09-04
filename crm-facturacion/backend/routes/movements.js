@@ -7,6 +7,7 @@ const { requirePermiso, requireAccion, esGerenciaOSupervisor } = require('../uti
 const { analizarEtiqueta } = require('../utils/ocrEtiqueta');
 const { analizarGuia } = require('../utils/ocrGuia');
 const { parseGuiaXml, parseGuiaPdf } = require('../utils/guiaParser');
+const { buscarProductoPorAlias, guardarAlias } = require('../utils/productoAlias');
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -248,6 +249,11 @@ router.post('/importar-lotes', requireAccion('inventario', 'ajustes'), (req, res
         errores.push({ codigo, error: 'No es un producto con stock (es un servicio).' });
         continue;
       }
+      // Si esta fila venía de una guía por foto sin match automático y el
+      // usuario la vinculó a mano a este producto, recordamos esa relación
+      // para la próxima guía que traiga el mismo texto (ver
+      // utils/productoAlias.js).
+      if (r.descripcion_detectada) guardarAlias(prod.id, r.descripcion_detectada);
 
       db.prepare('UPDATE products SET stock = stock + ? WHERE id = ?').run(cant, prod.id);
       const nuevoStock = db.prepare('SELECT stock FROM products WHERE id = ?').get(prod.id).stock;
@@ -327,6 +333,18 @@ function mejorProductoParaDescripcion(descripcion, productos) {
   return mejor;
 }
 
+// Antes de adivinar por similitud de palabras, revisa si ya alguien vinculó
+// manualmente este mismo texto (de una guía anterior) a un producto — esa
+// relación confirmada por una persona es más confiable que cualquier heurística.
+function matchPorDescripcion(descripcion, productos) {
+  const aliasId = buscarProductoPorAlias(descripcion);
+  if (aliasId) {
+    const porAlias = productos.find((p) => p.id === aliasId);
+    if (porAlias) return porAlias;
+  }
+  return mejorProductoParaDescripcion(descripcion, productos);
+}
+
 // POST /api/movements/analizar-guia { foto_data_url } -> lee una foto de la
 // guía de remisión COMPLETA del proveedor e intenta separar sus líneas de
 // producto (cantidad + descripción), sugiriendo a qué producto del catálogo
@@ -343,7 +361,7 @@ router.post('/analizar-guia', requireAccion('inventario', 'ajustes'), async (req
     const resultado = await analizarGuia(foto_data_url);
     const productos = db.prepare("SELECT id, codigo, nombre FROM products WHERE tipo = 'producto'").all();
     const filas = resultado.filas_detectadas.map((f) => {
-      const match = mejorProductoParaDescripcion(f.descripcion, productos);
+      const match = matchPorDescripcion(f.descripcion, productos);
       return {
         descripcion_detectada: f.descripcion,
         cantidad_detectada: f.cantidad,
@@ -391,7 +409,7 @@ router.post('/analizar-guia-archivo', requireAccion('inventario', 'ajustes'), up
     if (it.codigo) {
       match = productos.find((p) => p.codigo === it.codigo || p.codigo_barras === it.codigo);
     }
-    if (!match) match = mejorProductoParaDescripcion(it.descripcion, productos);
+    if (!match) match = matchPorDescripcion(it.descripcion, productos);
     return {
       descripcion_detectada: it.descripcion,
       cantidad_detectada: it.cantidad,

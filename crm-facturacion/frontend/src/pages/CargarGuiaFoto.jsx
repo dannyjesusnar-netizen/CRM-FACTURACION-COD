@@ -174,6 +174,7 @@ export default function CargarGuiaFoto() {
           motivo: motivo.trim() || 'Guía de remisión',
           codigo_lote: f.codigo_lote?.trim() || undefined,
           fecha_vencimiento: f.codigo_lote?.trim() ? (f.fecha_vencimiento || undefined) : undefined,
+          descripcion_detectada: f.descripcion_detectada || undefined,
         };
       });
       const res = await api.post('/movements/importar-lotes', { rows });
