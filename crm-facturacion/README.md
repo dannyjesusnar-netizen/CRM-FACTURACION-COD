@@ -385,6 +385,40 @@ probala primero con tus credenciales de prueba y una tarjeta de prueba, y
 confirmá que las respuestas coinciden con lo que espera
 `backend/utils/izipay.js` — ajustalo si algún campo cambió en su API.
 
+## Copia de seguridad en la nube (`B2_KEY_ID` / `B2_APPLICATION_KEY` / `B2_BUCKET_ID`)
+
+El sistema ya guarda un respaldo local automático de la base de datos todos
+los días (ver `backend/utils/backup.js`), pero ese respaldo vive en el mismo
+disco persistente de Render — si ese disco se pierde o se corrompe, se
+pierde también el respaldo. Para evitarlo, cada respaldo diario puede
+subirse además a **Backblaze B2** (almacenamiento en la nube con una capa
+gratuita de 10GB, más que suficiente para una base de datos de este tamaño
+por años).
+
+Esto es completamente **opcional**: sin las variables de entorno de abajo,
+todo sigue funcionando exactamente igual que antes, solo con el respaldo
+local. Gerencia puede ver si está activo en **Configuración → Respaldos**.
+
+1. Crea una cuenta gratuita en [backblaze.com/b2](https://www.backblaze.com/cloud-storage).
+2. Crea un **bucket** privado (por ejemplo `qoria-respaldos`) y copia su
+   **Bucket ID** (aparece en el detalle del bucket).
+3. En **Account → Application Keys**, crea una nueva "Application Key"
+   restringida a ese bucket (no uses la llave maestra de la cuenta) y copia
+   el `keyID` y la `applicationKey` — esta última solo se muestra una vez.
+4. Agrega estas variables de entorno en Render (Environment):
+
+| Variable | Valor |
+| --- | --- |
+| `B2_KEY_ID` | el `keyID` de la Application Key |
+| `B2_APPLICATION_KEY` | la `applicationKey` (solo se muestra una vez al crearla) |
+| `B2_BUCKET_ID` | el ID del bucket donde se van a guardar los respaldos |
+
+A partir del próximo respaldo (automático o manual desde "Crear respaldo
+ahora"), la copia se sube también a ese bucket, conservando las últimas 14.
+Si la subida falla por cualquier motivo (sin conexión, credenciales
+incorrectas), el respaldo local ya se creó de todas formas — el error solo
+queda registrado en los logs del servidor, no interrumpe nada.
+
 ## Estructura del proyecto
 
 ```
