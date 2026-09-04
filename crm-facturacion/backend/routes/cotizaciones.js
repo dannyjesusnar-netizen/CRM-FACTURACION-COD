@@ -3,6 +3,7 @@ const db = require('../db');
 const { requireAuth, resolveSucursal } = require('../middleware/auth');
 const { requirePermiso, requireAccion } = require('../utils/permisos');
 const { siguienteNumero } = require('../utils/series');
+const { hoyPeru } = require('../utils/fechas');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -101,7 +102,7 @@ router.post('/', requireAccion('ventas', 'cotizacion'), (req, res) => {
       numero,
       client_id || null,
       req.user?.id || null,
-      fecha_emision || new Date().toISOString().slice(0, 10),
+      fecha_emision || hoyPeru(),
       moneda || 'PEN',
       subtotal,
       igv,

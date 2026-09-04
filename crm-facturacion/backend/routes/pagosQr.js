@@ -2,6 +2,7 @@ const express = require('express');
 const db = require('../db');
 const { requireAuth, resolveSucursal, requireGerencia } = require('../middleware/auth');
 const { analizarComprobante } = require('../utils/ocrPago');
+const { hoyPeru } = require('../utils/fechas');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -34,7 +35,7 @@ router.post('/detectar-monto', async (req, res) => {
 // activa en esa fecha, más un resumen (total y por medio) para el control
 // diario de lo vendido por QR.
 router.get('/', (req, res) => {
-  const fecha = req.query.fecha || new Date().toISOString().slice(0, 10);
+  const fecha = req.query.fecha || hoyPeru();
   const pagos = db.prepare(
     `SELECT p.*, u.full_name AS usuario_nombre
      FROM pagos_qr p LEFT JOIN users u ON u.id = p.created_by

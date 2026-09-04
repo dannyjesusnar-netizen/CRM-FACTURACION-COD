@@ -5,6 +5,7 @@ const { requireAuth, requireGerencia } = require('../middleware/auth');
 const { buildInvoicePdf } = require('../utils/pdf');
 const backup = require('../utils/backup');
 const backblaze = require('../utils/backblaze');
+const { hoyPeru } = require('../utils/fechas');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -114,7 +115,7 @@ router.get('/comprobante-preview', requireGerencia, async (req, res) => {
     tipo_comprobante: 'factura',
     serie: 'F001',
     numero: 1,
-    fecha_emision: new Date().toISOString().slice(0, 10),
+    fecha_emision: hoyPeru(),
     moneda: 'PEN',
     estado: 'emitido',
     forma_pago: 'efectivo',

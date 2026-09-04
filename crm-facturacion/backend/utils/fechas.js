@@ -13,4 +13,16 @@ function sumarUnMes(fechaISO) {
   return fecha.toISOString().slice(0, 10);
 }
 
-module.exports = { sumarUnMes };
+// La fecha de "hoy" para todo lo que tenga peso legal o de negocio (fecha de
+// emisión de comprobantes, cierre de caja, vencimiento de lotes/descuentos,
+// etc.) debe calcularse en hora de Perú (UTC-5, sin horario de verano) — no
+// en la hora del servidor, que en Render corre en UTC. Sin este ajuste, entre
+// las 7:00pm y la medianoche (hora de Perú) `new Date()` ya "ve" el día
+// siguiente en UTC, y por ejemplo Nubefact rechaza el comprobante por tener
+// una fecha de emisión mayor a la fecha real de hoy en Perú.
+function hoyPeru() {
+  const limaMs = Date.now() - 5 * 60 * 60 * 1000;
+  return new Date(limaMs).toISOString().slice(0, 10);
+}
+
+module.exports = { sumarUnMes, hoyPeru };

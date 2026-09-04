@@ -2,6 +2,7 @@ const path = require('path');
 const fs = require('fs');
 const Database = require('better-sqlite3');
 const { DATA_DIR, DEFAULT_DB_PATH } = require('./db');
+const { hoyPeru } = require('./utils/fechas');
 
 // Registro central de empresas registradas desde "Registrar mi empresa"
 // (login → botón Registro). Es una base sqlite propia, separada de la de
@@ -167,7 +168,7 @@ function desactivarTenant(ruc) {
 function setCosto(ruc, { costo_mensual, fecha_inicio_suscripcion }) {
   const tenant = findTenant(ruc);
   if (!tenant) return null;
-  const fecha = fecha_inicio_suscripcion || tenant.fecha_inicio_suscripcion || new Date().toISOString().slice(0, 10);
+  const fecha = fecha_inicio_suscripcion || tenant.fecha_inicio_suscripcion || hoyPeru();
   registryDb.prepare(
     'UPDATE tenants SET costo_mensual = ?, fecha_inicio_suscripcion = ? WHERE ruc = ?'
   ).run(costo_mensual, fecha, ruc);
@@ -189,7 +190,7 @@ function guardarTarjeta(ruc, { izipay_token, tarjeta_marca, tarjeta_ultimos4 }) 
   if (!tenant) return null;
   // Si todavía no tenía fecha de inicio (el dueño de la plataforma no la
   // asignó a mano), arranca desde que se guarda la primera tarjeta.
-  const fecha = tenant.fecha_inicio_suscripcion || new Date().toISOString().slice(0, 10);
+  const fecha = tenant.fecha_inicio_suscripcion || hoyPeru();
   registryDb.prepare(
     `UPDATE tenants SET izipay_token = ?, tarjeta_marca = ?, tarjeta_ultimos4 = ?,
      fecha_inicio_suscripcion = ?, suscripcion_estado = 'activa', proximo_cobro_at = COALESCE(proximo_cobro_at, ?)
@@ -234,7 +235,7 @@ function ingresoTotal(ruc) {
 // de cobro recurrente (ver utils/facturacionPlataforma.js). Una empresa
 // suspendida (activo = 0) no se cobra mientras dure la suspensión.
 function tenantsConCobroVencido() {
-  const hoy = new Date().toISOString().slice(0, 10);
+  const hoy = hoyPeru();
   return registryDb.prepare(
     `SELECT * FROM tenants
      WHERE estado = 'aprobado' AND activo = 1 AND izipay_token IS NOT NULL AND costo_mensual IS NOT NULL

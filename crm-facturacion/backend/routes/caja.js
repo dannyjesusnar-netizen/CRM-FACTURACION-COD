@@ -3,6 +3,7 @@ const db = require('../db');
 const { requireAuth, resolveSucursal } = require('../middleware/auth');
 const { requirePermiso, requireAccion } = require('../utils/permisos');
 const { round2, buildResumen } = require('../utils/cajaCalculos');
+const { hoyPeru } = require('../utils/fechas');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -10,7 +11,7 @@ router.use(requirePermiso('caja'));
 router.use(resolveSucursal);
 
 function todayStr() {
-  return new Date().toISOString().slice(0, 10);
+  return hoyPeru();
 }
 
 // GET /api/caja?fecha=YYYY-MM-DD&hasta=YYYY-MM-DD&moneda=PEN|USD&empleado_id=

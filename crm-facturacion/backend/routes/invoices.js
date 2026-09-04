@@ -7,6 +7,7 @@ const { emitirComprobante, estaConfigurado } = require('../utils/facturacionElec
 const { requirePermiso, requireAccion, requireAlgunPermiso, tieneAccion, tienePermiso, requireGerenciaOSupervisor } = require('../utils/permisos');
 const { siguienteNumero } = require('../utils/series');
 const { resolverDescuentoPct } = require('../utils/descuentos');
+const { hoyPeru } = require('../utils/fechas');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -96,7 +97,7 @@ router.post('/:id/cobros', requireRegistrarCobro, (req, res) => {
   }
   const client = db.prepare('SELECT nombre FROM clients WHERE id = ?').get(invoice.client_id);
   const referenciaComprobante = `${invoice.serie}-${String(invoice.numero).padStart(6, '0')}`;
-  const hoy = new Date().toISOString().slice(0, 10);
+  const hoy = hoyPeru();
 
   const registrar = db.transaction(() => {
     db.prepare('UPDATE invoices SET monto_pagado = monto_pagado + ? WHERE id = ?').run(montoNum, invoice.id);
@@ -416,7 +417,7 @@ router.post('/', async (req, res) => {
   const montoPagado = esAbonado ? Math.min(total, Math.max(0, round2(Number(montoPagadoBody || 0)))) : total;
 
   const { serie, numero: numeroSugerido } = siguienteNumero(tipo_comprobante, req.sucursalId);
-  const fechaEmisionFinal = fecha_emision || new Date().toISOString().slice(0, 10);
+  const fechaEmisionFinal = fecha_emision || hoyPeru();
 
   const insertAll = db.transaction(() => {
     const numero = numeroManual ? Number(numeroManual) : numeroSugerido;
@@ -609,7 +610,7 @@ router.post('/preview-pdf', async (req, res) => {
   const montoPagado = esAbonado ? Math.min(total, Math.max(0, round2(Number(monto_pagado || 0)))) : total;
 
   const sucursal = db.prepare('SELECT nombre, direccion FROM sucursales WHERE id = ?').get(req.sucursalId);
-  const fechaFinal = fecha_emision || new Date().toISOString().slice(0, 10);
+  const fechaFinal = fecha_emision || hoyPeru();
 
   const invoicePreview = {
     tipo_comprobante: ['factura', 'boleta', 'nota_credito', 'cotizacion'].includes(tipo_comprobante) ? tipo_comprobante : 'boleta',

@@ -1,4 +1,5 @@
 const db = require('../db');
+const { hoyPeru } = require('./fechas');
 
 // Único punto de verdad para el % de descuento global de una venta: el
 // cliente nunca puede mandar el porcentaje a mano — solo puede elegir un
@@ -8,7 +9,7 @@ const db = require('../db');
 // opción de escribir un % libre.
 function resolverDescuentoPct(descuentoId, sucursalId) {
   if (!descuentoId) return 0;
-  const hoy = new Date().toISOString().slice(0, 10);
+  const hoy = hoyPeru();
   const descuento = db.prepare(
     `SELECT * FROM descuentos
      WHERE id = ? AND activo = 1 AND fecha_inicio <= ? AND fecha_fin >= ?

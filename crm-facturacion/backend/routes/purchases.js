@@ -5,6 +5,7 @@ const { requireAuth, resolveSucursal } = require('../middleware/auth');
 const { incrementarStock, ajustarStockSucursal, getStockSucursal, round2 } = require('../utils/stock');
 const { requirePermiso, requireAccion } = require('../utils/permisos');
 const { parseGuiaXml, parseGuiaPdf } = require('../utils/guiaParser');
+const { hoyPeru } = require('../utils/fechas');
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -234,7 +235,7 @@ router.post('/', requireAccion('compras', 'registrar_compra'), (req, res) => {
       numero,
       supplier_id,
       req.user?.id || null,
-      fecha || new Date().toISOString().slice(0, 10),
+      fecha || hoyPeru(),
       forma_pago || 'efectivo',
       subtotalGravado,
       igvTotal,

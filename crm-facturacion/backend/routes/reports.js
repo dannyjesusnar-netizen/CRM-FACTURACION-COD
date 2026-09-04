@@ -3,6 +3,7 @@ const db = require('../db');
 const { requireAuth, resolveSucursal } = require('../middleware/auth');
 const { requirePermiso, requireAlgunPermiso, requireAccion } = require('../utils/permisos');
 const { buildResumen } = require('../utils/cajaCalculos');
+const { hoyPeru } = require('../utils/fechas');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -14,7 +15,7 @@ const requireReportes = requirePermiso('reportes');
 
 // Resumen para el dashboard principal
 router.get('/summary', requireDashboardOReportes, (req, res) => {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = hoyPeru();
   const startOfMonth = today.slice(0, 8) + '01';
 
   // Las notas de crédito restan de las ventas (netean), no se excluyen: si
@@ -99,7 +100,7 @@ router.get('/summary', requireDashboardOReportes, (req, res) => {
 router.get('/ventas-por-dia', requireDashboardOReportes, (req, res) => {
   const { from, to } = req.query;
   const fromDate = from || new Date(Date.now() - 29 * 86400000).toISOString().slice(0, 10);
-  const toDate = to || new Date().toISOString().slice(0, 10);
+  const toDate = to || hoyPeru();
   const rows = db.prepare(
     `SELECT date(fecha_emision) AS dia,
             COALESCE(SUM(CASE WHEN tipo_comprobante = 'nota_credito' THEN -total ELSE total END), 0) AS total
@@ -285,7 +286,7 @@ router.get('/ventas-detalle', requireAlgunPermiso(['ventas', 'reportes']), (req,
 // ya que el sistema no tiene un concepto de sesión/turno propio — es la
 // misma granularidad que ya ofrece Caja y Bancos.
 router.get('/cierre-caja', requireAlgunPermiso(['caja', 'reportes']), (req, res) => {
-  const fecha = req.query.fecha || new Date().toISOString().slice(0, 10);
+  const fecha = req.query.fecha || hoyPeru();
   const empleadoId = req.query.empleado_id ? Number(req.query.empleado_id) : null;
   const empleadoFiltro = empleadoId ? 'AND created_by = ?' : '';
   const baseParams = empleadoId ? [fecha, req.sucursalId, empleadoId] : [fecha, req.sucursalId];

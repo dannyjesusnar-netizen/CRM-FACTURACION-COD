@@ -4,6 +4,7 @@ const { requireAuth, resolveSucursal } = require('../middleware/auth');
 const { round2, incrementarStock } = require('../utils/stock');
 const { requirePermiso, requireAccion } = require('../utils/permisos');
 const { siguienteNumero } = require('../utils/series');
+const { hoyPeru } = require('../utils/fechas');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -193,7 +194,7 @@ router.post('/:id/recibir', requireAccion('compras', 'registrar_compra'), (req, 
   }
   const supplier = db.prepare('SELECT * FROM suppliers WHERE id = ?').get(order.supplier_id);
   const items = db.prepare('SELECT * FROM purchase_order_items WHERE purchase_order_id = ?').all(order.id);
-  const fechaRecepcion = (req.body && req.body.fecha_recepcion) || new Date().toISOString().slice(0, 10);
+  const fechaRecepcion = (req.body && req.body.fecha_recepcion) || hoyPeru();
 
   db.transaction(() => {
     db.prepare(
