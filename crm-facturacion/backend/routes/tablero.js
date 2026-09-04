@@ -161,6 +161,46 @@ router.get('/ranking-personal', (req, res) => {
   res.json(withPct);
 });
 
+// Detalle de cada venta que compone el ranking de arriba — para exportar a
+// Excel, no para mostrar en pantalla (el ranking ya resume lo que hace
+// falta ver). Cada fila es un comprobante real (Boleta/Factura/Nota de
+// Crédito/Nota de Venta Interna) atribuido a un empleado de esa categoría,
+// con el mismo criterio de atribución que /ranking-personal
+// (COALESCE(atribuido_a, created_by)) y el mismo filtro de sede.
+router.get('/ranking-personal/detalle', (req, res) => {
+  const categoria = req.query.categoria;
+  if (!['trainer', 'vendedor', 'supervisor'].includes(categoria)) {
+    return res.status(400).json({ error: 'categoria inválida. Use trainer, vendedor o supervisor.' });
+  }
+  const { anio, mesPad } = anioMes(req);
+  const sucursalId = sedeFiltro(req);
+  const rows = db.prepare(`
+    SELECT u.full_name AS entrenador, sd.nombre AS sede, x.fecha, x.tipo_comprobante,
+           x.serie, x.numero, x.cliente, x.total
+    FROM (
+      SELECT i.atribuido_a, i.created_by, i.sucursal_id, i.fecha_emision AS fecha,
+             i.tipo_comprobante, i.serie, i.numero, c.nombre AS cliente,
+             CASE WHEN i.tipo_comprobante = 'nota_credito' THEN -i.total ELSE i.total END AS total
+      FROM invoices i
+      LEFT JOIN clients c ON c.id = i.client_id
+      WHERE i.estado = 'emitido' AND strftime('%Y', i.fecha_emision) = ? AND strftime('%m', i.fecha_emision) = ?
+      UNION ALL
+      SELECT nv.atribuido_a, nv.created_by, nv.sucursal_id, nv.fecha_emision AS fecha,
+             'nota_venta' AS tipo_comprobante, nv.serie, nv.numero, c.nombre AS cliente,
+             nv.total AS total
+      FROM notas_venta nv
+      LEFT JOIN clients c ON c.id = nv.client_id
+      WHERE nv.estado = 'emitido' AND strftime('%Y', nv.fecha_emision) = ? AND strftime('%m', nv.fecha_emision) = ?
+    ) x
+    JOIN users u ON u.id = COALESCE(x.atribuido_a, x.created_by)
+    LEFT JOIN sucursales sd ON sd.id = x.sucursal_id
+    WHERE u.categoria_staff = ? AND u.activo = 1
+      AND (? IS NULL OR u.sucursal_id = ?)
+    ORDER BY u.full_name, x.fecha, x.numero
+  `).all(String(anio), mesPad, String(anio), mesPad, categoria, sucursalId, sucursalId);
+  res.json(rows.map((r) => ({ ...r, total: round2(r.total) })));
+});
+
 // Resumen por sede: venta, meta (suma de los pools de vendedores + trainers
 // asignados a esa sede ese mes) y % de cumplimiento, más el total general
 // para la tarjeta "Ventas Totales".
