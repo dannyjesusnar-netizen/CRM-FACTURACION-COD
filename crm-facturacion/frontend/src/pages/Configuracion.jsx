@@ -312,6 +312,8 @@ export default function Configuracion() {
 
   // --- Zona de peligro: borrar datos de prueba ---
   const [borrandoDatos, setBorrandoDatos] = useState(false);
+  const [sedeABorrarInventario, setSedeABorrarInventario] = useState('');
+  const [borrandoInventarioSede, setBorrandoInventarioSede] = useState(false);
 
   // --- Entrenadores y Supervisores operativos (registro sin usuario) ---
   // Solo alimentan el Tablero de Ventas (ranking + "Atribuir venta a") — no
@@ -667,6 +669,34 @@ export default function Configuracion() {
       toast.error(err.response?.data?.error || 'No se pudo completar el borrado.');
     } finally {
       setBorrandoDatos(false);
+    }
+  }
+
+  async function handleBorrarInventarioSede() {
+    if (!sedeABorrarInventario) { toast.error('Selecciona una sede.'); return; }
+    const sede = sucursales.find((s) => String(s.id) === String(sedeABorrarInventario));
+    const nombreSede = sede?.nombre || 'la sede seleccionada';
+    const primeraConfirmacion = window.confirm(
+      `¿Borrar el inventario de ${nombreSede}?\n\n` +
+      'Esto deja en 0 el stock de todos los productos SOLO en esa sede, y borra el historial de ' +
+      'movimientos de inventario (kardex) registrado ahí. El catálogo de productos y el stock de ' +
+      'las demás sedes NO se tocan.\n\n' +
+      'Esta acción NO se puede deshacer.'
+    );
+    if (!primeraConfirmacion) return;
+    const texto = window.prompt('Para confirmar, escribe BORRAR en mayúsculas:');
+    if (texto !== 'BORRAR') {
+      if (texto !== null) toast.error('Texto de confirmación incorrecto. No se borró nada.');
+      return;
+    }
+    setBorrandoInventarioSede(true);
+    try {
+      const res = await api.post('/empresa/borrar-inventario-sede', { sucursal_id: sedeABorrarInventario, confirmar: 'BORRAR' });
+      toast.success(`Inventario de ${res.data.sede} borrado (${res.data.productos_afectados} producto(s) afectados).`);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'No se pudo completar el borrado.');
+    } finally {
+      setBorrandoInventarioSede(false);
     }
   }
 
@@ -2129,6 +2159,37 @@ export default function Configuracion() {
                 >
                   {borrandoDatos ? 'Borrando...' : 'Borrar datos de prueba'}
                 </button>
+              </div>
+
+              <div style={{ border: '1px solid var(--critical, #dc2626)', borderRadius: 8, padding: 16, background: 'rgba(220,38,38,0.06)', marginTop: 16 }}>
+                <strong>Borrar inventario de una sede</strong>
+                <p style={{ fontSize: 12, color: 'var(--ink-muted)' }}>
+                  Deja en 0 el stock de todos los productos solo en la sede que elijas, y borra el historial de
+                  movimientos de inventario (kardex) de esa sede — útil para repetir una carga masiva de prueba
+                  sin arrastrar cantidades viejas. El catálogo de productos, los lotes/vencimientos y las demás
+                  sedes no se tocan. Esta acción no se puede deshacer.
+                </p>
+                <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                  <select
+                    value={sedeABorrarInventario}
+                    onChange={(e) => setSedeABorrarInventario(e.target.value)}
+                    style={{ maxWidth: 260 }}
+                  >
+                    <option value="">Selecciona una sede...</option>
+                    {sucursales.map((s) => (
+                      <option key={s.id} value={s.id}>{s.nombre}</option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    style={{ width: 'auto', background: 'var(--critical, #dc2626)' }}
+                    disabled={borrandoInventarioSede || !sedeABorrarInventario}
+                    onClick={handleBorrarInventarioSede}
+                  >
+                    {borrandoInventarioSede ? 'Borrando...' : 'Borrar inventario de esta sede'}
+                  </button>
+                </div>
               </div>
             </>
           )}

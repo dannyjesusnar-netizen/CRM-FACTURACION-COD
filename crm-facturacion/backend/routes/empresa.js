@@ -198,6 +198,47 @@ router.post('/borrar-datos-prueba', requireGerencia, (req, res) => {
   res.json({ ok: true });
 });
 
+// POST /api/empresa/borrar-inventario-sede -> a diferencia de
+// borrar-datos-prueba (que vacía TODA la instancia), esto resetea a 0 el
+// stock de UNA sede puntual — pensado para poder repetir una carga masiva
+// de prueba durante una migración sin arrastrar cantidades viejas ni tocar
+// otras sedes. Reduce el stock agregado de cada producto (products.stock)
+// exactamente en lo que tenía esa sede, deja sus filas de sucursal_stock en
+// 0 (a propósito NO se borran las filas — ver nota abajo) y borra su
+// historial de movimientos (kardex). El catálogo de productos, los lotes
+// (son por producto, no por sede) y los traslados (cruzan dos sedes) NO se
+// tocan, para no afectar a otras sedes que sí comparten esos datos.
+// Requiere confirmar el texto "BORRAR", igual que borrar-datos-prueba.
+//
+// IMPORTANTE: si borráramos las filas de sucursal_stock en vez de dejarlas
+// en 0, el backfill de arranque de db.js ("todo producto sin fila en
+// sucursal_stock para la sede PRINCIPAL la recibe con su stock agregado
+// actual") las volvería a crear solas en el próximo reinicio del servidor,
+// usando products.stock — que a esas alturas es el stock de las OTRAS
+// sedes — deshaciendo el reset silenciosamente si la sede borrada es la
+// principal. Dejar la fila en 0 (no ausente) evita que ese backfill vuelva
+// a tocarla.
+router.post('/borrar-inventario-sede', requireGerencia, (req, res) => {
+  if (req.body?.confirmar !== 'BORRAR') {
+    return res.status(400).json({ error: 'Confirmación requerida. Envía { "confirmar": "BORRAR" } para continuar.' });
+  }
+  const sucursalId = Number(req.body?.sucursal_id);
+  const sucursal = sucursalId ? db.prepare('SELECT id, nombre FROM sucursales WHERE id = ?').get(sucursalId) : null;
+  if (!sucursal) return res.status(404).json({ error: 'Selecciona una sede válida.' });
+
+  const resultado = db.transaction(() => {
+    const filas = db.prepare('SELECT product_id, stock FROM sucursal_stock WHERE sucursal_id = ? AND stock != 0').all(sucursalId);
+    for (const f of filas) {
+      db.prepare('UPDATE products SET stock = MAX(0, stock - ?) WHERE id = ?').run(f.stock, f.product_id);
+    }
+    db.prepare('UPDATE sucursal_stock SET stock = 0 WHERE sucursal_id = ?').run(sucursalId);
+    const movimientos = db.prepare('DELETE FROM stock_movements WHERE sucursal_id = ?').run(sucursalId);
+    return { productos_afectados: filas.length, movimientos_borrados: movimientos.changes };
+  })();
+
+  res.json({ ok: true, sede: sucursal.nombre, ...resultado });
+});
+
 // Respaldos de la base de datos: además del respaldo automático diario (ver
 // server.js), Gerencia puede crear uno al instante y descargar cualquiera de
 // los últimos 7 guardados — todo dentro del mismo disco persistente.
