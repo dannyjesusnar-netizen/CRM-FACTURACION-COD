@@ -9,7 +9,7 @@ import api from '../api';
 import { hoyPeru } from '../utils/fechas';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
-import { leerArchivoComoTextoCsv, descargarComoExcel, exportarTabla } from '../utils/excelImport';
+import { leerArchivoComoTextoCsv, descargarComoExcel, exportarTabla, parsearLineaCsv } from '../utils/excelImport';
 import ExportButton from '../components/ExportButton';
 
 const DEPARTAMENTOS_PERU = [
@@ -47,7 +47,7 @@ function parseCsvOperativos(text) {
   if (/dni/i.test(lines[0]) && /nombres/i.test(lines[0])) start = 1;
   const rows = [];
   for (let i = start; i < lines.length; i += 1) {
-    const cols = lines[i].split(',').map((c) => c.trim().replace(/^"|"$/g, ''));
+    const cols = parsearLineaCsv(lines[i]);
     if (!cols[0]) continue;
     const row = {};
     CARGA_MASIVA_OPERATIVOS_COLUMNAS.forEach((key, idx) => { row[key] = cols[idx] ?? ''; });
@@ -66,7 +66,7 @@ function parseCsvGenerico(text, columnas) {
   if (columnas.some((c) => new RegExp(c, 'i').test(lines[0]))) start = 1;
   const rows = [];
   for (let i = start; i < lines.length; i += 1) {
-    const cols = lines[i].split(',').map((c) => c.trim().replace(/^"|"$/g, ''));
+    const cols = parsearLineaCsv(lines[i]);
     if (!cols[0]) continue;
     const row = {};
     columnas.forEach((key, idx) => { row[key] = cols[idx] ?? ''; });

@@ -33,6 +33,36 @@ function celdaComoCsv(valor) {
   return /[",\n]/.test(texto) ? `"${texto.replace(/"/g, '""')}"` : texto;
 }
 
+// Separa una línea CSV en columnas respetando comillas: una celda como
+// "Hair, Skin and Nails" (con coma adentro) NO debe partirse en dos columnas.
+// Un simple line.split(',') sí la parte, corriendo todas las columnas
+// siguientes de esa fila — por eso todos los parsers de carga masiva usan
+// esta función en vez de split(',') directo.
+export function parsearLineaCsv(linea) {
+  const columnas = [];
+  let actual = '';
+  let dentroDeComillas = false;
+  for (let i = 0; i < linea.length; i += 1) {
+    const ch = linea[i];
+    if (dentroDeComillas) {
+      if (ch === '"') {
+        if (linea[i + 1] === '"') { actual += '"'; i += 1; } else { dentroDeComillas = false; }
+      } else {
+        actual += ch;
+      }
+    } else if (ch === '"') {
+      dentroDeComillas = true;
+    } else if (ch === ',') {
+      columnas.push(actual.trim());
+      actual = '';
+    } else {
+      actual += ch;
+    }
+  }
+  columnas.push(actual.trim());
+  return columnas;
+}
+
 // Lee un File (CSV o Excel) y devuelve el texto en formato CSV, listo para
 // pasarlo tal cual a cualquiera de los parsers CSV ya existentes en cada
 // pantalla.

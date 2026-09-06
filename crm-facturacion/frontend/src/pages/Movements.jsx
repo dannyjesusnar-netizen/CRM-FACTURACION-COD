@@ -4,7 +4,7 @@ import { ArrowLeft } from 'lucide-react';
 import api from '../api';
 import { hoyPeru } from '../utils/fechas';
 import { useToast } from '../context/ToastContext';
-import { leerArchivoComoTextoCsv, descargarComoExcel, exportarTabla } from '../utils/excelImport';
+import { leerArchivoComoTextoCsv, descargarComoExcel, exportarTabla, parsearLineaCsv } from '../utils/excelImport';
 import ExportButton from '../components/ExportButton';
 
 const TIPO_LABEL = {
@@ -22,10 +22,10 @@ function parseCsv(text) {
   const rows = [];
   let start = 0;
   // saltar encabezado si la primera fila no parece numérica en la 2da columna
-  const firstCols = lines[0].split(',');
+  const firstCols = parsearLineaCsv(lines[0]);
   if (firstCols.length >= 2 && Number.isNaN(Number(firstCols[1]))) start = 1;
   for (let i = start; i < lines.length; i += 1) {
-    const cols = lines[i].split(',').map((c) => c.trim().replace(/^"|"$/g, ''));
+    const cols = parsearLineaCsv(lines[i]);
     if (cols.length >= 2 && cols[0]) rows.push({ codigo: cols[0], stock_real: cols[1] });
   }
   return rows;
@@ -37,10 +37,10 @@ function parseCsvLotes(text) {
   const rows = [];
   let start = 0;
   // saltar encabezado si la primera fila no parece numérica en la 2da columna
-  const firstCols = lines[0].split(',');
+  const firstCols = parsearLineaCsv(lines[0]);
   if (firstCols.length >= 2 && Number.isNaN(Number(firstCols[1]))) start = 1;
   for (let i = start; i < lines.length; i += 1) {
-    const cols = lines[i].split(',').map((c) => c.trim().replace(/^"|"$/g, ''));
+    const cols = parsearLineaCsv(lines[i]);
     if (cols.length >= 2 && cols[0]) {
       rows.push({
         codigo: cols[0],

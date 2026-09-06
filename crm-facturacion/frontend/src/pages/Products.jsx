@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import api from '../api';
 import { useToast } from '../context/ToastContext';
 import { useAuth } from '../context/AuthContext';
-import { leerArchivoComoTextoCsv, descargarComoExcel, exportarTabla } from '../utils/excelImport';
+import { leerArchivoComoTextoCsv, descargarComoExcel, exportarTabla, parsearLineaCsv } from '../utils/excelImport';
 import ExportButton from '../components/ExportButton';
 
 const CARGA_MASIVA_COLUMNAS = ['codigo', 'nombre', 'categoria', 'unidad', 'precio_unitario', 'stock', 'stock_minimo', 'precio_compra', 'codigo_barras'];
@@ -15,7 +15,7 @@ function parseCsvProductos(text) {
   if (/codigo/i.test(lines[0]) && /nombre/i.test(lines[0])) start = 1;
   const rows = [];
   for (let i = start; i < lines.length; i += 1) {
-    const cols = lines[i].split(',').map((c) => c.trim().replace(/^"|"$/g, ''));
+    const cols = parsearLineaCsv(lines[i]);
     if (!cols[0]) continue;
     const row = {};
     CARGA_MASIVA_COLUMNAS.forEach((key, idx) => { row[key] = cols[idx] ?? ''; });
