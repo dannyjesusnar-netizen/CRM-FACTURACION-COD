@@ -6,6 +6,7 @@ const { buildInvoicePdf } = require('../utils/pdf');
 const backup = require('../utils/backup');
 const backblaze = require('../utils/backblaze');
 const { hoyPeru } = require('../utils/fechas');
+const { crearVerificadorHistorial } = require('../utils/inventarioSede');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -198,6 +199,47 @@ router.post('/borrar-datos-prueba', requireGerencia, (req, res) => {
   res.json({ ok: true });
 });
 
+// GET /api/empresa/inventario-sede-preview?sucursal_id= -> de solo lectura,
+// no borra ni modifica nada. Para cada producto con stock/movimiento en esa
+// sede, dice si "Borrar inventario de sede" lo eliminaría del catálogo o
+// solo le resetearía el stock — y en ese segundo caso, el o los motivos
+// exactos por los que se conserva. Usa la misma lógica (crearVerificadorHistorial)
+// que el borrado real, así que el reporte coincide 100% con lo que pasaría.
+// Pensado para revisar antes de confirmar el borrado, o para explicar
+// después por qué un producto puntual no desapareció.
+router.get('/inventario-sede-preview', requireGerencia, (req, res) => {
+  const sucursalId = Number(req.query.sucursal_id);
+  const sucursal = sucursalId ? db.prepare('SELECT id, nombre FROM sucursales WHERE id = ?').get(sucursalId) : null;
+  if (!sucursal) return res.status(404).json({ error: 'Selecciona una sede válida.' });
+
+  const motivosDeConservacion = crearVerificadorHistorial(db);
+  const filas = db.prepare(
+    `SELECT ss.product_id, ss.stock AS stock_en_sede, p.codigo, p.nombre, p.stock AS stock_global
+     FROM sucursal_stock ss JOIN products p ON p.id = ss.product_id
+     WHERE ss.sucursal_id = ? ORDER BY p.codigo`
+  ).all(sucursalId);
+
+  const detalle = filas.map((f) => {
+    const motivos = motivosDeConservacion(f.product_id, sucursalId);
+    return {
+      codigo: f.codigo,
+      nombre: f.nombre,
+      stock_en_sede: f.stock_en_sede,
+      stock_global: f.stock_global,
+      accion: motivos.length === 0 ? 'eliminar' : 'conservar',
+      motivos,
+    };
+  });
+
+  res.json({
+    sede: sucursal.nombre,
+    total: detalle.length,
+    a_eliminar: detalle.filter((d) => d.accion === 'eliminar').length,
+    a_conservar: detalle.filter((d) => d.accion === 'conservar').length,
+    detalle,
+  });
+});
+
 // POST /api/empresa/borrar-inventario-sede -> a diferencia de
 // borrar-datos-prueba (que vacía TODA la instancia), esto borra el
 // inventario de UNA sede puntual — pensado para limpiar lo que se cargó de
@@ -232,36 +274,9 @@ router.post('/borrar-inventario-sede', requireGerencia, (req, res) => {
   const sucursal = sucursalId ? db.prepare('SELECT id, nombre FROM sucursales WHERE id = ?').get(sucursalId) : null;
   if (!sucursal) return res.status(404).json({ error: 'Selecciona una sede válida.' });
 
-  const tieneStockEnOtraSede = db.prepare('SELECT 1 FROM sucursal_stock WHERE product_id = ? AND sucursal_id != ? LIMIT 1');
-  const tieneMovimientoEnOtraSede = db.prepare('SELECT 1 FROM stock_movements WHERE product_id = ? AND (sucursal_id IS NULL OR sucursal_id != ?) LIMIT 1');
-  const tieneVentas = db.prepare('SELECT 1 FROM invoice_items WHERE product_id = ? LIMIT 1');
-  const tieneNotasVenta = db.prepare('SELECT 1 FROM nota_venta_items WHERE product_id = ? LIMIT 1');
-  const tieneCompras = db.prepare('SELECT 1 FROM purchase_items WHERE product_id = ? LIMIT 1');
-  const tieneOrdenesCompra = db.prepare('SELECT 1 FROM purchase_order_items WHERE product_id = ? LIMIT 1');
-  const tieneCotizaciones = db.prepare('SELECT 1 FROM cotizacion_items WHERE product_id = ? LIMIT 1');
-  const tieneGuias = db.prepare('SELECT 1 FROM guia_items WHERE product_id = ? LIMIT 1');
-  const tieneTraslados = db.prepare('SELECT 1 FROM traslado_items WHERE product_id = ? LIMIT 1');
-  const tieneRecetaItems = db.prepare('SELECT 1 FROM receta_items WHERE product_id = ? LIMIT 1');
-  const tieneRecetaSalida = db.prepare('SELECT 1 FROM recetas WHERE product_id_salida = ? LIMIT 1');
-  const tienePromocionItems = db.prepare('SELECT 1 FROM promocion_items WHERE product_id = ? LIMIT 1');
-  const tienePromocion = db.prepare('SELECT 1 FROM promociones WHERE product_id = ? LIMIT 1');
-
+  const motivosDeConservacion = crearVerificadorHistorial(db);
   function esExclusivoYSinHistorial(productId) {
-    return !(
-      tieneStockEnOtraSede.get(productId, sucursalId)
-      || tieneMovimientoEnOtraSede.get(productId, sucursalId)
-      || tieneVentas.get(productId)
-      || tieneNotasVenta.get(productId)
-      || tieneCompras.get(productId)
-      || tieneOrdenesCompra.get(productId)
-      || tieneCotizaciones.get(productId)
-      || tieneGuias.get(productId)
-      || tieneTraslados.get(productId)
-      || tieneRecetaItems.get(productId)
-      || tieneRecetaSalida.get(productId)
-      || tienePromocionItems.get(productId)
-      || tienePromocion.get(productId)
-    );
+    return motivosDeConservacion(productId, sucursalId).length === 0;
   }
 
   const borrarInvoiceItemLotesDeLotes = db.prepare('DELETE FROM invoice_item_lotes WHERE lote_id IN (SELECT id FROM lotes WHERE product_id = ?)');
