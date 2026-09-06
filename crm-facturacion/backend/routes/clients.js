@@ -2,6 +2,7 @@ const express = require('express');
 const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { requirePermiso, requireAccion } = require('../utils/permisos');
+const { ejecutarTodoONada } = require('../utils/cargaMasiva');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -112,52 +113,59 @@ function sedeNombreASucursalId(nombre) {
 // Crea clientes nuevos o actualiza los que ya existen, por (tipo_documento,
 // numero_documento) — mismo criterio "crear o actualizar" que products.js y
 // users.js. "sede" es el nombre de la sede (no el id).
+// Todo o nada (ver utils/cargaMasiva.js): si CUALQUIER fila tiene un
+// error, no se guarda NADA.
 router.post('/carga-masiva', requireAccion('clientes', 'crear_editar'), (req, res) => {
   const { rows } = req.body || {};
   if (!Array.isArray(rows) || rows.length === 0) {
     return res.status(400).json({ error: 'rows es requerido y debe tener al menos una fila.' });
   }
-  const creados = [];
-  const actualizados = [];
-  const errores = [];
 
-  for (const r of rows) {
-    const numeroDocumento = (r.numero_documento || '').toString().trim();
-    const nombre = (r.nombre || '').toString().trim();
-    if (!numeroDocumento || !nombre) {
-      errores.push({ numero_documento: numeroDocumento || '(vacío)', error: 'numero_documento y nombre son requeridos.' });
-      continue;
-    }
-    const tipoDocumento = (r.tipo_documento || 'DNI').toString().trim() || 'DNI';
-    const sede = sedeNombreASucursalId(r.sede);
-    if (sede.error) { errores.push({ numero_documento: numeroDocumento, error: sede.error }); continue; }
-    const direccion = (r.direccion || '').toString().trim() || null;
-    const telefono = (r.telefono || '').toString().trim() || null;
-    const email = (r.email || '').toString().trim() || null;
-    const turno = (r.turno || '').toString().trim() || null;
-    const referencia = (r.referencia || '').toString().trim() || null;
-    const contacto = (r.contacto || '').toString().trim() || null;
+  const resultado = ejecutarTodoONada(() => {
+    const creados = [];
+    const actualizados = [];
+    const errores = [];
 
-    const existing = db.prepare('SELECT * FROM clients WHERE tipo_documento = ? AND numero_documento = ?').get(tipoDocumento, numeroDocumento);
-    try {
-      if (existing) {
-        db.prepare(
-          `UPDATE clients SET nombre = ?, direccion = ?, telefono = ?, email = ?, sucursal_id = ?, turno = ?, referencia = ?, contacto = ? WHERE id = ?`
-        ).run(nombre, direccion, telefono, email, sede.value, turno, referencia, contacto, existing.id);
-        actualizados.push({ numero_documento: numeroDocumento, nombre });
-      } else {
-        db.prepare(
-          `INSERT INTO clients (tipo_documento, numero_documento, nombre, direccion, telefono, email, sucursal_id, turno, referencia, contacto)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-        ).run(tipoDocumento, numeroDocumento, nombre, direccion, telefono, email, sede.value, turno, referencia, contacto);
-        creados.push({ numero_documento: numeroDocumento, nombre });
+    for (const r of rows) {
+      const numeroDocumento = (r.numero_documento || '').toString().trim();
+      const nombre = (r.nombre || '').toString().trim();
+      if (!numeroDocumento || !nombre) {
+        errores.push({ numero_documento: numeroDocumento || '(vacío)', error: 'numero_documento y nombre son requeridos.' });
+        continue;
       }
-    } catch (err) {
-      errores.push({ numero_documento: numeroDocumento, error: 'No se pudo guardar esta fila.' });
-    }
-  }
+      const tipoDocumento = (r.tipo_documento || 'DNI').toString().trim() || 'DNI';
+      const sede = sedeNombreASucursalId(r.sede);
+      if (sede.error) { errores.push({ numero_documento: numeroDocumento, error: sede.error }); continue; }
+      const direccion = (r.direccion || '').toString().trim() || null;
+      const telefono = (r.telefono || '').toString().trim() || null;
+      const email = (r.email || '').toString().trim() || null;
+      const turno = (r.turno || '').toString().trim() || null;
+      const referencia = (r.referencia || '').toString().trim() || null;
+      const contacto = (r.contacto || '').toString().trim() || null;
 
-  res.json({ creados, actualizados, errores });
+      const existing = db.prepare('SELECT * FROM clients WHERE tipo_documento = ? AND numero_documento = ?').get(tipoDocumento, numeroDocumento);
+      try {
+        if (existing) {
+          db.prepare(
+            `UPDATE clients SET nombre = ?, direccion = ?, telefono = ?, email = ?, sucursal_id = ?, turno = ?, referencia = ?, contacto = ? WHERE id = ?`
+          ).run(nombre, direccion, telefono, email, sede.value, turno, referencia, contacto, existing.id);
+          actualizados.push({ numero_documento: numeroDocumento, nombre });
+        } else {
+          db.prepare(
+            `INSERT INTO clients (tipo_documento, numero_documento, nombre, direccion, telefono, email, sucursal_id, turno, referencia, contacto)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          ).run(tipoDocumento, numeroDocumento, nombre, direccion, telefono, email, sede.value, turno, referencia, contacto);
+          creados.push({ numero_documento: numeroDocumento, nombre });
+        }
+      } catch (err) {
+        errores.push({ numero_documento: numeroDocumento, error: 'No se pudo guardar esta fila.' });
+      }
+    }
+
+    return { creados, actualizados, errores };
+  });
+
+  res.json(resultado);
 });
 
 router.delete('/:id', requireAccion('clientes', 'eliminar'), (req, res) => {

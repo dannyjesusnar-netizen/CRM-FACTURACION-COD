@@ -3,6 +3,7 @@ const db = require('../db');
 const { requireAuth, resolveSucursal } = require('../middleware/auth');
 const { getStockSucursal, setStockSucursal, round2 } = require('../utils/stock');
 const { requirePermiso, requireAccion } = require('../utils/permisos');
+const { ejecutarTodoONada } = require('../utils/cargaMasiva');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -130,61 +131,72 @@ router.post('/', requireAccion('inventario', 'productos'), (req, res) => {
 // individual. Con crear_nuevos:false (usado por "Actualización de datos" en
 // el Importador de Datos Masivos) un código que no existe cae en error en
 // vez de crear un producto nuevo por error de tipeo.
+//
+// Todo o nada (ver utils/cargaMasiva.js): si CUALQUIER fila tiene un error,
+// no se guarda NADA — ni los productos de las filas válidas — para que el
+// usuario nunca se encuentre con una carga a medias. La respuesta trae
+// `aplicado: false` en ese caso, junto con el detalle de errores para
+// corregir el archivo y volver a intentar.
 router.post('/carga-masiva', requireAccion('inventario', 'productos'), (req, res) => {
   const { rows, crear_nuevos: crearNuevos = true } = req.body || {};
   if (!Array.isArray(rows) || rows.length === 0) {
     return res.status(400).json({ error: 'rows es requerido y debe tener al menos una fila.' });
   }
-  const creados = [];
-  const actualizados = [];
-  const errores = [];
 
-  for (const r of rows) {
-    const codigo = (r.codigo || '').toString().trim();
-    const nombre = (r.nombre || '').toString().trim();
-    const precioUnitario = Number(r.precio_unitario);
-    if (!codigo || !nombre || Number.isNaN(precioUnitario)) {
-      errores.push({ codigo: codigo || '(vacío)', error: 'codigo, nombre y precio_unitario son requeridos (precio_unitario debe ser numérico).' });
-      continue;
-    }
-    const unidad = (r.unidad || 'NIU').toString().trim() || 'NIU';
-    const tipo = tipoDesdeUnidad(unidad);
-    const stock = tipo === 'servicio' ? null : Number(r.stock || 0);
-    const stockMinimo = tipo === 'servicio' ? null : Number(r.stock_minimo || 0);
-    const precioCompra = r.precio_compra === undefined || r.precio_compra === '' ? null : Number(r.precio_compra);
-    const categoria = (r.categoria || 'General').toString().trim() || 'General';
-    const codigoBarras = (r.codigo_barras || '').toString().trim() || null;
+  const resultado = ejecutarTodoONada(() => {
+    const creados = [];
+    const actualizados = [];
+    const errores = [];
 
-    const existing = db.prepare('SELECT * FROM products WHERE codigo = ?').get(codigo);
-    if (!existing && !crearNuevos) {
-      errores.push({ codigo, error: 'No existe un producto con este código — usa "Productos nuevos" para crearlo.' });
-      continue;
-    }
-    try {
-      if (existing) {
-        const nuevoAgregado = tipo === 'servicio' || stock === null
-          ? existing.stock
-          : round2(existing.stock + (stock - getStockSucursal(existing.id, req.sucursalId)));
-        db.prepare(
-          `UPDATE products SET nombre = ?, categoria = ?, unidad = ?, tipo = ?, precio_unitario = ?, precio_compra = ?,
-           codigo_barras = ?, stock = ?, stock_minimo = ? WHERE id = ?`
-        ).run(nombre, categoria, unidad, tipo, precioUnitario, precioCompra, codigoBarras, nuevoAgregado, stockMinimo, existing.id);
-        if (tipo !== 'servicio') setStockSucursal(existing.id, req.sucursalId, stock);
-        actualizados.push({ codigo, nombre });
-      } else {
-        const info = db.prepare(
-          `INSERT INTO products (codigo, codigo_barras, nombre, tipo, categoria, unidad, precio_compra, precio_unitario, stock, stock_minimo)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-        ).run(codigo, codigoBarras, nombre, tipo, categoria, unidad, precioCompra, precioUnitario, stock, stockMinimo);
-        if (tipo !== 'servicio' && stock > 0) setStockSucursal(info.lastInsertRowid, req.sucursalId, stock);
-        creados.push({ codigo, nombre });
+    for (const r of rows) {
+      const codigo = (r.codigo || '').toString().trim();
+      const nombre = (r.nombre || '').toString().trim();
+      const precioUnitario = Number(r.precio_unitario);
+      if (!codigo || !nombre || Number.isNaN(precioUnitario)) {
+        errores.push({ codigo: codigo || '(vacío)', error: 'codigo, nombre y precio_unitario son requeridos (precio_unitario debe ser numérico).' });
+        continue;
       }
-    } catch (err) {
-      errores.push({ codigo, error: 'No se pudo guardar esta fila.' });
-    }
-  }
+      const unidad = (r.unidad || 'NIU').toString().trim() || 'NIU';
+      const tipo = tipoDesdeUnidad(unidad);
+      const stock = tipo === 'servicio' ? null : Number(r.stock || 0);
+      const stockMinimo = tipo === 'servicio' ? null : Number(r.stock_minimo || 0);
+      const precioCompra = r.precio_compra === undefined || r.precio_compra === '' ? null : Number(r.precio_compra);
+      const categoria = (r.categoria || 'General').toString().trim() || 'General';
+      const codigoBarras = (r.codigo_barras || '').toString().trim() || null;
 
-  res.json({ creados, actualizados, errores });
+      const existing = db.prepare('SELECT * FROM products WHERE codigo = ?').get(codigo);
+      if (!existing && !crearNuevos) {
+        errores.push({ codigo, error: 'No existe un producto con este código — usa "Productos nuevos" para crearlo.' });
+        continue;
+      }
+      try {
+        if (existing) {
+          const nuevoAgregado = tipo === 'servicio' || stock === null
+            ? existing.stock
+            : round2(existing.stock + (stock - getStockSucursal(existing.id, req.sucursalId)));
+          db.prepare(
+            `UPDATE products SET nombre = ?, categoria = ?, unidad = ?, tipo = ?, precio_unitario = ?, precio_compra = ?,
+             codigo_barras = ?, stock = ?, stock_minimo = ? WHERE id = ?`
+          ).run(nombre, categoria, unidad, tipo, precioUnitario, precioCompra, codigoBarras, nuevoAgregado, stockMinimo, existing.id);
+          if (tipo !== 'servicio') setStockSucursal(existing.id, req.sucursalId, stock);
+          actualizados.push({ codigo, nombre });
+        } else {
+          const info = db.prepare(
+            `INSERT INTO products (codigo, codigo_barras, nombre, tipo, categoria, unidad, precio_compra, precio_unitario, stock, stock_minimo)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          ).run(codigo, codigoBarras, nombre, tipo, categoria, unidad, precioCompra, precioUnitario, stock, stockMinimo);
+          if (tipo !== 'servicio' && stock > 0) setStockSucursal(info.lastInsertRowid, req.sucursalId, stock);
+          creados.push({ codigo, nombre });
+        }
+      } catch (err) {
+        errores.push({ codigo, error: 'No se pudo guardar esta fila.' });
+      }
+    }
+
+    return { creados, actualizados, errores };
+  });
+
+  res.json(resultado);
 });
 
 // POST /api/products/carga-masiva/inventario { rows: [{ codigo, stock }] }
@@ -192,82 +204,97 @@ router.post('/carga-masiva', requireAccion('inventario', 'productos'), (req, res
 // no crea productos ni modifica nombre/precio/categoría. Pensado para el
 // Importador de Datos Masivos, cuando lo que llega es un conteo de
 // inventario y no un catálogo de productos.
+//
+// Todo o nada (ver utils/cargaMasiva.js): si CUALQUIER fila tiene un error,
+// no se guarda NADA.
 router.post('/carga-masiva/inventario', requireAccion('inventario', 'productos'), (req, res) => {
   const { rows } = req.body || {};
   if (!Array.isArray(rows) || rows.length === 0) {
     return res.status(400).json({ error: 'rows es requerido y debe tener al menos una fila.' });
   }
-  const actualizados = [];
-  const errores = [];
 
-  for (const r of rows) {
-    const codigo = (r.codigo || '').toString().trim();
-    const stock = Number(r.stock);
-    if (!codigo || Number.isNaN(stock)) {
-      errores.push({ codigo: codigo || '(vacío)', error: 'codigo y stock son requeridos (stock debe ser numérico).' });
-      continue;
-    }
-    const existing = db.prepare('SELECT * FROM products WHERE codigo = ?').get(codigo);
-    if (!existing) {
-      errores.push({ codigo, error: 'No existe un producto con este código.' });
-      continue;
-    }
-    if (existing.tipo === 'servicio' || existing.stock === null) {
-      errores.push({ codigo, error: 'Este producto es un servicio, no maneja stock.' });
-      continue;
-    }
-    try {
-      const nuevoAgregado = round2(existing.stock + (stock - getStockSucursal(existing.id, req.sucursalId)));
-      db.prepare('UPDATE products SET stock = ? WHERE id = ?').run(nuevoAgregado, existing.id);
-      setStockSucursal(existing.id, req.sucursalId, stock);
-      actualizados.push({ codigo, nombre: existing.nombre });
-    } catch (err) {
-      errores.push({ codigo, error: 'No se pudo guardar esta fila.' });
-    }
-  }
+  const resultado = ejecutarTodoONada(() => {
+    const actualizados = [];
+    const errores = [];
 
-  res.json({ creados: [], actualizados, errores });
+    for (const r of rows) {
+      const codigo = (r.codigo || '').toString().trim();
+      const stock = Number(r.stock);
+      if (!codigo || Number.isNaN(stock)) {
+        errores.push({ codigo: codigo || '(vacío)', error: 'codigo y stock son requeridos (stock debe ser numérico).' });
+        continue;
+      }
+      const existing = db.prepare('SELECT * FROM products WHERE codigo = ?').get(codigo);
+      if (!existing) {
+        errores.push({ codigo, error: 'No existe un producto con este código.' });
+        continue;
+      }
+      if (existing.tipo === 'servicio' || existing.stock === null) {
+        errores.push({ codigo, error: 'Este producto es un servicio, no maneja stock.' });
+        continue;
+      }
+      try {
+        const nuevoAgregado = round2(existing.stock + (stock - getStockSucursal(existing.id, req.sucursalId)));
+        db.prepare('UPDATE products SET stock = ? WHERE id = ?').run(nuevoAgregado, existing.id);
+        setStockSucursal(existing.id, req.sucursalId, stock);
+        actualizados.push({ codigo, nombre: existing.nombre });
+      } catch (err) {
+        errores.push({ codigo, error: 'No se pudo guardar esta fila.' });
+      }
+    }
+
+    return { creados: [], actualizados, errores };
+  });
+
+  res.json(resultado);
 });
 
 // POST /api/products/carga-masiva/precios { rows: [{ codigo, precio_unitario,
 // precio_mayorista, precio_distribuidor }] }
 // Solo toca los 3 precios de productos YA existentes, por código.
+// Todo o nada (ver utils/cargaMasiva.js): si CUALQUIER fila tiene un error,
+// no se guarda NADA.
 router.post('/carga-masiva/precios', requireAccion('inventario', 'productos'), (req, res) => {
   const { rows } = req.body || {};
   if (!Array.isArray(rows) || rows.length === 0) {
     return res.status(400).json({ error: 'rows es requerido y debe tener al menos una fila.' });
   }
-  const actualizados = [];
-  const errores = [];
 
-  for (const r of rows) {
-    const codigo = (r.codigo || '').toString().trim();
-    if (!codigo) {
-      errores.push({ codigo: '(vacío)', error: 'codigo es requerido.' });
-      continue;
-    }
-    const existing = db.prepare('SELECT * FROM products WHERE codigo = ?').get(codigo);
-    if (!existing) {
-      errores.push({ codigo, error: 'No existe un producto con este código.' });
-      continue;
-    }
-    const precioVenta = r.precio_venta === undefined || r.precio_venta === '' ? existing.precio_unitario : Number(r.precio_venta);
-    const precioMayorista = r.precio_mayorista === undefined || r.precio_mayorista === '' ? null : Number(r.precio_mayorista);
-    const precioDistribuidor = r.precio_distribuidor === undefined || r.precio_distribuidor === '' ? null : Number(r.precio_distribuidor);
-    if (Number.isNaN(precioVenta) || (precioMayorista !== null && Number.isNaN(precioMayorista)) || (precioDistribuidor !== null && Number.isNaN(precioDistribuidor))) {
-      errores.push({ codigo, error: 'precio_venta, precio_mayorista y precio_distribuidor deben ser numéricos.' });
-      continue;
-    }
-    try {
-      db.prepare('UPDATE products SET precio_unitario = ?, precio_mayorista = ?, precio_distribuidor = ? WHERE id = ?')
-        .run(precioVenta, precioMayorista, precioDistribuidor, existing.id);
-      actualizados.push({ codigo, nombre: existing.nombre });
-    } catch (err) {
-      errores.push({ codigo, error: 'No se pudo guardar esta fila.' });
-    }
-  }
+  const resultado = ejecutarTodoONada(() => {
+    const actualizados = [];
+    const errores = [];
 
-  res.json({ creados: [], actualizados, errores });
+    for (const r of rows) {
+      const codigo = (r.codigo || '').toString().trim();
+      if (!codigo) {
+        errores.push({ codigo: '(vacío)', error: 'codigo es requerido.' });
+        continue;
+      }
+      const existing = db.prepare('SELECT * FROM products WHERE codigo = ?').get(codigo);
+      if (!existing) {
+        errores.push({ codigo, error: 'No existe un producto con este código.' });
+        continue;
+      }
+      const precioVenta = r.precio_venta === undefined || r.precio_venta === '' ? existing.precio_unitario : Number(r.precio_venta);
+      const precioMayorista = r.precio_mayorista === undefined || r.precio_mayorista === '' ? null : Number(r.precio_mayorista);
+      const precioDistribuidor = r.precio_distribuidor === undefined || r.precio_distribuidor === '' ? null : Number(r.precio_distribuidor);
+      if (Number.isNaN(precioVenta) || (precioMayorista !== null && Number.isNaN(precioMayorista)) || (precioDistribuidor !== null && Number.isNaN(precioDistribuidor))) {
+        errores.push({ codigo, error: 'precio_venta, precio_mayorista y precio_distribuidor deben ser numéricos.' });
+        continue;
+      }
+      try {
+        db.prepare('UPDATE products SET precio_unitario = ?, precio_mayorista = ?, precio_distribuidor = ? WHERE id = ?')
+          .run(precioVenta, precioMayorista, precioDistribuidor, existing.id);
+        actualizados.push({ codigo, nombre: existing.nombre });
+      } catch (err) {
+        errores.push({ codigo, error: 'No se pudo guardar esta fila.' });
+      }
+    }
+
+    return { creados: [], actualizados, errores };
+  });
+
+  res.json(resultado);
 });
 
 router.put('/:id', requireAccion('inventario', 'productos'), (req, res) => {
