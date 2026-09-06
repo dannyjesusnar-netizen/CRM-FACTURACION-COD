@@ -199,25 +199,31 @@ router.post('/borrar-datos-prueba', requireGerencia, (req, res) => {
 });
 
 // POST /api/empresa/borrar-inventario-sede -> a diferencia de
-// borrar-datos-prueba (que vacía TODA la instancia), esto resetea a 0 el
-// stock de UNA sede puntual — pensado para poder repetir una carga masiva
-// de prueba durante una migración sin arrastrar cantidades viejas ni tocar
-// otras sedes. Reduce el stock agregado de cada producto (products.stock)
-// exactamente en lo que tenía esa sede, deja sus filas de sucursal_stock en
-// 0 (a propósito NO se borran las filas — ver nota abajo) y borra su
-// historial de movimientos (kardex). El catálogo de productos, los lotes
-// (son por producto, no por sede) y los traslados (cruzan dos sedes) NO se
-// tocan, para no afectar a otras sedes que sí comparten esos datos.
+// borrar-datos-prueba (que vacía TODA la instancia), esto borra el
+// inventario de UNA sede puntual — pensado para limpiar lo que se cargó de
+// prueba durante una migración (carga masiva + pruebas) antes de meter el
+// archivo real con todo el historial definitivo, sin tocar otras sedes.
+//
+// Por cada producto con stock/movimiento en esa sede:
+//   - Si el producto NO tiene ningún rastro fuera de esta sede (ni stock ni
+//     movimientos en otra sede) NI historial real en ningún lado (venta,
+//     compra, orden de compra, cotización, guía, traslado, receta o
+//     promoción) — típicamente un producto cargado de prueba y nunca
+//     usado de verdad — se BORRA POR COMPLETO del catálogo (producto,
+//     lotes, equivalencias, alias de guía, stock y movimientos).
+//   - Si el producto sí está compartido con otra sede o tiene cualquier
+//     historial real, se conserva en el catálogo (para no romper esas
+//     otras referencias) y solo se le resetea a 0 el stock/kardex de ESTA
+//     sede.
 // Requiere confirmar el texto "BORRAR", igual que borrar-datos-prueba.
 //
-// IMPORTANTE: si borráramos las filas de sucursal_stock en vez de dejarlas
-// en 0, el backfill de arranque de db.js ("todo producto sin fila en
-// sucursal_stock para la sede PRINCIPAL la recibe con su stock agregado
-// actual") las volvería a crear solas en el próximo reinicio del servidor,
-// usando products.stock — que a esas alturas es el stock de las OTRAS
-// sedes — deshaciendo el reset silenciosamente si la sede borrada es la
-// principal. Dejar la fila en 0 (no ausente) evita que ese backfill vuelva
-// a tocarla.
+// IMPORTANTE sobre la fila de sucursal_stock cuando el producto se
+// conserva: se deja en 0 (nunca se borra la fila) porque un backfill que
+// corre en cada arranque del servidor (ver db.js: "todo producto sin fila
+// en sucursal_stock para la sede PRINCIPAL recibe su stock agregado
+// actual") la recrearía sola en el próximo reinicio usando el stock de las
+// OTRAS sedes, deshaciendo el reset silenciosamente si la sede borrada es
+// la principal.
 router.post('/borrar-inventario-sede', requireGerencia, (req, res) => {
   if (req.body?.confirmar !== 'BORRAR') {
     return res.status(400).json({ error: 'Confirmación requerida. Envía { "confirmar": "BORRAR" } para continuar.' });
@@ -226,14 +232,73 @@ router.post('/borrar-inventario-sede', requireGerencia, (req, res) => {
   const sucursal = sucursalId ? db.prepare('SELECT id, nombre FROM sucursales WHERE id = ?').get(sucursalId) : null;
   if (!sucursal) return res.status(404).json({ error: 'Selecciona una sede válida.' });
 
+  const tieneStockEnOtraSede = db.prepare('SELECT 1 FROM sucursal_stock WHERE product_id = ? AND sucursal_id != ? LIMIT 1');
+  const tieneMovimientoEnOtraSede = db.prepare('SELECT 1 FROM stock_movements WHERE product_id = ? AND (sucursal_id IS NULL OR sucursal_id != ?) LIMIT 1');
+  const tieneVentas = db.prepare('SELECT 1 FROM invoice_items WHERE product_id = ? LIMIT 1');
+  const tieneNotasVenta = db.prepare('SELECT 1 FROM nota_venta_items WHERE product_id = ? LIMIT 1');
+  const tieneCompras = db.prepare('SELECT 1 FROM purchase_items WHERE product_id = ? LIMIT 1');
+  const tieneOrdenesCompra = db.prepare('SELECT 1 FROM purchase_order_items WHERE product_id = ? LIMIT 1');
+  const tieneCotizaciones = db.prepare('SELECT 1 FROM cotizacion_items WHERE product_id = ? LIMIT 1');
+  const tieneGuias = db.prepare('SELECT 1 FROM guia_items WHERE product_id = ? LIMIT 1');
+  const tieneTraslados = db.prepare('SELECT 1 FROM traslado_items WHERE product_id = ? LIMIT 1');
+  const tieneRecetaItems = db.prepare('SELECT 1 FROM receta_items WHERE product_id = ? LIMIT 1');
+  const tieneRecetaSalida = db.prepare('SELECT 1 FROM recetas WHERE product_id_salida = ? LIMIT 1');
+  const tienePromocionItems = db.prepare('SELECT 1 FROM promocion_items WHERE product_id = ? LIMIT 1');
+  const tienePromocion = db.prepare('SELECT 1 FROM promociones WHERE product_id = ? LIMIT 1');
+
+  function esExclusivoYSinHistorial(productId) {
+    return !(
+      tieneStockEnOtraSede.get(productId, sucursalId)
+      || tieneMovimientoEnOtraSede.get(productId, sucursalId)
+      || tieneVentas.get(productId)
+      || tieneNotasVenta.get(productId)
+      || tieneCompras.get(productId)
+      || tieneOrdenesCompra.get(productId)
+      || tieneCotizaciones.get(productId)
+      || tieneGuias.get(productId)
+      || tieneTraslados.get(productId)
+      || tieneRecetaItems.get(productId)
+      || tieneRecetaSalida.get(productId)
+      || tienePromocionItems.get(productId)
+      || tienePromocion.get(productId)
+    );
+  }
+
+  const borrarInvoiceItemLotesDeLotes = db.prepare('DELETE FROM invoice_item_lotes WHERE lote_id IN (SELECT id FROM lotes WHERE product_id = ?)');
+  const borrarLotesProducto = db.prepare('DELETE FROM lotes WHERE product_id = ?');
+  const borrarEquivalenciasProducto = db.prepare('DELETE FROM equivalencias WHERE product_id = ?');
+  const borrarAliasProducto = db.prepare('DELETE FROM product_aliases WHERE product_id = ?');
+  const borrarMovimientosProducto = db.prepare('DELETE FROM stock_movements WHERE product_id = ?');
+  const borrarStockProducto = db.prepare('DELETE FROM sucursal_stock WHERE product_id = ?');
+  const borrarProducto = db.prepare('DELETE FROM products WHERE id = ?');
+  const borrarMovimientosSede = db.prepare('DELETE FROM stock_movements WHERE product_id = ? AND sucursal_id = ?');
+  const resetearStockSede = db.prepare('UPDATE sucursal_stock SET stock = 0 WHERE product_id = ? AND sucursal_id = ?');
+  const reducirStockGlobal = db.prepare('UPDATE products SET stock = MAX(0, stock - ?) WHERE id = ?');
+
   const resultado = db.transaction(() => {
-    const filas = db.prepare('SELECT product_id, stock FROM sucursal_stock WHERE sucursal_id = ? AND stock != 0').all(sucursalId);
+    const filas = db.prepare('SELECT product_id, stock FROM sucursal_stock WHERE sucursal_id = ?').all(sucursalId);
+    let productosEliminados = 0;
+    let productosSoloReseteados = 0;
+    let movimientosBorrados = 0;
+
     for (const f of filas) {
-      db.prepare('UPDATE products SET stock = MAX(0, stock - ?) WHERE id = ?').run(f.stock, f.product_id);
+      if (esExclusivoYSinHistorial(f.product_id)) {
+        borrarInvoiceItemLotesDeLotes.run(f.product_id);
+        borrarLotesProducto.run(f.product_id);
+        borrarEquivalenciasProducto.run(f.product_id);
+        borrarAliasProducto.run(f.product_id);
+        movimientosBorrados += borrarMovimientosProducto.run(f.product_id).changes;
+        borrarStockProducto.run(f.product_id);
+        borrarProducto.run(f.product_id);
+        productosEliminados += 1;
+      } else {
+        if (f.stock !== 0) reducirStockGlobal.run(f.stock, f.product_id);
+        movimientosBorrados += borrarMovimientosSede.run(f.product_id, sucursalId).changes;
+        resetearStockSede.run(f.product_id, sucursalId);
+        productosSoloReseteados += 1;
+      }
     }
-    db.prepare('UPDATE sucursal_stock SET stock = 0 WHERE sucursal_id = ?').run(sucursalId);
-    const movimientos = db.prepare('DELETE FROM stock_movements WHERE sucursal_id = ?').run(sucursalId);
-    return { productos_afectados: filas.length, movimientos_borrados: movimientos.changes };
+    return { productos_eliminados: productosEliminados, productos_solo_reseteados: productosSoloReseteados, movimientos_borrados: movimientosBorrados };
   })();
 
   res.json({ ok: true, sede: sucursal.nombre, ...resultado });
