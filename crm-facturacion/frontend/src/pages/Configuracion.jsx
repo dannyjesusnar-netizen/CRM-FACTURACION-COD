@@ -314,6 +314,7 @@ export default function Configuracion() {
   const [borrandoDatos, setBorrandoDatos] = useState(false);
   const [sedeABorrarInventario, setSedeABorrarInventario] = useState('');
   const [borrandoInventarioSede, setBorrandoInventarioSede] = useState(false);
+  const [viendoDetalleInventarioSede, setViendoDetalleInventarioSede] = useState(false);
 
   // --- Entrenadores y Supervisores operativos (registro sin usuario) ---
   // Solo alimentan el Tablero de Ventas (ranking + "Atribuir venta a") — no
@@ -669,6 +670,29 @@ export default function Configuracion() {
       toast.error(err.response?.data?.error || 'No se pudo completar el borrado.');
     } finally {
       setBorrandoDatos(false);
+    }
+  }
+
+  async function handleVerDetalleInventarioSede() {
+    if (!sedeABorrarInventario) { toast.error('Selecciona una sede.'); return; }
+    setViendoDetalleInventarioSede(true);
+    try {
+      const res = await api.get('/empresa/inventario-sede-preview', { params: { sucursal_id: sedeABorrarInventario } });
+      const filas = res.data.detalle.map((d) => [
+        d.codigo, d.nombre, d.stock_en_sede, d.stock_global,
+        d.accion === 'eliminar' ? 'Se borraría del catálogo' : 'Se conservaría (solo stock en 0)',
+        d.motivos.join(' | '),
+      ]);
+      await descargarComoExcel(
+        `vista_previa_borrado_${res.data.sede}.xlsx`,
+        ['Código', 'Nombre', 'Stock en esta sede', 'Stock global', 'Acción', 'Motivo(s) para conservarlo'],
+        filas
+      );
+      toast.success(`${res.data.total} producto(s) revisados: ${res.data.a_eliminar} se borrarían, ${res.data.a_conservar} se conservarían.`);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'No se pudo generar la vista previa.');
+    } finally {
+      setViendoDetalleInventarioSede(false);
     }
   }
 
@@ -2186,6 +2210,16 @@ export default function Configuracion() {
                       <option key={s.id} value={s.id}>{s.nombre}</option>
                     ))}
                   </select>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    style={{ width: 'auto' }}
+                    disabled={viendoDetalleInventarioSede || !sedeABorrarInventario}
+                    onClick={handleVerDetalleInventarioSede}
+                    title="Descarga en Excel qué haría el botón con cada producto, sin borrar nada todavía"
+                  >
+                    {viendoDetalleInventarioSede ? 'Generando...' : 'Ver detalle (Excel, no borra nada)'}
+                  </button>
                   <button
                     type="button"
                     className="btn-primary"
