@@ -678,9 +678,10 @@ export default function Configuracion() {
     const nombreSede = sede?.nombre || 'la sede seleccionada';
     const primeraConfirmacion = window.confirm(
       `¿Borrar el inventario de ${nombreSede}?\n\n` +
-      'Esto deja en 0 el stock de todos los productos SOLO en esa sede, y borra el historial de ' +
-      'movimientos de inventario (kardex) registrado ahí. El catálogo de productos y el stock de ' +
-      'las demás sedes NO se tocan.\n\n' +
+      'Los productos que solo existen en esa sede y nunca se usaron en una venta, compra, ' +
+      'cotización, guía, traslado, receta o promoción se BORRAN POR COMPLETO del catálogo ' +
+      '(típicamente los que cargaste de prueba). Los que sí están compartidos con otra sede o ' +
+      'tienen algún historial real se conservan, pero su stock y kardex en esa sede quedan en 0.\n\n' +
       'Esta acción NO se puede deshacer.'
     );
     if (!primeraConfirmacion) return;
@@ -692,7 +693,10 @@ export default function Configuracion() {
     setBorrandoInventarioSede(true);
     try {
       const res = await api.post('/empresa/borrar-inventario-sede', { sucursal_id: sedeABorrarInventario, confirmar: 'BORRAR' });
-      toast.success(`Inventario de ${res.data.sede} borrado (${res.data.productos_afectados} producto(s) afectados).`);
+      toast.success(
+        `Inventario de ${res.data.sede} borrado: ${res.data.productos_eliminados} producto(s) eliminados del catálogo, ` +
+        `${res.data.productos_solo_reseteados} solo reseteados (compartidos o con historial).`
+      );
     } catch (err) {
       toast.error(err.response?.data?.error || 'No se pudo completar el borrado.');
     } finally {
@@ -2164,10 +2168,12 @@ export default function Configuracion() {
               <div style={{ border: '1px solid var(--critical, #dc2626)', borderRadius: 8, padding: 16, background: 'rgba(220,38,38,0.06)', marginTop: 16 }}>
                 <strong>Borrar inventario de una sede</strong>
                 <p style={{ fontSize: 12, color: 'var(--ink-muted)' }}>
-                  Deja en 0 el stock de todos los productos solo en la sede que elijas, y borra el historial de
-                  movimientos de inventario (kardex) de esa sede — útil para repetir una carga masiva de prueba
-                  sin arrastrar cantidades viejas. El catálogo de productos, los lotes/vencimientos y las demás
-                  sedes no se tocan. Esta acción no se puede deshacer.
+                  Pensado para limpiar lo que cargaste de prueba antes de subir el archivo real. Los productos
+                  que solo existen en la sede que elijas y nunca se usaron en una venta, compra, cotización,
+                  guía, traslado, receta o promoción se borran por completo del catálogo (con sus lotes y
+                  vencimientos). Los que están compartidos con otra sede o sí tienen algún historial real se
+                  conservan, pero su stock y kardex en esa sede quedan en 0. Las demás sedes no se tocan.
+                  Esta acción no se puede deshacer.
                 </p>
                 <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
                   <select
