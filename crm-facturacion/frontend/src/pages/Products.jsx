@@ -271,10 +271,13 @@ export default function Products() {
     try {
       const res = await api.post('/products/carga-masiva', { rows: cargaRows });
       setCargaResult(res.data);
-      if (res.data.creados.length > 0) toast.success(`${res.data.creados.length} producto(s) creados.`);
-      if (res.data.actualizados.length > 0) toast.success(`${res.data.actualizados.length} producto(s) actualizados.`);
-      if (res.data.errores.length > 0) toast.error(`${res.data.errores.length} fila(s) con errores. Revisa el detalle.`);
-      load();
+      if (res.data.aplicado) {
+        if (res.data.creados.length > 0) toast.success(`${res.data.creados.length} producto(s) creados.`);
+        if (res.data.actualizados.length > 0) toast.success(`${res.data.actualizados.length} producto(s) actualizados.`);
+        load();
+      } else {
+        toast.error(`No se cargó nada: ${res.data.errores.length} fila(s) con errores. Corrige tu archivo y vuelve a subirlo.`);
+      }
     } catch (err) {
       setErrorCarga(err.response?.data?.error || 'No se pudo procesar el archivo.');
     }
@@ -655,10 +658,17 @@ export default function Products() {
               )}
               {cargaResult && (
                 <div style={{ marginTop: 10 }}>
-                  <p>
-                    <strong>{cargaResult.creados.length}</strong> creados, <strong>{cargaResult.actualizados.length}</strong> actualizados,{' '}
-                    <strong>{cargaResult.errores.length}</strong> con error.
-                  </p>
+                  {cargaResult.aplicado ? (
+                    <p>
+                      <strong>{cargaResult.creados.length}</strong> creados, <strong>{cargaResult.actualizados.length}</strong> actualizados.
+                    </p>
+                  ) : (
+                    <p style={{ color: 'var(--critical, #dc2626)', fontWeight: 600 }}>
+                      ❌ No se cargó nada — el archivo tiene {cargaResult.errores.length} fila(s) con errores. Corrige
+                      tu archivo (abajo tienes el detalle de cada una) y vuelve a subirlo; mientras tenga algún
+                      error, ningún producto se guarda, ni siquiera los que estaban bien.
+                    </p>
+                  )}
                   {cargaResult.errores.length > 0 && (
                     <ul style={{ fontSize: 12, color: 'var(--critical)', maxHeight: 120, overflowY: 'auto' }}>
                       {cargaResult.errores.map((e, i) => <li key={i}>{e.codigo}: {e.error}</li>)}

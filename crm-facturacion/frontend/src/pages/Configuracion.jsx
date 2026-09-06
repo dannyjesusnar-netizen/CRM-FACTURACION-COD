@@ -1132,9 +1132,13 @@ export default function Configuracion() {
     try {
       const res = await api.post(config.endpoint, { rows: importRows, ...(config.extraBody || {}) });
       setImportResult(res.data);
-      if (res.data.creados?.length > 0) toast.success(`${res.data.creados.length} registro(s) creados.`);
-      if (res.data.actualizados?.length > 0) toast.success(`${res.data.actualizados.length} registro(s) actualizados.`);
-      if (res.data.errores?.length > 0) toast.error(`${res.data.errores.length} fila(s) con errores. Revisa el detalle.`);
+      if (res.data.aplicado === false) {
+        toast.error(`No se cargó nada: ${res.data.errores.length} fila(s) con errores. Corrige tu archivo y vuelve a subirlo.`);
+      } else {
+        if (res.data.creados?.length > 0) toast.success(`${res.data.creados.length} registro(s) creados.`);
+        if (res.data.actualizados?.length > 0) toast.success(`${res.data.actualizados.length} registro(s) actualizados.`);
+        if (res.data.errores?.length > 0) toast.error(`${res.data.errores.length} fila(s) con errores. Revisa el detalle.`);
+      }
     } catch (err) {
       setErrorImport(err.response?.data?.error || 'No se pudo procesar el archivo.');
     } finally {
@@ -2443,10 +2447,17 @@ export default function Configuracion() {
                 )}
                 {importResult && (
                   <div style={{ marginTop: 10 }}>
-                    <p>
-                      <strong>{importResult.creados?.length || 0}</strong> creados, <strong>{importResult.actualizados?.length || 0}</strong> actualizados,{' '}
-                      <strong>{importResult.errores?.length || 0}</strong> con error.
-                    </p>
+                    {importResult.aplicado !== false ? (
+                      <p>
+                        <strong>{importResult.creados?.length || 0}</strong> creados, <strong>{importResult.actualizados?.length || 0}</strong> actualizados.
+                      </p>
+                    ) : (
+                      <p style={{ color: 'var(--critical, #dc2626)', fontWeight: 600 }}>
+                        ❌ No se cargó nada — el archivo tiene {importResult.errores?.length || 0} fila(s) con errores. Corrige
+                        tu archivo (abajo tienes el detalle de cada una) y vuelve a subirlo; mientras tenga algún
+                        error, no se guarda nada, ni siquiera las filas que estaban bien.
+                      </p>
+                    )}
                     {importResult.errores?.length > 0 && (
                       <ul style={{ fontSize: 12, color: 'var(--critical)', maxHeight: 120, overflowY: 'auto' }}>
                         {importResult.errores.map((e, i) => <li key={i}>{primerIdentificadorError(e)}: {e.error}</li>)}
