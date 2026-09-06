@@ -88,6 +88,7 @@ export default function Movements() {
   const [importLotesFileName, setImportLotesFileName] = useState('');
   const [importLotesResult, setImportLotesResult] = useState(null);
   const [errorImportarLotes, setErrorImportarLotes] = useState('');
+  const [importLotesSoloVencimiento, setImportLotesSoloVencimiento] = useState(false);
 
   function load() {
     const params = {};
@@ -207,6 +208,7 @@ export default function Movements() {
     setImportLotesFileName('');
     setImportLotesResult(null);
     setErrorImportarLotes('');
+    setImportLotesSoloVencimiento(false);
     setShowImportarLotes(true);
   }
 
@@ -239,11 +241,21 @@ export default function Movements() {
     setErrorImportarLotes('');
     if (importLotesRows.length === 0) { setErrorImportarLotes('Selecciona un archivo CSV con al menos una fila.'); return; }
     try {
-      const res = await api.post('/movements/importar-lotes', { rows: importLotesRows });
+      const res = await api.post('/movements/importar-lotes', {
+        rows: importLotesRows,
+        afectar_stock: !importLotesSoloVencimiento,
+      });
       setImportLotesResult(res.data);
-      if (res.data.aplicados.length > 0) toast.success(`${res.data.aplicados.length} ingreso(s) de stock registrados.`);
-      if (res.data.errores.length > 0) toast.error(`${res.data.errores.length} fila(s) con errores. Revisa el detalle.`);
-      load();
+      if (res.data.aplicado === false) {
+        toast.error(`No se cargó nada: ${res.data.errores.length} fila(s) con errores. Corrige tu archivo y vuelve a subirlo.`);
+      } else {
+        if (res.data.aplicados.length > 0) {
+          toast.success(importLotesSoloVencimiento
+            ? `${res.data.aplicados.length} lote(s) registrados con su vencimiento (sin cambiar el stock).`
+            : `${res.data.aplicados.length} ingreso(s) de stock registrados.`);
+        }
+        load();
+      }
     } catch (err) {
       setErrorImportarLotes(err.response?.data?.error || 'No se pudo importar el archivo.');
     }
@@ -432,13 +444,29 @@ export default function Movements() {
               <button type="button" className="btn-link" onClick={descargarPlantillaImportarLotesExcel} style={{ marginBottom: 10 }}>
                 Descargar plantilla (Excel)
               </button>
+              <label className="caja-row-auto" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                <input
+                  type="checkbox"
+                  checked={importLotesSoloVencimiento}
+                  onChange={(e) => setImportLotesSoloVencimiento(e.target.checked)}
+                />
+                Esta carga es solo para registrar vencimientos (no sumar al stock — usar cuando el stock de estos
+                productos ya fue cargado por otra vía, p.ej. una migración).
+              </label>
               <input required type="file" accept=".csv,text/csv,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" onChange={handleFileChangeLotes} />
               {importLotesFileName && (
                 <p className="caja-row-auto">{importLotesFileName} — {importLotesRows.length} fila(s) detectadas.</p>
               )}
               {importLotesResult && (
                 <div style={{ marginTop: 10 }}>
-                  <p><strong>{importLotesResult.aplicados.length}</strong> aplicados, <strong>{importLotesResult.errores.length}</strong> con error.</p>
+                  {importLotesResult.aplicado !== false ? (
+                    <p><strong>{importLotesResult.aplicados.length}</strong> aplicados, <strong>{importLotesResult.errores.length}</strong> con error.</p>
+                  ) : (
+                    <p style={{ color: 'var(--critical, #dc2626)', fontWeight: 600 }}>
+                      ❌ No se cargó nada — el archivo tiene {importLotesResult.errores.length} fila(s) con errores. Corrige
+                      tu archivo (abajo tienes el detalle de cada una) y vuelve a subirlo.
+                    </p>
+                  )}
                   {importLotesResult.errores.length > 0 && (
                     <ul style={{ fontSize: 12, color: 'var(--critical)', maxHeight: 120, overflowY: 'auto' }}>
                       {importLotesResult.errores.map((e, i) => <li key={i}>{e.codigo}: {e.error}</li>)}

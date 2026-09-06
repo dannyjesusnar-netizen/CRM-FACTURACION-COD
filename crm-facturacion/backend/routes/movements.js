@@ -8,6 +8,7 @@ const { analizarEtiqueta } = require('../utils/ocrEtiqueta');
 const { analizarGuia } = require('../utils/ocrGuia');
 const { parseGuiaXml, parseGuiaPdf } = require('../utils/guiaParser');
 const { buscarProductoPorAlias, guardarAlias } = require('../utils/productoAlias');
+const { ejecutarTodoONada } = require('../utils/cargaMasiva');
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -216,18 +217,28 @@ router.post('/importar', requireAccion('inventario', 'importacion'), (req, res) 
 });
 
 // POST /api/movements/importar-lotes
-// { rows: [{ codigo, cantidad, codigo_lote?, fecha_vencimiento?, motivo? }] }
+// { rows: [{ codigo, cantidad, codigo_lote?, fecha_vencimiento?, motivo? }], afectar_stock? }
 // -- Carga masiva de stock (ingresos), cada fila reutiliza el mismo flujo que
 // POST /api/movements: si trae codigo_lote crea el lote, si no es un ajuste simple.
+//
+// afectar_stock (default true): en false NO se suma nada al stock del
+// producto ni de la sede — solo se registra el lote (cantidad + fecha de
+// vencimiento), para el caso de una migración donde el stock ya fue cargado
+// por otra vía (p.ej. carga masiva de productos) y esto solo debe agregar el
+// detalle de vencimiento por lote sin duplicar cantidades.
+//
+// Todo o nada (ver utils/cargaMasiva.js): si CUALQUIER fila tiene un error,
+// no se guarda NADA.
 router.post('/importar-lotes', requireAccion('inventario', 'ajustes'), (req, res) => {
-  const { rows } = req.body || {};
+  const { rows, afectar_stock: afectarStock = true } = req.body || {};
   if (!Array.isArray(rows) || rows.length === 0) {
     return res.status(400).json({ error: 'rows es requerido y debe tener al menos una fila.' });
   }
-  const aplicados = [];
-  const errores = [];
 
-  db.transaction(() => {
+  const resultado = ejecutarTodoONada(() => {
+    const aplicados = [];
+    const errores = [];
+
     for (const r of rows) {
       const codigo = (r.codigo || '').toString().trim();
       const cant = Number(r.cantidad);
@@ -238,6 +249,10 @@ router.post('/importar-lotes', requireAccion('inventario', 'ajustes'), (req, res
 
       if (!codigo || !Number.isFinite(cant) || cant <= 0) {
         errores.push({ codigo: codigo || '(vacío)', error: 'Fila inválida (código o cantidad faltante/no es un ingreso positivo).' });
+        continue;
+      }
+      if (!afectarStock && !codigoLote) {
+        errores.push({ codigo, error: 'Sin código de lote y sin afectar stock no hay nada que registrar en esta fila.' });
         continue;
       }
       const prod = db.prepare('SELECT * FROM products WHERE codigo = ?').get(codigo);
@@ -255,19 +270,24 @@ router.post('/importar-lotes', requireAccion('inventario', 'ajustes'), (req, res
       // utils/productoAlias.js).
       if (r.descripcion_detectada) guardarAlias(prod.id, r.descripcion_detectada);
 
-      db.prepare('UPDATE products SET stock = stock + ? WHERE id = ?').run(cant, prod.id);
-      const nuevoStock = db.prepare('SELECT stock FROM products WHERE id = ?').get(prod.id).stock;
-      ajustarStockSucursal(prod.id, req.sucursalId, cant);
+      let nuevoStock = prod.stock;
+      if (afectarStock) {
+        db.prepare('UPDATE products SET stock = stock + ? WHERE id = ?').run(cant, prod.id);
+        nuevoStock = db.prepare('SELECT stock FROM products WHERE id = ?').get(prod.id).stock;
+        ajustarStockSucursal(prod.id, req.sucursalId, cant);
+      }
 
       if (codigoLote) {
         const loteInfo = db.prepare(
           `INSERT INTO lotes (product_id, codigo_lote, tipo, fecha_vencimiento, cantidad_inicial, cantidad_actual, created_by)
            VALUES (?, ?, 'lote', ?, ?, ?, ?)`
         ).run(prod.id, codigoLote, fechaVencimiento || null, cant, cant, req.user?.id || null);
-        db.prepare(
-          `INSERT INTO stock_movements (product_id, lote_id, tipo, cantidad, stock_resultante, motivo, referencia, canal, created_by, sucursal_id)
-           VALUES (?, ?, 'ingreso_lote', ?, ?, ?, ?, ?, ?, ?)`
-        ).run(prod.id, loteInfo.lastInsertRowid, cant, nuevoStock, motivo || null, codigoLote, canalFila, req.user?.id || null, req.sucursalId);
+        if (afectarStock) {
+          db.prepare(
+            `INSERT INTO stock_movements (product_id, lote_id, tipo, cantidad, stock_resultante, motivo, referencia, canal, created_by, sucursal_id)
+             VALUES (?, ?, 'ingreso_lote', ?, ?, ?, ?, ?, ?, ?)`
+          ).run(prod.id, loteInfo.lastInsertRowid, cant, nuevoStock, motivo || null, codigoLote, canalFila, req.user?.id || null, req.sucursalId);
+        }
       } else {
         db.prepare(
           `INSERT INTO stock_movements (product_id, tipo, cantidad, stock_resultante, motivo, referencia, canal, created_by, sucursal_id)
@@ -277,9 +297,11 @@ router.post('/importar-lotes', requireAccion('inventario', 'ajustes'), (req, res
 
       aplicados.push({ codigo, producto: prod.nombre, cantidad: cant, codigo_lote: codigoLote || null, stock_nuevo: nuevoStock });
     }
-  })();
 
-  res.json({ aplicados, errores });
+    return { aplicados, errores };
+  });
+
+  res.json(resultado);
 });
 
 function esDataUrlImagen(s) {
