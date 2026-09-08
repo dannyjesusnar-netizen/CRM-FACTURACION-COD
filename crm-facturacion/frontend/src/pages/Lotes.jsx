@@ -94,7 +94,10 @@ export default function Lotes() {
             <option value="con_stock">Con stock</option>
             <option value="todos">Todos</option>
             <option value="agotados">Agotados</option>
-            <option value="por_vencer">Por vencer (30 días)</option>
+            <option value="vencidos">Vencidos</option>
+            <option value="por_vencer_7">Por vencer en 7 días</option>
+            <option value="por_vencer_15">Por vencer en 15 días</option>
+            <option value="por_vencer_30">Por vencer en 30 días</option>
           </select>
         </div>
         <div className="filter-field grow">
