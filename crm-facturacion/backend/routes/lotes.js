@@ -11,10 +11,25 @@ router.use(requirePermiso('inventario'));
 router.use(resolveSucursal);
 
 const DIAS_ALERTA_VENCIMIENTO = 30;
+// Ventanas del filtro "por vencer en N días" — separadas de "vencidos" para
+// que un producto ya vencido no se mezcle con uno que recién está por
+// vencer (importante para productos orgánicos/sensibles, donde 7 días de
+// diferencia importa).
+const VENTANAS_POR_VENCER = { por_vencer_7: 7, por_vencer_15: 15, por_vencer_30: 30 };
 
-// GET /api/lotes?mostrar=con_stock|todos|agotados|por_vencer&q=&categoria=&tipo=
+// Suma/resta días a una fecha ISO (YYYY-MM-DD) sin pasar por Date con hora,
+// para no arrastrar el mismo bug de zona horaria que hoyPeru() ya evita.
+function sumarDiasIso(fechaIso, dias) {
+  const [y, m, d] = fechaIso.split('-').map(Number);
+  const fecha = new Date(Date.UTC(y, m - 1, d));
+  fecha.setUTCDate(fecha.getUTCDate() + dias);
+  return fecha.toISOString().slice(0, 10);
+}
+
+// GET /api/lotes?mostrar=con_stock|todos|agotados|vencidos|por_vencer_7|por_vencer_15|por_vencer_30&q=&categoria=&tipo=
 router.get('/', (req, res) => {
   const { mostrar, q, categoria, tipo } = req.query;
+  const today = hoyPeru();
   let sql = `
     SELECT l.*, p.codigo AS producto_codigo, p.nombre AS producto_nombre,
            p.unidad AS producto_unidad, p.categoria AS producto_categoria
@@ -25,8 +40,14 @@ router.get('/', (req, res) => {
   const params = [];
   if (mostrar === 'con_stock') { sql += ' AND l.cantidad_actual > 0'; }
   if (mostrar === 'agotados') { sql += ' AND l.cantidad_actual <= 0'; }
-  if (mostrar === 'por_vencer') {
-    sql += ` AND l.fecha_vencimiento IS NOT NULL AND date(l.fecha_vencimiento) <= date('now', '+${DIAS_ALERTA_VENCIMIENTO} days')`;
+  if (mostrar === 'vencidos') {
+    sql += ' AND l.fecha_vencimiento IS NOT NULL AND l.fecha_vencimiento < ?';
+    params.push(today);
+  } else if (VENTANAS_POR_VENCER[mostrar]) {
+    // Solo lo que vence de hoy en adelante y dentro de la ventana — no
+    // incluye lo ya vencido (para eso está el filtro "Vencidos").
+    sql += ' AND l.fecha_vencimiento IS NOT NULL AND l.fecha_vencimiento >= ? AND l.fecha_vencimiento <= ?';
+    params.push(today, sumarDiasIso(today, VENTANAS_POR_VENCER[mostrar]));
   }
   if (q) { sql += ' AND (p.nombre LIKE ? OR p.codigo LIKE ? OR l.codigo_lote LIKE ?)'; params.push(`%${q}%`, `%${q}%`, `%${q}%`); }
   if (categoria) { sql += ' AND p.categoria = ?'; params.push(categoria); }
@@ -34,8 +55,7 @@ router.get('/', (req, res) => {
   sql += " ORDER BY (l.fecha_vencimiento IS NULL), date(l.fecha_vencimiento) ASC, p.nombre ASC";
   const rows = db.prepare(sql).all(...params);
 
-  const today = hoyPeru();
-  const alertaLimite = new Date(Date.now() + DIAS_ALERTA_VENCIMIENTO * 86400000).toISOString().slice(0, 10);
+  const alertaLimite = sumarDiasIso(today, DIAS_ALERTA_VENCIMIENTO);
   const withStatus = rows.map((r) => {
     let estado_vencimiento = 'ok';
     if (r.fecha_vencimiento) {
