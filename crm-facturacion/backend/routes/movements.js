@@ -79,8 +79,12 @@ router.get('/', (req, res) => {
   if (product_id) { sql += ' AND m.product_id = ?'; params.push(product_id); }
   if (tipo) { sql += ' AND m.tipo = ?'; params.push(tipo); }
   if (canal) { sql += ' AND m.canal = ?'; params.push(canal); }
-  if (from) { sql += ' AND date(m.created_at) >= date(?)'; params.push(from); }
-  if (to) { sql += ' AND date(m.created_at) <= date(?)'; params.push(to); }
+  // created_at se guarda en UTC (datetime('now')); se resta 5h antes de
+  // sacar la fecha para comparar contra el "hoy" de Perú (ver hoyPeru()) —
+  // si no, un movimiento registrado después de las 7pm ya cae en el día
+  // siguiente en UTC y desaparece de "hasta: hoy" hasta el día siguiente.
+  if (from) { sql += " AND date(m.created_at, '-5 hours') >= date(?)"; params.push(from); }
+  if (to) { sql += " AND date(m.created_at, '-5 hours') <= date(?)"; params.push(to); }
   if (q) {
     sql += ' AND (p.nombre LIKE ? OR p.codigo LIKE ? OR m.referencia LIKE ? OR m.motivo LIKE ?)';
     params.push(`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`);

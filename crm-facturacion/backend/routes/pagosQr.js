@@ -36,10 +36,13 @@ router.post('/detectar-monto', async (req, res) => {
 // diario de lo vendido por QR.
 router.get('/', (req, res) => {
   const fecha = req.query.fecha || hoyPeru();
+  // created_at está en UTC; se resta 5h para comparar contra el "hoy" de
+  // Perú (ver hoyPeru()) — evita que un pago de la noche desaparezca del
+  // control diario hasta el día siguiente.
   const pagos = db.prepare(
     `SELECT p.*, u.full_name AS usuario_nombre
      FROM pagos_qr p LEFT JOIN users u ON u.id = p.created_by
-     WHERE p.sucursal_id = ? AND date(p.created_at) = date(?)
+     WHERE p.sucursal_id = ? AND date(p.created_at, '-5 hours') = date(?)
      ORDER BY p.created_at DESC`
   ).all(req.sucursalId, fecha);
   const total = pagos.reduce((s, p) => s + p.monto, 0);
