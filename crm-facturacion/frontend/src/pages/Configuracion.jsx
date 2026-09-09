@@ -175,8 +175,8 @@ const EXPORTADORES_MASIVOS = [
     // límite de fecha (a diferencia del botón "Exportar" de Documentos
     // Emitidos, que solo exporta lo filtrado en pantalla).
     endpoint: '/reports/ventas-detalle',
-    columnas: ['fecha_emision', 'sede', 'tipo', 'serie', 'numero', 'cliente_documento', 'cliente_nombre', 'producto_codigo', 'producto_nombre', 'categoria', 'marca', 'cantidad', 'precio_unitario', 'subtotal_item', 'forma_pago', 'total_venta', 'estado', 'vendedor_nombre', 'atribuido_nombre', 'atribuido_categoria'],
-    headers: ['Fecha', 'Sede', 'Tipo', 'Serie', 'Número', 'Doc. Cliente', 'Cliente', 'Cód. Producto', 'Producto', 'Categoría', 'Marca/Proveedor', 'Cantidad', 'Precio Unit.', 'Subtotal Ítem', 'Forma de Pago', 'Total Venta', 'Estado', 'Vendedor', 'Atribuido a', 'Categoría Atribuido'],
+    columnas: ['fecha_emision', 'sede', 'tipo', 'serie', 'numero', 'cliente_documento', 'cliente_nombre', 'producto_codigo', 'producto_nombre', 'categoria', 'marca', 'cantidad', 'precio_unitario', 'descuento_pct', 'subtotal_item', 'forma_pago', 'total_venta', 'estado', 'vendedor_nombre', 'atribuido_nombre', 'atribuido_categoria'],
+    headers: ['Fecha', 'Sede', 'Tipo', 'Serie', 'Número', 'Doc. Cliente', 'Cliente', 'Cód. Producto', 'Producto', 'Categoría', 'Marca/Proveedor', 'Cantidad', 'Precio Unit.', '% Descuento', 'Subtotal Ítem', 'Forma de Pago', 'Total Venta', 'Estado', 'Vendedor', 'Atribuido a', 'Categoría Atribuido'],
     descripcion: 'Detalle de cada producto vendido (Boletas, Facturas, Notas de Crédito y Notas de Venta Interna), con marca/proveedor, categoría, vendedor y a quién se atribuyó — sin filtro de fecha.',
   },
 ];
