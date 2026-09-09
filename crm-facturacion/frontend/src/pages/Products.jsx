@@ -6,7 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { leerArchivoComoTextoCsv, descargarComoExcel, exportarTabla, parsearLineaCsv } from '../utils/excelImport';
 import ExportButton from '../components/ExportButton';
 
-const CARGA_MASIVA_COLUMNAS = ['codigo', 'nombre', 'categoria', 'unidad', 'precio_unitario', 'stock', 'stock_minimo', 'precio_compra', 'codigo_barras'];
+const CARGA_MASIVA_COLUMNAS = ['codigo', 'nombre', 'categoria', 'unidad', 'precio_unitario', 'stock', 'precio_compra', 'codigo_barras'];
 
 function parseCsvProductos(text) {
   const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
@@ -28,7 +28,7 @@ const EMPTY_FORM = {
   codigo: '', nombre: '', descripcion: '', categoria: 'General',
   unidad: 'NIU', afectacion_igv: 'gravado', control: 'ninguno', tipo_inventario: 'MERCADERÍAS',
   tipo_clasificacion: 'Otros', subtipo_clasificacion: 'Otros', peso: '', favorito: false,
-  precio_compra: '', precio_unitario: '', stock: '', stock_minimo: '', palabras_clave: '', proveedor_id: '',
+  precio_compra: '', precio_unitario: '', stock: '', palabras_clave: '', proveedor_id: '',
 };
 
 function emptySupplier() {
@@ -121,8 +121,8 @@ export default function Products() {
   }
 
   async function handleExportar(formato) {
-    const header = ['Código', 'Producto', 'Categoría', 'U.M.', 'Mínimo', 'Stock', 'Precio'];
-    const rows = products.map((p) => [p.codigo, p.nombre, p.categoria, p.unidad, p.stock_minimo ?? '', p.stock ?? '', p.precio_unitario]);
+    const header = ['Código', 'Producto', 'Categoría', 'U.M.', 'Stock', 'Precio'];
+    const rows = products.map((p) => [p.codigo, p.nombre, p.categoria, p.unidad, p.stock ?? '', p.precio_unitario]);
     await exportarTabla('lista_de_precios', header, rows, formato);
     toast.success('Lista de precios exportada.');
   }
@@ -152,7 +152,6 @@ export default function Products() {
       precio_compra: p.precio_compra ?? '',
       precio_unitario: p.precio_unitario,
       stock: p.stock ?? '',
-      stock_minimo: p.stock_minimo ?? '',
       palabras_clave: p.palabras_clave || '',
       proveedor_id: p.proveedor_id ?? '',
     });
@@ -373,7 +372,6 @@ export default function Products() {
                 <th>Afectación IGV</th>
                 <th>Proveedor</th>
                 <th>Canal</th>
-                <th style={{ textAlign: 'right' }}>Mínimo</th>
                 <th style={{ textAlign: 'right' }}>{verTodasSedes ? 'Stock (todas las sedes)' : 'Stock'}</th>
                 <th style={{ textAlign: 'right' }}>Precio</th>
                 <th></th>
@@ -382,7 +380,6 @@ export default function Products() {
             <tbody>
               {products.map((p) => {
                 const stockMostrado = verTodasSedes ? p.stock_total : p.stock;
-                const bajoMinimo = stockMostrado !== null && p.stock_minimo !== null && stockMostrado <= p.stock_minimo;
                 const afectacionLabel = AFECTACIONES_IGV.find((o) => o.value === p.afectacion_igv)?.label || '—';
                 return (
                   <tr key={p.id}>
@@ -393,12 +390,7 @@ export default function Products() {
                     <td>{afectacionLabel}</td>
                     <td>{p.proveedor_nombre || '—'}</td>
                     <td>{p.canal_origen || '—'}</td>
-                    <td style={{ textAlign: 'right' }}>{p.stock_minimo ?? '—'}</td>
-                    <td style={{ textAlign: 'right' }}>
-                      {stockMostrado === null ? '—' : (
-                        <span className={bajoMinimo ? 'badge badge-critical' : ''}>{stockMostrado}</span>
-                      )}
-                    </td>
+                    <td style={{ textAlign: 'right' }}>{stockMostrado ?? '—'}</td>
                     <td style={{ textAlign: 'right' }}>S/ {Number(p.precio_unitario).toFixed(2)}</td>
                     <td className="row-actions">
                       <button className="btn-link" onClick={() => openEdit(p)}>Editar</button>
@@ -542,12 +534,6 @@ export default function Products() {
                 <>
                   <label>Descripción</label>
                   <textarea rows={2} value={form.descripcion} onChange={(e) => setForm({ ...form, descripcion: e.target.value })} />
-                  {!esServicio && (
-                    <>
-                      <label>Stock mínimo</label>
-                      <input type="number" step="1" value={form.stock_minimo} onChange={(e) => setForm({ ...form, stock_minimo: e.target.value })} />
-                    </>
-                  )}
                 </>
               )}
 
