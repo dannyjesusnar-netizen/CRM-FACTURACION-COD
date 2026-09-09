@@ -6,7 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { leerArchivoComoTextoCsv, descargarComoExcel, exportarTabla, parsearLineaCsv } from '../utils/excelImport';
 import ExportButton from '../components/ExportButton';
 
-const CARGA_MASIVA_COLUMNAS = ['codigo', 'nombre', 'categoria', 'unidad', 'precio_unitario', 'stock', 'precio_compra', 'codigo_barras'];
+const CARGA_MASIVA_COLUMNAS = ['codigo', 'nombre', 'categoria', 'marca', 'unidad', 'precio_unitario', 'stock', 'precio_compra', 'codigo_barras'];
 
 function parseCsvProductos(text) {
   const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
@@ -25,7 +25,7 @@ function parseCsvProductos(text) {
 }
 
 const EMPTY_FORM = {
-  codigo: '', nombre: '', descripcion: '', categoria: 'General',
+  codigo: '', nombre: '', descripcion: '', categoria: 'General', marca: '',
   unidad: 'NIU', afectacion_igv: 'gravado', control: 'ninguno', tipo_inventario: 'MERCADERÍAS',
   tipo_clasificacion: 'Otros', subtipo_clasificacion: 'Otros', peso: '', favorito: false,
   precio_compra: '', precio_unitario: '', stock: '', palabras_clave: '', proveedor_id: '',
@@ -141,6 +141,7 @@ export default function Products() {
       nombre: p.nombre,
       descripcion: p.descripcion || '',
       categoria: p.categoria || 'General',
+      marca: p.marca || '',
       unidad: p.unidad,
       afectacion_igv: p.afectacion_igv || 'gravado',
       control: p.control || 'ninguno',
@@ -368,6 +369,7 @@ export default function Products() {
                 <th>Código</th>
                 <th>Producto</th>
                 <th>Categoría</th>
+                <th>Marca</th>
                 <th>U.M.</th>
                 <th>Afectación IGV</th>
                 <th>Proveedor</th>
@@ -386,6 +388,7 @@ export default function Products() {
                     <td>{p.codigo}</td>
                     <td>{p.nombre}</td>
                     <td>{p.categoria || '—'}</td>
+                    <td>{p.marca || '—'}</td>
                     <td>{p.unidad}</td>
                     <td>{afectacionLabel}</td>
                     <td>{p.proveedor_nombre || '—'}</td>
@@ -400,7 +403,7 @@ export default function Products() {
                 );
               })}
               {products.length === 0 && (
-                <tr><td colSpan={12} className="empty-row">No hay productos registrados.</td></tr>
+                <tr><td colSpan={13} className="empty-row">No hay productos registrados.</td></tr>
               )}
             </tbody>
           </table>
@@ -519,6 +522,13 @@ export default function Products() {
               <button type="button" className="btn-link" style={{ marginTop: 4 }} onClick={() => setShowSupplierForm(true)}>
                 + Nuevo proveedor
               </button>
+
+              <label>Marca</label>
+              <input
+                value={form.marca}
+                onChange={(e) => setForm({ ...form, marca: e.target.value })}
+                placeholder="Ej. Optimum Nutrition (distinta del proveedor)"
+              />
 
               <label>Producto</label>
               <input required value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} />
