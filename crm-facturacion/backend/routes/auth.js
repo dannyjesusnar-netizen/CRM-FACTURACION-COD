@@ -33,6 +33,9 @@ function emitirToken(res, user, ruc) {
       // que sigue reservado a Gerencia/Supervisor sin pasar por ese toggle.
       puede_ver_tablero: puedeVerTableroVentas(user),
       puede_reatribuir_venta: esGerenciaOSupervisor(user),
+      // Aprobar/rechazar traslados pendientes (ver routes/traslados.js) — un
+      // vendedor de sede solo puede crearlos, no aprobarlos.
+      puede_aprobar_traslados: esGerenciaOSupervisor(user),
     }
   });
 }

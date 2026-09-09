@@ -4,8 +4,12 @@ import { ArrowLeft } from 'lucide-react';
 import api from '../api';
 import { hoyPeru } from '../utils/fechas';
 import { useToast } from '../context/ToastContext';
+import { useAuth } from '../context/AuthContext';
 import ExportButton from '../components/ExportButton';
 import { exportarTabla } from '../utils/excelImport';
+
+const ESTADO_LABEL = { pendiente: 'Pendiente', completado: 'Completado', rechazado: 'Rechazado', anulado: 'Anulado' };
+const ESTADO_BADGE = { pendiente: 'badge-warning', completado: 'badge-good', rechazado: 'badge-critical', anulado: 'badge-critical' };
 
 function emptyItem() {
   return { product_id: '', cantidad: 1, lote_id: '' };
@@ -18,6 +22,7 @@ function todayStr() {
 export default function Traslados() {
   const toast = useToast();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [traslados, setTraslados] = useState([]);
   const [sucursales, setSucursales] = useState([]);
   const [productos, setProductos] = useState([]);
@@ -103,13 +108,17 @@ export default function Traslados() {
     if (origenId === destinoId) { setError('La sucursal de origen y destino no pueden ser la misma.'); return; }
     if (items.some((it) => !it.product_id || !it.cantidad)) { setError('Completa todos los items.'); return; }
     try {
-      await api.post('/traslados', {
+      const res = await api.post('/traslados', {
         sucursal_origen_id: Number(origenId),
         sucursal_destino_id: Number(destinoId),
         observaciones,
         items: items.map((it) => ({ product_id: Number(it.product_id), cantidad: Number(it.cantidad), lote_id: it.lote_id ? Number(it.lote_id) : null })),
       });
-      toast.success('Traslado registrado correctamente.');
+      if (res.data.estado === 'pendiente') {
+        toast.success('Traslado enviado — queda pendiente de aprobación de Gerencia o un Supervisor. El stock se moverá recién cuando lo aprueben.');
+      } else {
+        toast.success('Traslado registrado correctamente.');
+      }
       setShowForm(false);
       load();
     } catch (err) {
@@ -128,11 +137,34 @@ export default function Traslados() {
     }
   }
 
+  async function handleAprobar(id) {
+    if (!window.confirm('¿Aprobar este traslado? El stock se moverá de inmediato a la sucursal de destino.')) return;
+    try {
+      await api.post(`/traslados/${id}/aprobar`);
+      toast.success('Traslado aprobado. El stock ya se movió.');
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'No se pudo aprobar el traslado.');
+    }
+  }
+
+  async function handleRechazar(id) {
+    const motivo = window.prompt('¿Por qué rechazas este traslado? (opcional)');
+    if (motivo === null) return;
+    try {
+      await api.post(`/traslados/${id}/rechazar`, { motivo });
+      toast.success('Traslado rechazado.');
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'No se pudo rechazar el traslado.');
+    }
+  }
+
   async function handleExportar(formato) {
     const header = ['Fecha', 'Código', 'Operación', 'Sucursal Origen', 'Emisor', 'Sucursal Destino', 'Estado', 'Observaciones'];
     const rows = traslados.map((t) => [
       t.created_at, t.codigo, 'Traslado', t.sucursal_origen_nombre, t.emisor_nombre || '',
-      t.sucursal_destino_nombre, t.estado, t.observaciones || '',
+      t.sucursal_destino_nombre, ESTADO_LABEL[t.estado] || t.estado, t.observaciones || '',
     ]);
     await exportarTabla(`traslados_${desde}_a_${hasta}`, header, rows, formato);
     toast.success(`Archivo ${formato === 'excel' ? 'Excel' : 'CSV'} exportado.`);
@@ -166,7 +198,9 @@ export default function Traslados() {
           <label>Estado</label>
           <select value={estado} onChange={(e) => setEstado(e.target.value)}>
             <option value="">Todos</option>
+            <option value="pendiente">Pendiente de aprobación</option>
             <option value="completado">Completado</option>
+            <option value="rechazado">Rechazado</option>
             <option value="anulado">Anulado</option>
           </select>
         </div>
@@ -194,10 +228,22 @@ export default function Traslados() {
                   <td>{t.sucursal_origen_nombre}</td>
                   <td>{t.emisor_nombre || '—'}</td>
                   <td>{t.sucursal_destino_nombre}</td>
-                  <td><span className={'badge ' + (t.estado === 'anulado' ? 'badge-critical' : 'badge-good')}>{t.estado === 'anulado' ? 'Anulado' : 'Completado'}</span></td>
-                  <td>{t.observaciones || '—'}</td>
+                  <td><span className={'badge ' + (ESTADO_BADGE[t.estado] || 'badge-neutral')}>{ESTADO_LABEL[t.estado] || t.estado}</span></td>
                   <td>
-                    {t.estado === 'completado' ? (
+                    {t.observaciones || '—'}
+                    {t.estado === 'rechazado' && t.motivo_rechazo && (
+                      <div style={{ fontSize: 11, color: 'var(--critical)' }}>Motivo: {t.motivo_rechazo}</div>
+                    )}
+                  </td>
+                  <td>
+                    {t.estado === 'pendiente' && user?.puede_aprobar_traslados ? (
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button className="btn-link" onClick={() => handleAprobar(t.id)}>Aprobar</button>
+                        <button className="btn-link danger" onClick={() => handleRechazar(t.id)}>Rechazar</button>
+                      </div>
+                    ) : t.estado === 'pendiente' ? (
+                      <span className="icon-link muted" title="Solo Gerencia o un Supervisor pueden aprobar traslados.">Esperando aprobación</span>
+                    ) : t.estado === 'completado' ? (
                       <button className="btn-link danger" onClick={() => handleAnular(t.id)}>Anular</button>
                     ) : (
                       <span className="icon-link muted">—</span>

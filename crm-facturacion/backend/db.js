@@ -242,7 +242,7 @@ CREATE TABLE IF NOT EXISTS traslados (
   fecha TEXT DEFAULT (datetime('now')),
   sucursal_origen_id INTEGER NOT NULL REFERENCES sucursales(id),
   sucursal_destino_id INTEGER NOT NULL REFERENCES sucursales(id),
-  estado TEXT NOT NULL DEFAULT 'completado',     -- completado | anulado
+  estado TEXT NOT NULL DEFAULT 'completado',     -- pendiente | completado | rechazado | anulado
   observaciones TEXT,
   created_by INTEGER REFERENCES users(id),
   created_at TEXT DEFAULT (datetime('now'))
@@ -783,6 +783,23 @@ CREATE TABLE IF NOT EXISTS metas_venta_sede (
   // (sin asignar) sigue usando pool/dotación como siempre.
   if (!metasVentaSedeColumns.includes('monto_individual')) {
     db.exec('ALTER TABLE metas_venta_sede ADD COLUMN monto_individual REAL');
+  }
+
+  // Traslados con aprobación: un vendedor de sede crea el traslado como
+  // "pendiente" (el stock NO se mueve todavía) y queda a la espera de que
+  // Gerencia o un Supervisor lo apruebe (mueve el stock recién ahí) o lo
+  // rechace (no mueve nada). Gerencia/Supervisor siguen creando traslados
+  // que se completan directo, como siempre.
+  const trasladosColumns = db.prepare("PRAGMA table_info(traslados)").all().map((c) => c.name);
+  const TRASLADOS_NEW_COLUMNS = [
+    ['aprobado_por', 'INTEGER REFERENCES users(id)'],
+    ['aprobado_at', 'TEXT'],
+    ['motivo_rechazo', 'TEXT'],
+  ];
+  for (const [nombre, tipo] of TRASLADOS_NEW_COLUMNS) {
+    if (!trasladosColumns.includes(nombre)) {
+      db.exec(`ALTER TABLE traslados ADD COLUMN ${nombre} ${tipo}`);
+    }
   }
 
   const empresaColumns = db.prepare("PRAGMA table_info(empresa_config)").all().map((c) => c.name);
