@@ -23,8 +23,11 @@ router.get('/', (req, res) => {
   const params = [];
   if (emisor) { sql += ' AND t.created_by = ?'; params.push(emisor); }
   if (estado) { sql += ' AND t.estado = ?'; params.push(estado); }
-  if (desde) { sql += " AND date(t.created_at) >= date(?)"; params.push(desde); }
-  if (hasta) { sql += " AND date(t.created_at) <= date(?)"; params.push(hasta); }
+  // created_at está en UTC; se resta 5h para comparar contra el "hoy" de
+  // Perú (ver hoyPeru()) — evita que un traslado de la noche desaparezca
+  // del filtro "hasta: hoy" hasta el día siguiente.
+  if (desde) { sql += " AND date(t.created_at, '-5 hours') >= date(?)"; params.push(desde); }
+  if (hasta) { sql += " AND date(t.created_at, '-5 hours') <= date(?)"; params.push(hasta); }
   sql += ' ORDER BY t.id DESC';
   const rows = db.prepare(sql).all(...params);
   res.json(rows);

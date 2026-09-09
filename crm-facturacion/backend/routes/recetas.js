@@ -18,8 +18,11 @@ router.get('/', (req, res) => {
   `;
   const params = [];
   if (q) { sql += ' AND (r.nombre LIKE ? OR p.nombre LIKE ?)'; params.push(`%${q}%`, `%${q}%`); }
-  if (desde) { sql += ' AND date(r.created_at) >= date(?)'; params.push(desde); }
-  if (hasta) { sql += ' AND date(r.created_at) <= date(?)'; params.push(hasta); }
+  // created_at está en UTC; se resta 5h para comparar contra el "hoy" de
+  // Perú (ver hoyPeru()) — evita que una receta creada de noche desaparezca
+  // del filtro "hasta: hoy" hasta el día siguiente.
+  if (desde) { sql += " AND date(r.created_at, '-5 hours') >= date(?)"; params.push(desde); }
+  if (hasta) { sql += " AND date(r.created_at, '-5 hours') <= date(?)"; params.push(hasta); }
   sql += ' ORDER BY r.created_at DESC';
   res.json(db.prepare(sql).all(...params));
 });

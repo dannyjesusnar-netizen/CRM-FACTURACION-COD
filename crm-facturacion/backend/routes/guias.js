@@ -31,8 +31,11 @@ router.get('/', (req, res) => {
   const params = [req.sucursalId];
   if (estado) { sql += ' AND g.estado = ?'; params.push(estado); }
   if (client_id) { sql += ' AND g.client_id = ?'; params.push(client_id); }
-  if (from) { sql += ' AND date(g.created_at) >= date(?)'; params.push(from); }
-  if (to) { sql += ' AND date(g.created_at) <= date(?)'; params.push(to); }
+  // created_at está en UTC; se resta 5h para comparar contra el "hoy" de
+  // Perú (ver hoyPeru()) — evita que una guía de la noche desaparezca del
+  // filtro "hasta: hoy" hasta el día siguiente.
+  if (from) { sql += " AND date(g.created_at, '-5 hours') >= date(?)"; params.push(from); }
+  if (to) { sql += " AND date(g.created_at, '-5 hours') <= date(?)"; params.push(to); }
   if (q) {
     sql += ' AND (c.nombre LIKE ? OR CAST(g.numero AS TEXT) LIKE ?)';
     params.push(`%${q}%`, `%${q}%`);
