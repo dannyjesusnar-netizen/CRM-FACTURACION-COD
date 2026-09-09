@@ -3,6 +3,7 @@ const db = require('../db');
 const { requireAuth, resolveSucursal } = require('../middleware/auth');
 const { requirePermiso, requireAccion } = require('../utils/permisos');
 const { hoyPeru } = require('../utils/fechas');
+const { conDetalle, round2 } = require('../utils/promociones');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -11,44 +12,10 @@ router.use(resolveSucursal);
 const TIPOS = ['oferta', 'combo'];
 const TIPOS_DESCUENTO = ['precio_fijo', 'porcentaje'];
 
-function round2(n) {
-  return Math.round((n + Number.EPSILON) * 100) / 100;
-}
-
 function validarFechas(fecha_inicio, fecha_fin) {
   if (!fecha_inicio || !fecha_fin) return 'fecha_inicio y fecha_fin son requeridas.';
   if (fecha_fin < fecha_inicio) return 'La fecha de fin no puede ser anterior a la fecha de inicio.';
   return null;
-}
-
-// El % de descuento efectivo se calcula siempre contra el precio ACTUAL del
-// producto (no uno guardado al crear la promoción), para que una oferta de
-// tipo "precio_fijo" siga dando el mismo precio final aunque el precio base
-// del producto cambie después — evita descuadres si se reajustan precios
-// mientras la promoción sigue vigente. Se calcula una sola vez aquí y se
-// expone como descuento_pct_aplicado, para que el frontend no tenga que
-// repetir esta aritmética (ni pueda desincronizarse de ella).
-function conDetalle(promo) {
-  if (promo.tipo === 'oferta') {
-    const producto = db.prepare(
-      'SELECT id, nombre, codigo, precio_unitario, unidad, afectacion_igv, precio_compra FROM products WHERE id = ?'
-    ).get(promo.product_id);
-    let descuentoAplicado = promo.descuento_pct || 0;
-    if (promo.tipo_descuento === 'precio_fijo' && producto?.precio_unitario > 0) {
-      descuentoAplicado = round2(Math.max(0, Math.min(100, (1 - promo.precio_promocional / producto.precio_unitario) * 100)));
-    }
-    return { ...promo, producto, descuento_pct_aplicado: descuentoAplicado };
-  }
-  const items = db.prepare(
-    `SELECT pi.product_id, pi.cantidad, p.nombre, p.codigo, p.precio_unitario, p.unidad, p.afectacion_igv, p.precio_compra
-     FROM promocion_items pi JOIN products p ON p.id = pi.product_id
-     WHERE pi.promocion_id = ? ORDER BY pi.id ASC`
-  ).all(promo.id);
-  const totalTeorico = round2(items.reduce((s, it) => s + it.cantidad * it.precio_unitario, 0));
-  const descuentoAplicado = totalTeorico > 0
-    ? round2(Math.max(0, Math.min(100, (1 - promo.precio_combo / totalTeorico) * 100)))
-    : 0;
-  return { ...promo, items, total_teorico: totalTeorico, descuento_pct_aplicado: descuentoAplicado };
 }
 
 // GET /api/promociones — lista completa para la pantalla de gestión (Inventario).

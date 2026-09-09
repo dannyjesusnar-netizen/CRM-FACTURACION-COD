@@ -7,6 +7,7 @@ const { emitirComprobante, estaConfigurado } = require('../utils/facturacionElec
 const { requirePermiso, requireAccion, requireAlgunPermiso, tieneAccion, tienePermiso, requireGerenciaOSupervisor } = require('../utils/permisos');
 const { siguienteNumero } = require('../utils/series');
 const { resolverDescuentoPct } = require('../utils/descuentos');
+const { resolverDescuentoItemPct } = require('../utils/promociones');
 const { hoyPeru } = require('../utils/fechas');
 
 const router = express.Router();
@@ -342,10 +343,16 @@ router.post('/', async (req, res) => {
   const tasaIgv = igvRate();
   let totalBruto = 0;
   let igvBruto = 0;
-  const preparedItems = items.map((it) => {
+  // El % de descuento de una línea nunca se acepta a mano (ni de Gerencia):
+  // solo puede venir de una Oferta/Combo vigente en Promociones. Se
+  // recalcula aquí a partir de promocion_id, ignorando lo que mande el
+  // cliente — ver utils/promociones.js::resolverDescuentoItemPct.
+  let preparedItems;
+  try {
+    preparedItems = items.map((it) => {
     const cantidad = Number(it.cantidad || 1);
     const precio_unitario = Number(it.precio_unitario || 0);
-    const descuentoPct = Math.min(100, Math.max(0, Number(it.descuento_pct || 0)));
+    const descuentoPct = resolverDescuentoItemPct(it.promocion_id, req.sucursalId, it.product_id);
     const lineBruta = cantidad * precio_unitario;
     const lineNeta = round2(lineBruta - lineBruta * (descuentoPct / 100));
 
@@ -367,7 +374,11 @@ router.post('/', async (req, res) => {
       igv_item: igvLinea,
       promocion_id: it.promocion_id || null,
     };
-  });
+    });
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ error: err.message });
+    throw err;
+  }
 
   totalBruto = round2(totalBruto);
   igvBruto = round2(igvBruto);
