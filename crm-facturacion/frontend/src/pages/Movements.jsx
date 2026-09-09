@@ -62,6 +62,8 @@ export default function Movements() {
   const toast = useToast();
   const navigate = useNavigate();
   const [movements, setMovements] = useState([]);
+  const [resumenProductos, setResumenProductos] = useState([]);
+  const [verResumenPorProducto, setVerResumenPorProducto] = useState(false);
   const [products, setProducts] = useState([]);
   const [q, setQ] = useState('');
   const [tipoFiltro, setTipoFiltro] = useState('');
@@ -97,10 +99,14 @@ export default function Movements() {
     if (canalFiltro) params.canal = canalFiltro;
     if (desde) params.from = desde;
     if (hasta) params.to = hasta;
-    api.get('/movements', { params }).then((res) => setMovements(res.data));
+    if (verResumenPorProducto) {
+      api.get('/movements/resumen-por-producto', { params }).then((res) => setResumenProductos(res.data));
+    } else {
+      api.get('/movements', { params }).then((res) => setMovements(res.data));
+    }
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [verResumenPorProducto]);
   useEffect(() => { api.get('/products').then((res) => setProducts(res.data)); }, []);
   useEffect(() => { api.get('/movements/canales').then((res) => setCanales(res.data)); }, []);
 
@@ -110,6 +116,15 @@ export default function Movements() {
   }
 
   async function handleExportar(formato) {
+    if (verResumenPorProducto) {
+      const header = ['Código', 'Producto', 'U.M.', 'Cantidad total', 'N.º de movimientos'];
+      const rows = resumenProductos.map((r) => [
+        r.producto_codigo, r.producto_nombre, r.producto_unidad, r.cantidad_total, r.total_movimientos,
+      ]);
+      await exportarTabla(`resumen_movimientos_${desde}_a_${hasta}`, header, rows, formato);
+      toast.success(`Archivo ${formato === 'excel' ? 'Excel' : 'CSV'} exportado.`);
+      return;
+    }
     const header = ['Fecha', 'Documento', 'Producto', 'Tipo', 'Canal', 'Cliente/Proveedor', 'Observación', 'Cantidad', 'Stock resultante', 'Usuario'];
     const rows = movements.map((m) => [
       m.created_at, m.referencia || '', `${m.producto_codigo} - ${m.producto_nombre}`,
@@ -324,45 +339,83 @@ export default function Movements() {
           <label>Hasta</label>
           <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} />
         </div>
+        <label className="filter-field" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <input type="checkbox" checked={verResumenPorProducto} onChange={(e) => setVerResumenPorProducto(e.target.checked)} />
+          Ver resumen por producto
+        </label>
         <div className="filter-actions">
           <button type="submit" className="btn-secondary">Buscar</button>
           <ExportButton onExport={handleExportar} />
         </div>
       </form>
 
-      <div className="panel">
-        <div className="table-scroll">
-          <table className="data-table compact">
-            <thead>
-              <tr>
-                <th>Fecha</th><th>Documento</th><th>Producto</th><th>Tipo</th><th>Canal</th>
-                <th>Cliente/Proveedor</th><th>Observación</th>
-                <th style={{ textAlign: 'right' }}>Cantidad</th><th style={{ textAlign: 'right' }}>Stock resultante</th>
-                <th>Usuario</th>
-              </tr>
-            </thead>
-            <tbody>
-              {movements.map((m) => (
-                <tr key={m.id}>
-                  <td>{m.created_at}</td>
-                  <td>{m.referencia || '—'}</td>
-                  <td>{m.producto_codigo} — {m.producto_nombre}</td>
-                  <td><span className={'badge ' + (TIPO_BADGE[m.tipo] || 'badge-neutral')}>{TIPO_LABEL[m.tipo] || m.tipo}</span></td>
-                  <td>{m.canal || '—'}</td>
-                  <td>{m.cliente_proveedor || '—'}</td>
-                  <td>{m.motivo || '—'}</td>
-                  <td style={{ textAlign: 'right' }}>{m.cantidad > 0 ? `+${m.cantidad}` : m.cantidad}</td>
-                  <td style={{ textAlign: 'right' }}>{m.stock_resultante ?? '—'}</td>
-                  <td>{m.usuario_nombre || '—'}</td>
+      {verResumenPorProducto ? (
+        <div className="panel">
+          <p className="caja-row-auto" style={{ marginTop: 0 }}>
+            Suma de cantidades por producto según los filtros de arriba (positivo = ingresos, negativo = salidas).
+            Ej: para saber cuántas unidades de cada producto salieron por Canje, filtra Canal = Canje.
+          </p>
+          <div className="table-scroll">
+            <table className="data-table compact">
+              <thead>
+                <tr>
+                  <th>Código</th><th>Producto</th><th>U.M.</th>
+                  <th style={{ textAlign: 'right' }}>Cantidad total</th>
+                  <th style={{ textAlign: 'right' }}>N.º de movimientos</th>
                 </tr>
-              ))}
-              {movements.length === 0 && (
-                <tr><td colSpan={10} className="empty-row">No hay movimientos registrados todavía.</td></tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {resumenProductos.map((r) => (
+                  <tr key={r.product_id}>
+                    <td>{r.producto_codigo}</td>
+                    <td>{r.producto_nombre}</td>
+                    <td>{r.producto_unidad}</td>
+                    <td style={{ textAlign: 'right' }}>{r.cantidad_total > 0 ? `+${r.cantidad_total}` : r.cantidad_total}</td>
+                    <td style={{ textAlign: 'right' }}>{r.total_movimientos}</td>
+                  </tr>
+                ))}
+                {resumenProductos.length === 0 && (
+                  <tr><td colSpan={5} className="empty-row">No hay movimientos con estos filtros.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="panel">
+          <div className="table-scroll">
+            <table className="data-table compact">
+              <thead>
+                <tr>
+                  <th>Fecha</th><th>Documento</th><th>Producto</th><th>Tipo</th><th>Canal</th>
+                  <th>Cliente/Proveedor</th><th>Observación</th>
+                  <th style={{ textAlign: 'right' }}>Cantidad</th><th style={{ textAlign: 'right' }}>Stock resultante</th>
+                  <th>Usuario</th>
+                </tr>
+              </thead>
+              <tbody>
+                {movements.map((m) => (
+                  <tr key={m.id}>
+                    <td>{m.created_at}</td>
+                    <td>{m.referencia || '—'}</td>
+                    <td>{m.producto_codigo} — {m.producto_nombre}</td>
+                    <td><span className={'badge ' + (TIPO_BADGE[m.tipo] || 'badge-neutral')}>{TIPO_LABEL[m.tipo] || m.tipo}</span></td>
+                    <td>{m.canal || '—'}</td>
+                    <td>{m.cliente_proveedor || '—'}</td>
+                    <td>{m.motivo || '—'}</td>
+                    <td style={{ textAlign: 'right' }}>{m.cantidad > 0 ? `+${m.cantidad}` : m.cantidad}</td>
+                    <td style={{ textAlign: 'right' }}>{m.stock_resultante ?? '—'}</td>
+                    <td>{m.usuario_nombre || '—'}</td>
+                  </tr>
+                ))}
+                {movements.length === 0 && (
+                  <tr><td colSpan={10} className="empty-row">No hay movimientos registrados todavía.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {showConteo && (
         <div className="modal-overlay" onClick={() => setShowConteo(false)}>
