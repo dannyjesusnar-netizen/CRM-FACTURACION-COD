@@ -69,7 +69,8 @@ router.get('/', (req, res) => {
   const { product_id, tipo, canal, from, to, q } = req.query;
   let sql = `
     SELECT m.*, p.nombre AS producto_nombre, p.codigo AS producto_codigo, u.full_name AS usuario_nombre,
-           COALESCE(${CLIENTE_PROVEEDOR_SUBQUERY}) AS cliente_proveedor
+           COALESCE(${CLIENTE_PROVEEDOR_SUBQUERY}) AS cliente_proveedor,
+           COALESCE((SELECT ss.stock FROM sucursal_stock ss WHERE ss.product_id = m.product_id AND ss.sucursal_id = m.sucursal_id), 0) AS stock_actual
     FROM stock_movements m
     JOIN products p ON p.id = m.product_id
     LEFT JOIN users u ON u.id = m.created_by
