@@ -125,8 +125,8 @@ router.post('/carga-masiva', (req, res) => {
       errores.push({ dni: dni || '(vacío)', error: 'dni, nombres y apellidos son requeridos.' });
       continue;
     }
-    if (!/^\d{8}$/.test(dni)) {
-      errores.push({ dni, error: 'El DNI debe tener 8 dígitos.' });
+    if (!/^\d{8,9}$/.test(dni)) {
+      errores.push({ dni, error: 'El DNI debe tener 8 dígitos, o 9 si es Carnet de Extranjería.' });
       continue;
     }
     const nivel = nivelARolYCustomRole(r.nivel);
@@ -141,7 +141,10 @@ router.post('/carga-masiva', (req, res) => {
     const telefono = (r.telefono || '').toString().trim() || null;
     const fullName = `${nombres} ${apellidos}`.trim();
 
-    const existing = db.prepare('SELECT * FROM users WHERE dni = ?').get(dni);
+    // Solo se actualiza un registro EXISTENTE si sigue activo — si el DNI
+    // pertenece a alguien desactivado (dado de baja de un cargo anterior),
+    // se crea un empleado nuevo en vez de reescribir el historial del viejo.
+    const existing = db.prepare('SELECT * FROM users WHERE dni = ? AND activo = 1').get(dni);
     try {
       if (existing) {
         db.prepare(
@@ -182,8 +185,8 @@ router.post('/', (req, res) => {
   if (!username || !password || !nombres || !apellidos || !dni) {
     return res.status(400).json({ error: 'Usuario, contraseña, nombres, apellidos y DNI son requeridos.' });
   }
-  if (!/^\d{8}$/.test(dni)) {
-    return res.status(400).json({ error: 'El DNI debe tener 8 dígitos.' });
+  if (!/^\d{8,9}$/.test(dni)) {
+    return res.status(400).json({ error: 'El DNI debe tener 8 dígitos, o 9 si es Carnet de Extranjería.' });
   }
   const pwdErr = passwordError(password);
   if (pwdErr) {
@@ -192,8 +195,12 @@ router.post('/', (req, res) => {
   if (!ROLES.includes(role)) {
     return res.status(400).json({ error: 'role inválido. Use gerencia o vendedor.' });
   }
-  if (db.prepare('SELECT id FROM users WHERE dni = ?').get(dni)) {
-    return res.status(409).json({ error: 'Ya existe un usuario con ese DNI.' });
+  // Un DNI que ya pertenece a un empleado DESACTIVADO no bloquea el alta —
+  // puede volver a ser ingresado con otro cargo (ej. dejó de ser Entrenador
+  // y ahora se lo contrata como Vendedor). El registro anterior queda igual,
+  // como historial.
+  if (db.prepare('SELECT id FROM users WHERE dni = ? AND activo = 1').get(dni)) {
+    return res.status(409).json({ error: 'Ya existe un usuario activo con ese DNI.' });
   }
   const sucursal = sucursalIdOrError(sucursal_id);
   if (sucursal.error) return res.status(400).json({ error: sucursal.error });
@@ -226,15 +233,15 @@ router.put('/:id', (req, res) => {
   if (role && !ROLES.includes(role)) {
     return res.status(400).json({ error: 'role inválido. Use gerencia o vendedor.' });
   }
-  if (dni && !/^\d{8}$/.test(dni)) {
-    return res.status(400).json({ error: 'El DNI debe tener 8 dígitos.' });
+  if (dni && !/^\d{8,9}$/.test(dni)) {
+    return res.status(400).json({ error: 'El DNI debe tener 8 dígitos, o 9 si es Carnet de Extranjería.' });
   }
   if (password) {
     const pwdErr = passwordError(password);
     if (pwdErr) return res.status(400).json({ error: pwdErr });
   }
-  if (dni && dni !== existing.dni && db.prepare('SELECT id FROM users WHERE dni = ? AND id != ?').get(dni, req.params.id)) {
-    return res.status(409).json({ error: 'Ya existe un usuario con ese DNI.' });
+  if (dni && dni !== existing.dni && db.prepare('SELECT id FROM users WHERE dni = ? AND id != ? AND activo = 1').get(dni, req.params.id)) {
+    return res.status(409).json({ error: 'Ya existe un usuario activo con ese DNI.' });
   }
   let sucursalId = existing.sucursal_id;
   if (sucursal_id !== undefined) {
@@ -345,14 +352,17 @@ router.post('/operativos', (req, res) => {
   if (!nombres || !apellidos || !dni) {
     return res.status(400).json({ error: 'Nombres, apellidos y DNI son requeridos.' });
   }
-  if (!/^\d{8}$/.test(dni)) {
-    return res.status(400).json({ error: 'El DNI debe tener 8 dígitos.' });
+  if (!/^\d{8,9}$/.test(dni)) {
+    return res.status(400).json({ error: 'El DNI debe tener 8 dígitos, o 9 si es Carnet de Extranjería.' });
   }
   if (!CATEGORIAS_OPERATIVO.includes(categoria_staff)) {
     return res.status(400).json({ error: 'categoria_staff inválida. Use trainer o supervisor.' });
   }
-  if (db.prepare('SELECT id FROM users WHERE dni = ?').get(dni)) {
-    return res.status(409).json({ error: 'Ya existe un empleado (con o sin acceso al sistema) con ese DNI.' });
+  // Igual que en POST /: un DNI que solo pertenece a un empleado
+  // DESACTIVADO no bloquea el alta — puede volver a ingresarse con otro
+  // cargo (ej. dejó de ser Trainer y ahora se lo registra como Supervisor).
+  if (db.prepare('SELECT id FROM users WHERE dni = ? AND activo = 1').get(dni)) {
+    return res.status(409).json({ error: 'Ya existe un empleado activo (con o sin acceso al sistema) con ese DNI.' });
   }
   const sucursal = sucursalIdOrError(sucursal_id);
   if (sucursal.error) return res.status(400).json({ error: sucursal.error });
@@ -389,8 +399,8 @@ router.post('/operativos/carga-masiva', (req, res) => {
       errores.push({ dni: dni || '(vacío)', error: 'dni, nombres y apellidos son requeridos.' });
       continue;
     }
-    if (!/^\d{8}$/.test(dni)) {
-      errores.push({ dni, error: 'El DNI debe tener 8 dígitos.' });
+    if (!/^\d{8,9}$/.test(dni)) {
+      errores.push({ dni, error: 'El DNI debe tener 8 dígitos, o 9 si es Carnet de Extranjería.' });
       continue;
     }
     const categoriaStaff = (r.categoria_staff || '').toString().trim();
@@ -404,9 +414,12 @@ router.post('/operativos/carga-masiva', (req, res) => {
     if (turnoResult.error) { errores.push({ dni, error: turnoResult.error }); continue; }
     const fullName = `${nombres} ${apellidos}`.trim();
 
-    const existing = db.prepare('SELECT * FROM users WHERE dni = ?').get(dni);
+    // Mismo criterio que en /operativos: solo se actualiza un registro
+    // existente si sigue activo — si el DNI pertenece a alguien
+    // desactivado, se crea uno nuevo en vez de reescribir el historial.
+    const existing = db.prepare('SELECT * FROM users WHERE dni = ? AND activo = 1').get(dni);
     if (existing && existing.puede_iniciar_sesion) {
-      errores.push({ dni, error: 'Ese DNI ya pertenece a un empleado con acceso al sistema — edítalo desde Empleados, no desde esta carga.' });
+      errores.push({ dni, error: 'Ese DNI ya pertenece a un empleado activo con acceso al sistema — edítalo desde Empleados, no desde esta carga.' });
       continue;
     }
     try {

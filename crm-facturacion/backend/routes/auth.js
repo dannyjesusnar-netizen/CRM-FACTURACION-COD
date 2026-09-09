@@ -83,7 +83,10 @@ function loginConRuc(req, res, ruc, dni, password) {
         return res.status(401).json({ error: 'Credenciales incorrectas.' });
       }
     }
-    const user = db.prepare('SELECT * FROM users WHERE dni = ?').get(dni);
+    // Un mismo DNI puede pertenecer a más de un registro si el anterior quedó
+    // desactivado (ver routes/users.js) — se prioriza el activo más reciente
+    // para no autenticar por error contra una cuenta dada de baja.
+    const user = db.prepare('SELECT * FROM users WHERE dni = ? ORDER BY activo DESC, id DESC').get(dni);
     if (!user) {
       return res.status(401).json({ error: 'Credenciales incorrectas.' });
     }
@@ -127,7 +130,9 @@ function loginSoloConDni(req, res, dni, password) {
     if (!tenantDb) continue;
 
     const encontrado = db.runWithDb(tenantDb, () => {
-      const user = db.prepare('SELECT * FROM users WHERE dni = ?').get(dni);
+      // Mismo criterio que loginConRuc: si el DNI tiene más de un registro
+      // (uno desactivado, uno activo), se prioriza el activo.
+      const user = db.prepare('SELECT * FROM users WHERE dni = ? ORDER BY activo DESC, id DESC').get(dni);
       if (!user || !user.puede_iniciar_sesion || !bcrypt.compareSync(password, user.password_hash)) return null;
       return user;
     });
@@ -183,8 +188,8 @@ router.post('/register', async (req, res) => {
   if (!/^\d{11}$/.test(ruc)) {
     return res.status(400).json({ error: 'El RUC debe tener 11 dígitos.' });
   }
-  if (!/^\d{8}$/.test(dni)) {
-    return res.status(400).json({ error: 'El DNI debe tener 8 dígitos.' });
+  if (!/^\d{8,9}$/.test(dni)) {
+    return res.status(400).json({ error: 'El DNI debe tener 8 dígitos, o 9 si es Carnet de Extranjería.' });
   }
   const pwdErr = passwordError(password);
   if (pwdErr) {

@@ -1814,7 +1814,7 @@ export default function Configuracion() {
                       <td>{u.apellidos || ''}</td>
                       <td>{u.role === 'gerencia' ? 'Gerencia (administrador)' : (u.rol_personalizado_nombre || 'Sin rol asignado')}</td>
                       <td>{u.sucursal_nombre || 'Todas las sedes'}</td>
-                      <td>{u.dni ? `DNI : ${u.dni}` : '—'}</td>
+                      <td>{u.dni ? `Doc: ${u.dni}` : '—'}</td>
                       <td>{u.email || '—'}</td>
                       <td>{u.telefono || '—'}</td>
                       <td>
@@ -1876,7 +1876,7 @@ export default function Configuracion() {
                       <td>{o.apellidos || ''}</td>
                       <td>{CATEGORIA_STAFF_LABEL[o.categoria_staff] || o.categoria_staff}</td>
                       <td>{o.sucursal_nombre || 'Todas las sedes'}</td>
-                      <td>{o.dni ? `DNI : ${o.dni}` : '—'}</td>
+                      <td>{o.dni ? `Doc: ${o.dni}` : '—'}</td>
                       <td>{o.turno === 'manana' ? 'Mañana' : o.turno === 'tarde' ? 'Tarde' : '—'}</td>
                       <td>
                         <span className={'badge ' + (o.activo ? 'badge-good' : 'badge-critical')}>
@@ -2389,8 +2389,8 @@ export default function Configuracion() {
               </div>
               <label>Usuario (identificador interno) *</label>
               <input required disabled={!!editingId} value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} />
-              <label>DNI * (8 dígitos) — se usa para iniciar sesión junto con el RUC de la empresa</label>
-              <input required value={form.dni} onChange={(e) => setForm({ ...form, dni: e.target.value })} maxLength={8} />
+              <label>DNI / Carnet de Extranjería * (8 o 9 dígitos) — se usa para iniciar sesión junto con el RUC de la empresa</label>
+              <input required value={form.dni} onChange={(e) => setForm({ ...form, dni: e.target.value })} maxLength={9} />
               <div className="form-row">
                 <div>
                   <label>Teléfono</label>
@@ -2471,8 +2471,8 @@ export default function Configuracion() {
                   <input required value={operativoForm.apellidos} onChange={(e) => setOperativoForm({ ...operativoForm, apellidos: e.target.value })} />
                 </div>
               </div>
-              <label>DNI * (8 dígitos)</label>
-              <input required value={operativoForm.dni} onChange={(e) => setOperativoForm({ ...operativoForm, dni: e.target.value })} maxLength={8} />
+              <label>DNI / Carnet de Extranjería * (8 o 9 dígitos)</label>
+              <input required value={operativoForm.dni} onChange={(e) => setOperativoForm({ ...operativoForm, dni: e.target.value })} maxLength={9} />
               <div className="form-row">
                 <div>
                   <label>Categoría *</label>
@@ -2633,8 +2633,8 @@ export default function Configuracion() {
                   <input required value={operativoForm.apellidos} onChange={(e) => setOperativoForm({ ...operativoForm, apellidos: e.target.value })} />
                 </div>
               </div>
-              <label>DNI * (8 dígitos)</label>
-              <input required value={operativoForm.dni} onChange={(e) => setOperativoForm({ ...operativoForm, dni: e.target.value })} maxLength={8} />
+              <label>DNI / Carnet de Extranjería * (8 o 9 dígitos)</label>
+              <input required value={operativoForm.dni} onChange={(e) => setOperativoForm({ ...operativoForm, dni: e.target.value })} maxLength={9} />
               <div className="form-row">
                 <div>
                   <label>Categoría *</label>

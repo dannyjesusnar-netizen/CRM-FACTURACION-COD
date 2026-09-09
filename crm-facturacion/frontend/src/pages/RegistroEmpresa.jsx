@@ -111,8 +111,8 @@ export default function RegistroEmpresa() {
               <input value={form.apellidos} onChange={set('apellidos')} required />
             </div>
           </div>
-          <label>DNI</label>
-          <input value={form.dni} onChange={set('dni')} maxLength={8} required />
+          <label>DNI / Carnet de Extranjería</label>
+          <input value={form.dni} onChange={set('dni')} maxLength={9} required />
           <div className="form-row">
             <div>
               <label>Contraseña</label>

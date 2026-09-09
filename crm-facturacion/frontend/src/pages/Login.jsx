@@ -197,8 +197,8 @@ export default function Login() {
           ) : (
             <form onSubmit={handleSubmit}>
               <div className="auth-field">
-                <label>DNI</label>
-                <input value={dni} onChange={(e) => setDni(e.target.value)} maxLength={8} autoFocus />
+                <label>DNI / Carnet de Extranjería</label>
+                <input value={dni} onChange={(e) => setDni(e.target.value)} maxLength={9} autoFocus />
               </div>
               <div className="auth-field auth-field-password">
                 <label>Contraseña</label>
