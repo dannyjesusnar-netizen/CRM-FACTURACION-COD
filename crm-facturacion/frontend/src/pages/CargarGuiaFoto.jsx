@@ -55,11 +55,18 @@ export default function CargarGuiaFoto() {
   const [textoDetectado, setTextoDetectado] = useState('');
   const [mostrarTexto, setMostrarTexto] = useState(false);
   const [creandoProductoFilaId, setCreandoProductoFilaId] = useState(null);
-  const [formNuevoProducto, setFormNuevoProducto] = useState({ codigo: '', nombre: '', unidad: 'NIU', precio_unitario: '' });
+  const [formNuevoProducto, setFormNuevoProducto] = useState({
+    codigo: '', nombre: '', unidad: 'NIU', precio_unitario: '',
+    categoria: 'General', precio_compra: '', codigo_barras: '', proveedor_id: '',
+  });
   const [guardandoProducto, setGuardandoProducto] = useState(false);
   const [proveedorDetectado, setProveedorDetectado] = useState(null);
+  const [suppliers, setSuppliers] = useState([]);
+  const [categorias, setCategorias] = useState([]);
 
   useEffect(() => { api.get('/products').then((res) => setProducts(res.data)); }, []);
+  useEffect(() => { api.get('/suppliers').then((res) => setSuppliers(res.data)); }, []);
+  useEffect(() => { api.get('/products/categorias').then((res) => setCategorias(res.data)); }, []);
 
   const productosDisponibles = products.filter((p) => p.tipo === 'producto');
 
@@ -205,7 +212,11 @@ export default function CargarGuiaFoto() {
   }
 
   function abrirCrearProducto(fila) {
-    setFormNuevoProducto({ codigo: '', nombre: fila.descripcion_detectada || '', unidad: fila.unidad || 'NIU', precio_unitario: '' });
+    setFormNuevoProducto({
+      codigo: '', nombre: fila.descripcion_detectada || '', unidad: fila.unidad || 'NIU', precio_unitario: '',
+      categoria: 'General', precio_compra: '', codigo_barras: '',
+      proveedor_id: proveedorDetectado?.id ? String(proveedorDetectado.id) : '',
+    });
     setCreandoProductoFilaId(fila.id);
   }
 
@@ -214,7 +225,7 @@ export default function CargarGuiaFoto() {
   // creado, igual que a cualquier otro — no hace falta duplicar el dato.
   async function handleCrearProducto(e) {
     e.preventDefault();
-    const { codigo, nombre, unidad, precio_unitario } = formNuevoProducto;
+    const { codigo, nombre, unidad, precio_unitario, categoria, precio_compra, codigo_barras, proveedor_id } = formNuevoProducto;
     if (!codigo.trim() || !nombre.trim() || !(Number(precio_unitario) > 0)) {
       toast.error('Código, nombre y un precio de venta mayor a 0 son requeridos.');
       return;
@@ -223,7 +234,10 @@ export default function CargarGuiaFoto() {
     try {
       const res = await api.post('/products', {
         codigo: codigo.trim(), nombre: nombre.trim(), unidad, precio_unitario: Number(precio_unitario),
-        proveedor_id: proveedorDetectado?.id || undefined,
+        categoria: categoria.trim() || 'General',
+        precio_compra: precio_compra === '' ? undefined : Number(precio_compra),
+        codigo_barras: codigo_barras.trim() || undefined,
+        proveedor_id: proveedor_id || undefined,
       });
       setProducts((prev) => [...prev, res.data]);
       setFilas((prev) => prev.map((f) => (f.id === creandoProductoFilaId ? { ...f, product_id: String(res.data.id) } : f)));
@@ -388,6 +402,39 @@ export default function CargarGuiaFoto() {
                   <input required type="number" step="0.01" min="0.01" value={formNuevoProducto.precio_unitario} onChange={(e) => setFormNuevoProducto((f) => ({ ...f, precio_unitario: e.target.value }))} />
                 </div>
               </div>
+              <div className="form-row" style={{ marginTop: 10 }}>
+                <div>
+                  <label>Categoría</label>
+                  <input list="categorias-list-guia" value={formNuevoProducto.categoria} onChange={(e) => setFormNuevoProducto((f) => ({ ...f, categoria: e.target.value }))} />
+                  <datalist id="categorias-list-guia">
+                    {categorias.map((c) => <option key={c} value={c} />)}
+                  </datalist>
+                </div>
+                <div>
+                  <label>Precio de compra S/ (opcional)</label>
+                  <input type="number" step="0.01" min="0" value={formNuevoProducto.precio_compra} onChange={(e) => setFormNuevoProducto((f) => ({ ...f, precio_compra: e.target.value }))} />
+                </div>
+              </div>
+              <div className="form-row" style={{ marginTop: 10 }}>
+                <div>
+                  <label>Proveedor</label>
+                  <select value={formNuevoProducto.proveedor_id} onChange={(e) => setFormNuevoProducto((f) => ({ ...f, proveedor_id: e.target.value }))}>
+                    <option value="">Sin proveedor</option>
+                    {suppliers.map((s) => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label>Código de barras (opcional)</label>
+                  <input value={formNuevoProducto.codigo_barras} onChange={(e) => setFormNuevoProducto((f) => ({ ...f, codigo_barras: e.target.value }))} />
+                </div>
+              </div>
+              {proveedorDetectado && !proveedorDetectado.id && (
+                <p style={{ fontSize: 11, color: 'var(--ink-muted)', marginTop: 8 }}>
+                  El proveedor de esta guía ({proveedorDetectado.razon_social || proveedorDetectado.ruc}) no está registrado en
+                  Proveedores todavía — puedes registrarlo desde Compras y luego editarlo aquí, o crear el producto sin
+                  proveedor por ahora.
+                </p>
+              )}
               <p style={{ fontSize: 11, color: 'var(--ink-muted)', marginTop: 8 }}>
                 El stock se carga solo al confirmar "Cargar al inventario" — no hace falta indicarlo acá.
               </p>
