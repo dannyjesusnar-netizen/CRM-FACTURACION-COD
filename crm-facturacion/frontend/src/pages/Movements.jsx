@@ -125,10 +125,10 @@ export default function Movements() {
       toast.success(`Archivo ${formato === 'excel' ? 'Excel' : 'CSV'} exportado.`);
       return;
     }
-    const header = ['Fecha', 'Documento', 'Producto', 'Tipo', 'Canal', 'Cliente/Proveedor', 'Observación', 'Cantidad', 'Stock resultante', 'Usuario'];
+    const header = ['Fecha', 'Documento', 'Producto', 'Tipo', 'Canal', 'Cliente/Proveedor', 'Observación', 'Cantidad', 'Stock resultante', 'Stock actual', 'Usuario'];
     const rows = movements.map((m) => [
       m.created_at, m.referencia || '', `${m.producto_codigo} - ${m.producto_nombre}`,
-      TIPO_LABEL[m.tipo] || m.tipo, m.canal || '', m.cliente_proveedor || '', m.motivo || '', m.cantidad, m.stock_resultante ?? '', m.usuario_nombre || '',
+      TIPO_LABEL[m.tipo] || m.tipo, m.canal || '', m.cliente_proveedor || '', m.motivo || '', m.cantidad, m.stock_resultante ?? '', m.stock_actual ?? '', m.usuario_nombre || '',
     ]);
     await exportarTabla(`movimientos_${desde}_a_${hasta}`, header, rows, formato);
     toast.success(`Archivo ${formato === 'excel' ? 'Excel' : 'CSV'} exportado.`);
@@ -390,6 +390,7 @@ export default function Movements() {
                   <th>Fecha</th><th>Documento</th><th>Producto</th><th>Tipo</th><th>Canal</th>
                   <th>Cliente/Proveedor</th><th>Observación</th>
                   <th style={{ textAlign: 'right' }}>Cantidad</th><th style={{ textAlign: 'right' }}>Stock resultante</th>
+                  <th style={{ textAlign: 'right' }}>Stock actual</th>
                   <th>Usuario</th>
                 </tr>
               </thead>
@@ -405,11 +406,12 @@ export default function Movements() {
                     <td>{m.motivo || '—'}</td>
                     <td style={{ textAlign: 'right' }}>{m.cantidad > 0 ? `+${m.cantidad}` : m.cantidad}</td>
                     <td style={{ textAlign: 'right' }}>{m.stock_resultante ?? '—'}</td>
+                    <td style={{ textAlign: 'right' }}>{m.stock_actual ?? '—'}</td>
                     <td>{m.usuario_nombre || '—'}</td>
                   </tr>
                 ))}
                 {movements.length === 0 && (
-                  <tr><td colSpan={10} className="empty-row">No hay movimientos registrados todavía.</td></tr>
+                  <tr><td colSpan={11} className="empty-row">No hay movimientos registrados todavía.</td></tr>
                 )}
               </tbody>
             </table>
