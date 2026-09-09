@@ -141,6 +141,7 @@ export default function Clients() {
                   <select value={form.tipo_documento} onChange={(e) => setForm({ ...form, tipo_documento: e.target.value })}>
                     <option value="DNI">DNI</option>
                     <option value="RUC">RUC</option>
+                    <option value="CE">Carnet de Extranjería</option>
                   </select>
                 </div>
                 <div>

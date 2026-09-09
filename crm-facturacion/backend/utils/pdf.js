@@ -205,7 +205,7 @@ function buildA4Pdf(invoice, items, empresa, acento, logo, qr, cobros) {
   const rightX = 310;
   let ly = panelTop + 12;
   bulletRow(doc, leftX, ly, 240, 'Cliente', invoice.cliente_nombre, acento);
-  bulletRow(doc, rightX, ly, 200, 'RUC/DNI', invoice.cliente_documento, acento);
+  bulletRow(doc, rightX, ly, 200, invoice.cliente_tipo_documento || 'RUC/DNI', invoice.cliente_documento, acento);
   ly += 26;
   bulletRow(doc, leftX, ly, 240, 'Direccion', invoice.cliente_direccion, acento);
   bulletRow(doc, rightX, ly, 200, 'Fecha', invoice.fecha_emision, acento);
@@ -395,7 +395,7 @@ async function buildNotaVentaPdf(notaVenta, items, empresa) {
   const rightX = 310;
   let ly = panelTop + 12;
   bulletRow(doc, leftX, ly, 240, 'Cliente', notaVenta.cliente_nombre, acento);
-  bulletRow(doc, rightX, ly, 200, 'RUC/DNI', notaVenta.cliente_documento, acento);
+  bulletRow(doc, rightX, ly, 200, notaVenta.cliente_tipo_documento || 'RUC/DNI', notaVenta.cliente_documento, acento);
   ly += 26;
   bulletRow(doc, leftX, ly, 240, 'Direccion', notaVenta.cliente_direccion, acento);
   bulletRow(doc, rightX, ly, 200, 'Fecha', notaVenta.fecha_emision, acento);

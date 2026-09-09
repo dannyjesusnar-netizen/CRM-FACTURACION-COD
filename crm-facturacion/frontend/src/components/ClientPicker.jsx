@@ -100,6 +100,7 @@ export default function ClientPicker({ value, onChange, required }) {
                   <select value={newClient.tipo_documento} onChange={(e) => setNewClient((c) => ({ ...c, tipo_documento: e.target.value }))}>
                     <option value="DNI">DNI</option>
                     <option value="RUC">RUC</option>
+                    <option value="CE">Carnet de Extranjería</option>
                   </select>
                 </div>
                 <div>

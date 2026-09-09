@@ -34,7 +34,9 @@ function estaConfigurado() {
 }
 
 const TIPO_COMPROBANTE_NUBEFACT = { factura: 1, boleta: 2, nota_credito: 3 };
-const TIPO_DOCUMENTO_NUBEFACT = { RUC: 6, DNI: 1 };
+// Catálogo 06 de SUNAT (Tipo de Documento de Identidad): 6=RUC, 1=DNI,
+// 4=Carnet de Extranjería.
+const TIPO_DOCUMENTO_NUBEFACT = { RUC: 6, DNI: 1, CE: 4 };
 
 // Catálogo 09 de SUNAT (Tipo de nota de crédito) — códigos oficiales,
 // independientes del OSE usado.
