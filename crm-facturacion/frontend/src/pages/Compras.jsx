@@ -661,7 +661,7 @@ export default function Compras() {
               <div className="form-row" style={{ marginTop: 14 }}>
                 <div>
                   <label>Descuento %</label>
-                  <input type="number" min="0" max="100" step="1" value={descuentoPct}
+                  <input type="number" min="0" max="100" step="0.01" value={descuentoPct}
                     onChange={(e) => setDescuentoPct(e.target.value)} />
                 </div>
                 <div>

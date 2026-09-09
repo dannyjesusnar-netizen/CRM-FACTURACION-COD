@@ -275,7 +275,7 @@ export default function RegistroNotaCredito() {
                         onChange={(e) => updateItem(idx, { precio_unitario: e.target.value })} />
                     </td>
                     <td className="num">
-                      <input type="number" min="0" max="100" step="1" value={it.descuento_pct}
+                      <input type="number" min="0" max="100" step="0.01" value={it.descuento_pct}
                         onChange={(e) => updateItem(idx, { descuento_pct: e.target.value })} style={{ width: 56 }} />
                     </td>
                     <td className="num">S/ {Number(it.costo || 0).toFixed(2)}</td>
