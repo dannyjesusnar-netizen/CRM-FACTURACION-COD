@@ -32,11 +32,20 @@ const PROVEEDOR_SUBQUERY = `COALESCE(
   )
 ) AS proveedor_nombre`;
 
+// canal_origen: el canal (Compras/Canje/Premio/Regalo) del último ingreso de
+// stock de este producto en la sede activa — de dónde vino la última vez que
+// entró stock, no algo que se edite a mano en el producto.
+const CANAL_SUBQUERY = `(
+  SELECT m.canal FROM stock_movements m
+  WHERE m.product_id = p.id AND m.sucursal_id = ? AND m.cantidad > 0 AND m.canal IS NOT NULL
+  ORDER BY m.id DESC LIMIT 1
+) AS canal_origen`;
+
 router.get('/', (req, res) => {
   const q = (req.query.q || '').trim();
   const categoria = (req.query.categoria || '').trim();
-  let sql = `SELECT p.*, ${PROVEEDOR_SUBQUERY} FROM products p WHERE p.activo = 1`;
-  const params = [];
+  let sql = `SELECT p.*, ${PROVEEDOR_SUBQUERY}, ${CANAL_SUBQUERY} FROM products p WHERE p.activo = 1`;
+  const params = [req.sucursalId];
   if (q) {
     sql += ' AND (p.nombre LIKE ? OR p.codigo LIKE ? OR p.codigo_barras LIKE ?)';
     params.push(`%${q}%`, `%${q}%`, `%${q}%`);
