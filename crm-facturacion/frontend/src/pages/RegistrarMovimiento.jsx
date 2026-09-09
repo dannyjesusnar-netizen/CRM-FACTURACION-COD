@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Trash2 } from 'lucide-react';
 import api from '../api';
 import { useToast } from '../context/ToastContext';
+import ProductSearchBar from '../components/ProductSearchBar';
 
 function nuevaFilaId() {
   return `f${Date.now()}${Math.random().toString(36).slice(2, 6)}`;
@@ -119,14 +120,20 @@ export default function RegistrarMovimiento() {
       <div className="panel">
         <h3 style={{ marginTop: 0 }}>Agregar producto</h3>
         <label>Producto</label>
-        <select value={productId} onChange={(e) => setProductId(e.target.value)}>
-          <option value="">Selecciona un producto...</option>
-          {productosDisponibles.map((p) => (
-            <option key={p.id} value={p.id}>{p.codigo} — {p.nombre} (stock actual: {p.stock})</option>
-          ))}
-        </select>
-        {productoSeleccionado && (
-          <p className="caja-row-auto">Stock actual en el sistema: {productoSeleccionado.stock} {productoSeleccionado.unidad}</p>
+        {productoSeleccionado ? (
+          <p className="caja-row-auto">
+            <strong>{productoSeleccionado.codigo} — {productoSeleccionado.nombre}</strong>
+            {' '}(stock actual: {productoSeleccionado.stock} {productoSeleccionado.unidad}){' '}
+            <button type="button" className="btn-link" onClick={() => setProductId('')}>Cambiar</button>
+          </p>
+        ) : (
+          <ProductSearchBar
+            placeholder="Buscar producto por nombre, código o código de barras..."
+            onSelect={(p) => {
+              if (p.tipo !== 'producto') { toast.error('Los servicios no tienen stock — selecciona un producto.'); return; }
+              setProductId(p.id);
+            }}
+          />
         )}
 
         <label style={{ marginTop: 10 }}>Cantidad (positivo = ingreso, negativo = salida)</label>
