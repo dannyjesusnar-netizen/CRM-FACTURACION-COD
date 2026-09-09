@@ -1054,17 +1054,17 @@ CREATE TABLE IF NOT EXISTS movimiento_canales (
     const productCount = db.prepare('SELECT COUNT(*) AS n FROM products').get().n;
     if (productCount === 0) {
       const insertProduct = db.prepare(
-        `INSERT INTO products (codigo, nombre, descripcion, tipo, categoria, unidad, precio_unitario, stock, stock_minimo)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO products (codigo, nombre, descripcion, tipo, categoria, unidad, precio_unitario, stock)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
       );
-      insertProduct.run('P001', 'Servicio de Consultoria', 'Consultoria empresarial por hora', 'servicio', 'Servicios', 'ZZ', 150, null, null);
-      insertProduct.run('P002', 'Laptop HP 15"', 'Laptop HP 15 pulgadas, 8GB RAM, 512GB SSD', 'producto', 'Tecnología', 'NIU', 2200, 15, 5);
-      insertProduct.run('P003', 'Licencia Software Anual', 'Licencia anual de software administrativo', 'servicio', 'Servicios', 'ZZ', 480, null, null);
-      insertProduct.run('P004', 'Resma de Papel A4', 'Resma de papel bond A4, 500 hojas', 'producto', 'Útiles de oficina', 'NIU', 14.5, 200, 20);
-      insertProduct.run('P005', 'Creatina Monohidratada 500gr', 'Creatina monohidratada en polvo, envase 500gr', 'producto', 'Suplementos', 'NIU', 89.9, 0, 5);
-      insertProduct.run('P006', 'Proteína Whey 1kg', 'Proteína whey sabor chocolate, envase 1kg', 'producto', 'Suplementos', 'NIU', 149.9, 0, 5);
-      insertProduct.run('P007', 'Mix Pre-Entreno a Granel (Kg)', 'Insumo a granel para envasado de pre-entreno', 'producto', 'Insumos', 'KGM', 45, 10, 2);
-      insertProduct.run('P008', 'Pre-Entreno 30gr (envase individual)', 'Envase individual de pre-entreno, producido a partir del mix a granel', 'producto', 'Suplementos', 'NIU', 6.9, 0, 20);
+      insertProduct.run('P001', 'Servicio de Consultoria', 'Consultoria empresarial por hora', 'servicio', 'Servicios', 'ZZ', 150, null);
+      insertProduct.run('P002', 'Laptop HP 15"', 'Laptop HP 15 pulgadas, 8GB RAM, 512GB SSD', 'producto', 'Tecnología', 'NIU', 2200, 15);
+      insertProduct.run('P003', 'Licencia Software Anual', 'Licencia anual de software administrativo', 'servicio', 'Servicios', 'ZZ', 480, null);
+      insertProduct.run('P004', 'Resma de Papel A4', 'Resma de papel bond A4, 500 hojas', 'producto', 'Útiles de oficina', 'NIU', 14.5, 200);
+      insertProduct.run('P005', 'Creatina Monohidratada 500gr', 'Creatina monohidratada en polvo, envase 500gr', 'producto', 'Suplementos', 'NIU', 89.9, 0);
+      insertProduct.run('P006', 'Proteína Whey 1kg', 'Proteína whey sabor chocolate, envase 1kg', 'producto', 'Suplementos', 'NIU', 149.9, 0);
+      insertProduct.run('P007', 'Mix Pre-Entreno a Granel (Kg)', 'Insumo a granel para envasado de pre-entreno', 'producto', 'Insumos', 'KGM', 45, 10);
+      insertProduct.run('P008', 'Pre-Entreno 30gr (envase individual)', 'Envase individual de pre-entreno, producido a partir del mix a granel', 'producto', 'Suplementos', 'NIU', 6.9, 0);
     }
 
     // Lotes de ejemplo (con vencimiento) para los productos de suplementos
