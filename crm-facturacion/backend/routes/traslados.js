@@ -2,22 +2,28 @@ const express = require('express');
 const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { getStockSucursal, setStockSucursal } = require('../utils/stock');
-const { requirePermiso, requireAccion } = require('../utils/permisos');
+const { requirePermiso, requireAccion, esGerenciaOSupervisor } = require('../utils/permisos');
 
 const router = express.Router();
 router.use(requireAuth);
 router.use(requirePermiso('inventario'));
+
+function requireAprobadorTraslados(req, res, next) {
+  if (esGerenciaOSupervisor(req.user)) return next();
+  return res.status(403).json({ error: 'Solo Gerencia o un Supervisor puede aprobar o rechazar traslados.' });
+}
 
 // GET /api/traslados?emisor=&desde=&hasta=&estado=
 router.get('/', (req, res) => {
   const { emisor, desde, hasta, estado } = req.query;
   let sql = `
     SELECT t.*, so.nombre AS sucursal_origen_nombre, sd.nombre AS sucursal_destino_nombre,
-           u.full_name AS emisor_nombre
+           u.full_name AS emisor_nombre, ua.full_name AS aprobador_nombre
     FROM traslados t
     JOIN sucursales so ON so.id = t.sucursal_origen_id
     JOIN sucursales sd ON sd.id = t.sucursal_destino_id
     LEFT JOIN users u ON u.id = t.created_by
+    LEFT JOIN users ua ON ua.id = t.aprobado_por
     WHERE 1=1
   `;
   const params = [];
@@ -74,6 +80,11 @@ router.get('/lotes/:productId', (req, res) => {
   res.json(rows);
 });
 
+// POST /api/traslados — un vendedor de sede crea el traslado como "solicitud
+// pendiente" (el stock NO se mueve todavía, queda a la espera de que
+// Gerencia o un Supervisor lo apruebe). Gerencia/Supervisor siguen creando
+// traslados que se completan directo, igual que siempre — son quienes
+// aprobarían de todos modos, así que exigirles el mismo paso no evita nada.
 router.post('/', requireAccion('inventario', 'traslados'), (req, res) => {
   const { sucursal_origen_id, sucursal_destino_id, items, observaciones } = req.body || {};
   if (!sucursal_origen_id || !sucursal_destino_id) {
@@ -107,18 +118,23 @@ router.post('/', requireAccion('inventario', 'traslados'), (req, res) => {
     }
   }
 
+  const requiereAprobacion = !esGerenciaOSupervisor(req.user);
+  const estadoInicial = requiereAprobacion ? 'pendiente' : 'completado';
+
   const insertAll = db.transaction(() => {
     const maxCodigo = db.prepare('SELECT MAX(codigo) AS m FROM traslados').get().m || 0;
     const info = db.prepare(
       `INSERT INTO traslados (codigo, sucursal_origen_id, sucursal_destino_id, estado, observaciones, created_by)
-       VALUES (?, ?, ?, 'completado', ?, ?)`
-    ).run(maxCodigo + 1, sucursal_origen_id, sucursal_destino_id, observaciones || null, req.user?.id || null);
+       VALUES (?, ?, ?, ?, ?, ?)`
+    ).run(maxCodigo + 1, sucursal_origen_id, sucursal_destino_id, estadoInicial, observaciones || null, req.user?.id || null);
     const trasladoId = info.lastInsertRowid;
     const insertItem = db.prepare('INSERT INTO traslado_items (traslado_id, product_id, cantidad, lote_id) VALUES (?, ?, ?, ?)');
     for (const it of items) {
       insertItem.run(trasladoId, it.product_id, Number(it.cantidad), it.lote_id || null);
-      setStockSucursal(it.product_id, sucursal_origen_id, getStockSucursal(it.product_id, sucursal_origen_id) - Number(it.cantidad));
-      setStockSucursal(it.product_id, sucursal_destino_id, getStockSucursal(it.product_id, sucursal_destino_id) + Number(it.cantidad));
+      if (!requiereAprobacion) {
+        setStockSucursal(it.product_id, sucursal_origen_id, getStockSucursal(it.product_id, sucursal_origen_id) - Number(it.cantidad));
+        setStockSucursal(it.product_id, sucursal_destino_id, getStockSucursal(it.product_id, sucursal_destino_id) + Number(it.cantidad));
+      }
     }
     return trasladoId;
   });
@@ -129,10 +145,61 @@ router.post('/', requireAccion('inventario', 'traslados'), (req, res) => {
   res.status(201).json({ ...traslado, items: items2 });
 });
 
+// POST /api/traslados/:id/aprobar — Gerencia o Supervisor únicamente. Recién
+// acá se mueve el stock: se revalida la disponibilidad porque pudo cambiar
+// desde que se pidió el traslado (ventas, otros traslados, etc.).
+router.post('/:id/aprobar', requireAccion('inventario', 'traslados'), requireAprobadorTraslados, (req, res) => {
+  const traslado = db.prepare('SELECT * FROM traslados WHERE id = ?').get(req.params.id);
+  if (!traslado) return res.status(404).json({ error: 'Traslado no encontrado.' });
+  if (traslado.estado !== 'pendiente') {
+    return res.status(400).json({ error: 'Este traslado no está pendiente de aprobación.' });
+  }
+
+  const items = db.prepare('SELECT * FROM traslado_items WHERE traslado_id = ?').all(req.params.id);
+  for (const it of items) {
+    const disponible = getStockSucursal(it.product_id, traslado.sucursal_origen_id);
+    if (it.cantidad > disponible) {
+      const prod = db.prepare('SELECT nombre FROM products WHERE id = ?').get(it.product_id);
+      return res.status(409).json({
+        error: `Ya no hay stock suficiente para aprobar: "${prod?.nombre || it.product_id}" (disponible: ${disponible}, solicitado: ${it.cantidad}).`,
+      });
+    }
+  }
+
+  const run = db.transaction(() => {
+    for (const it of items) {
+      setStockSucursal(it.product_id, traslado.sucursal_origen_id, getStockSucursal(it.product_id, traslado.sucursal_origen_id) - it.cantidad);
+      setStockSucursal(it.product_id, traslado.sucursal_destino_id, getStockSucursal(it.product_id, traslado.sucursal_destino_id) + it.cantidad);
+    }
+    db.prepare(
+      "UPDATE traslados SET estado = 'completado', aprobado_por = ?, aprobado_at = datetime('now') WHERE id = ?"
+    ).run(req.user.id, req.params.id);
+  });
+  run();
+  res.json(db.prepare('SELECT * FROM traslados WHERE id = ?').get(req.params.id));
+});
+
+// POST /api/traslados/:id/rechazar { motivo? } — Gerencia o Supervisor
+// únicamente. No mueve stock (nunca llegó a moverse), solo cambia el estado.
+router.post('/:id/rechazar', requireAccion('inventario', 'traslados'), requireAprobadorTraslados, (req, res) => {
+  const traslado = db.prepare('SELECT * FROM traslados WHERE id = ?').get(req.params.id);
+  if (!traslado) return res.status(404).json({ error: 'Traslado no encontrado.' });
+  if (traslado.estado !== 'pendiente') {
+    return res.status(400).json({ error: 'Este traslado no está pendiente de aprobación.' });
+  }
+  const { motivo } = req.body || {};
+  db.prepare(
+    "UPDATE traslados SET estado = 'rechazado', aprobado_por = ?, aprobado_at = datetime('now'), motivo_rechazo = ? WHERE id = ?"
+  ).run(req.user.id, (motivo || '').toString().trim() || null, req.params.id);
+  res.json(db.prepare('SELECT * FROM traslados WHERE id = ?').get(req.params.id));
+});
+
 router.post('/:id/anular', requireAccion('inventario', 'traslados'), (req, res) => {
   const traslado = db.prepare('SELECT * FROM traslados WHERE id = ?').get(req.params.id);
   if (!traslado) return res.status(404).json({ error: 'Traslado no encontrado.' });
-  if (traslado.estado === 'anulado') return res.status(400).json({ error: 'El traslado ya está anulado.' });
+  if (traslado.estado !== 'completado') {
+    return res.status(400).json({ error: 'Solo se puede anular un traslado completado (el stock ya se movió).' });
+  }
 
   const items = db.prepare('SELECT * FROM traslado_items WHERE traslado_id = ?').all(req.params.id);
   const run = db.transaction(() => {
