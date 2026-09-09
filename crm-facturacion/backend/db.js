@@ -785,6 +785,24 @@ CREATE TABLE IF NOT EXISTS metas_venta_sede (
     db.exec('ALTER TABLE metas_venta_sede ADD COLUMN monto_individual REAL');
   }
 
+  // metas_venta_usuario: cuota mensual asignada a mano a un vendedor
+  // puntual (Gerencia elige "a este asesor específico le pongo tanto"),
+  // en vez de una cuota pareja para toda la sede (metas_venta_sede.monto_individual).
+  // Cuando existe una fila para ese user_id+anio+mes, tablero.js la usa como
+  // meta de ese vendedor por encima de cualquier otro cálculo (individual de
+  // sede o pool/dotación) — ver routes/tablero.js.
+  db.exec(`
+CREATE TABLE IF NOT EXISTS metas_venta_usuario (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  anio INTEGER NOT NULL,
+  mes INTEGER NOT NULL,
+  monto_meta REAL NOT NULL DEFAULT 0,
+  created_at TEXT DEFAULT (datetime('now')),
+  UNIQUE(user_id, anio, mes)
+);
+`);
+
   // Traslados con aprobación: un vendedor de sede crea el traslado como
   // "pendiente" (el stock NO se mueve todavía) y queda a la espera de que
   // Gerencia o un Supervisor lo apruebe (mueve el stock recién ahí) o lo

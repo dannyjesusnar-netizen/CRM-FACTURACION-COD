@@ -107,6 +107,13 @@ router.get('/ranking-personal', (req, res) => {
   const individualMap = categoria === 'vendedor'
     ? new Map(pools.filter((p) => p.monto_individual !== null && p.monto_individual !== undefined).map((p) => [p.sucursal_id, p.monto_individual]))
     : new Map();
+  // metas_venta_usuario: cuota asignada a mano a UN vendedor puntual (ver
+  // metasVenta.js) — tiene prioridad sobre la cuota de sede y sobre el
+  // cálculo pool/dotación.
+  const usuarioMetas = categoria === 'vendedor'
+    ? db.prepare('SELECT user_id, monto_meta FROM metas_venta_usuario WHERE anio = ? AND mes = ?').all(anio, mes)
+    : [];
+  const usuarioMetaMap = new Map(usuarioMetas.map((m) => [m.user_id, m.monto_meta]));
   const conteos = db.prepare(
     `SELECT sucursal_id, COUNT(*) AS cantidad FROM users
      WHERE categoria_staff = ? AND activo = 1 AND sucursal_id IS NOT NULL GROUP BY sucursal_id`
@@ -115,7 +122,9 @@ router.get('/ranking-personal', (req, res) => {
 
   const withPct = rows.map((r) => {
     let meta;
-    if (individualMap.has(r.sucursal_id)) {
+    if (usuarioMetaMap.has(r.user_id)) {
+      meta = usuarioMetaMap.get(r.user_id);
+    } else if (individualMap.has(r.sucursal_id)) {
       meta = individualMap.get(r.sucursal_id);
     } else {
       const cantidad = dotacionMap.get(r.sucursal_id) || conteoMap.get(r.sucursal_id) || 0;
