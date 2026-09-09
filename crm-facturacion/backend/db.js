@@ -66,6 +66,7 @@ CREATE TABLE IF NOT EXISTS products (
   descripcion TEXT,
   tipo TEXT NOT NULL DEFAULT 'producto',         -- producto | servicio
   categoria TEXT DEFAULT 'General',
+  marca TEXT,
   unidad TEXT NOT NULL DEFAULT 'NIU',
   precio_unitario REAL NOT NULL DEFAULT 0,
   stock REAL DEFAULT 0,
@@ -593,6 +594,9 @@ CREATE TABLE IF NOT EXISTS qr_unico_medios (
   const productColumns = db.prepare("PRAGMA table_info(products)").all().map((c) => c.name);
   if (!productColumns.includes('categoria')) {
     db.exec("ALTER TABLE products ADD COLUMN categoria TEXT DEFAULT 'General'");
+  }
+  if (!productColumns.includes('marca')) {
+    db.exec('ALTER TABLE products ADD COLUMN marca TEXT');
   }
   if (!productColumns.includes('stock_minimo')) {
     db.exec('ALTER TABLE products ADD COLUMN stock_minimo REAL DEFAULT 0');

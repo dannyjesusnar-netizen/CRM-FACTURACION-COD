@@ -207,11 +207,13 @@ router.get('/productos-mas-vendidos', requireReportes, requireAccion('reportes',
   res.json(rows);
 });
 
-// Misma lógica que products.js/tablero.js: la marca de un producto es su
-// Proveedor asignado directamente, o si no tiene, el proveedor de su compra
-// más reciente. Recibe el alias de la tabla products a usar (p / p2) porque
-// esta consulta junta invoices y notas_venta con UNION ALL.
-function marcaExpr(alias) {
+// Misma lógica que products.js (PROVEEDOR_SUBQUERY): el proveedor de un
+// producto es el que tiene asignado directamente, o si no tiene, el de su
+// compra más reciente. Recibe el alias de la tabla products a usar (p / p2)
+// porque esta consulta junta invoices y notas_venta con UNION ALL. Es un
+// dato distinto de products.marca (la marca real del producto, ej. "Optimum
+// Nutrition") — el proveedor es la empresa a la que se le compra.
+function proveedorExpr(alias) {
   return `COALESCE(
     (SELECT s.nombre FROM suppliers s WHERE s.id = ${alias}.proveedor_id),
     (
@@ -221,14 +223,14 @@ function marcaExpr(alias) {
       WHERE pi.product_id = ${alias}.id AND pu.estado = 'registrada'
       ORDER BY pu.fecha DESC, pu.id DESC LIMIT 1
     ),
-    'Sin marca'
+    'Sin proveedor'
   )`;
 }
 const ATRIBUIDO_CATEGORIA_EXPR = (alias) => `CASE ${alias}.categoria_staff
   WHEN 'trainer' THEN 'Entrenador' WHEN 'supervisor' THEN 'Supervisor' WHEN 'vendedor' THEN 'Vendedor' ELSE '' END`;
 
 // Detalle línea por línea de todo lo vendido (Boletas/Facturas/Notas de
-// Crédito + Notas de Venta Interna), con producto, marca/proveedor,
+// Crédito + Notas de Venta Interna), con producto, marca, proveedor,
 // categoría, vendedor y a quién se le atribuyó la venta (y si es
 // Entrenador/Supervisor/Vendedor) — pensado para el Exportador de Datos
 // Masivos de Configuración, sin límite de fecha (a diferencia de los demás
@@ -241,7 +243,8 @@ router.get('/ventas-detalle', requireAlgunPermiso(['ventas', 'reportes']), (req,
       c.numero_documento AS cliente_documento, c.nombre AS cliente_nombre,
       COALESCE(p.codigo, '') AS producto_codigo, COALESCE(p.nombre, ii.descripcion) AS producto_nombre,
       COALESCE(p.categoria, '') AS categoria,
-      ${marcaExpr('p')} AS marca,
+      COALESCE(p.marca, '') AS marca,
+      ${proveedorExpr('p')} AS proveedor,
       ii.cantidad, ii.precio_unitario, ii.descuento_pct, ii.subtotal AS subtotal_item,
       i.forma_pago, i.total AS total_venta, i.estado,
       u.full_name AS vendedor_nombre, au.full_name AS atribuido_nombre,
@@ -261,7 +264,8 @@ router.get('/ventas-detalle', requireAlgunPermiso(['ventas', 'reportes']), (req,
       c2.numero_documento AS cliente_documento, c2.nombre AS cliente_nombre,
       COALESCE(p2.codigo, '') AS producto_codigo, COALESCE(p2.nombre, nvi.descripcion) AS producto_nombre,
       COALESCE(p2.categoria, '') AS categoria,
-      ${marcaExpr('p2')} AS marca,
+      COALESCE(p2.marca, '') AS marca,
+      ${proveedorExpr('p2')} AS proveedor,
       nvi.cantidad, nvi.precio_unitario, nvi.descuento_pct, nvi.subtotal AS subtotal_item,
       nv.forma_pago, nv.total AS total_venta, nv.estado,
       u2.full_name AS vendedor_nombre, au2.full_name AS atribuido_nombre,

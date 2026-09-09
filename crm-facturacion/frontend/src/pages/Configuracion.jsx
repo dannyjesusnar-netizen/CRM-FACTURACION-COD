@@ -98,8 +98,8 @@ const IMPORTADORES_MASIVOS = [
     titulo: 'Productos nuevos',
     Icon: PackagePlus,
     endpoint: '/products/carga-masiva',
-    columnas: ['codigo', 'nombre', 'categoria', 'unidad', 'precio_unitario', 'precio_compra', 'stock'],
-    filaEjemplo: ['PROD002', 'Proteína Whey 1kg', 'Suplementos', 'NIU', '120', '80', '30'],
+    columnas: ['codigo', 'nombre', 'categoria', 'marca', 'unidad', 'precio_unitario', 'precio_compra', 'stock'],
+    filaEjemplo: ['PROD002', 'Proteína Whey 1kg', 'Suplementos', 'Optimum Nutrition', 'NIU', '120', '80', '30'],
     descripcion: 'Crea productos nuevos por código. Si el código ya existe, actualiza sus datos (mismo criterio de siempre).',
     permiteSumarStock: true,
   },
@@ -109,8 +109,8 @@ const IMPORTADORES_MASIVOS = [
     Icon: RefreshCw,
     endpoint: '/products/carga-masiva',
     extraBody: { crear_nuevos: false },
-    columnas: ['codigo', 'nombre', 'categoria', 'unidad', 'precio_unitario', 'precio_compra', 'stock'],
-    filaEjemplo: ['PROD001', 'Creatina Monohidratada 300g', 'Suplementos', 'NIU', '89.9', '55', '40'],
+    columnas: ['codigo', 'nombre', 'categoria', 'marca', 'unidad', 'precio_unitario', 'precio_compra', 'stock'],
+    filaEjemplo: ['PROD001', 'Creatina Monohidratada 300g', 'Suplementos', 'Creapure', 'NIU', '89.9', '55', '40'],
     descripcion: 'Actualiza productos que YA existen por código. Si un código no existe, esa fila queda en error (a diferencia de "Productos nuevos", esta opción nunca crea productos).',
     permiteSumarStock: true,
   },
@@ -152,7 +152,7 @@ const EXPORTADORES_MASIVOS = [
     titulo: 'Productos',
     Icon: Boxes,
     endpoint: '/products',
-    columnas: ['codigo', 'nombre', 'categoria', 'unidad', 'precio_unitario', 'precio_compra', 'stock'],
+    columnas: ['codigo', 'nombre', 'categoria', 'marca', 'unidad', 'precio_unitario', 'precio_compra', 'stock'],
     descripcion: 'Todo el catálogo de productos activos, con stock de la sede activa.',
   },
   {
@@ -170,14 +170,16 @@ const EXPORTADORES_MASIVOS = [
     Icon: FileText,
     // Detalle línea por línea (una fila por producto vendido, no por
     // comprobante): junta Boletas/Facturas/Notas de Crédito con Notas de
-    // Venta Interna, con producto, marca/proveedor, categoría, vendedor y a
-    // quién se atribuyó la venta (Entrenador/Supervisor/Vendedor) — sin
-    // límite de fecha (a diferencia del botón "Exportar" de Documentos
-    // Emitidos, que solo exporta lo filtrado en pantalla).
+    // Venta Interna, con producto, marca (la del producto, ej. "Optimum
+    // Nutrition") y proveedor (a quién se le compra, ej. "Comercial XYZ
+    // SAC") como columnas separadas, categoría, vendedor y a quién se
+    // atribuyó la venta (Entrenador/Supervisor/Vendedor) — sin límite de
+    // fecha (a diferencia del botón "Exportar" de Documentos Emitidos, que
+    // solo exporta lo filtrado en pantalla).
     endpoint: '/reports/ventas-detalle',
-    columnas: ['fecha_emision', 'sede', 'tipo', 'serie', 'numero', 'cliente_documento', 'cliente_nombre', 'producto_codigo', 'producto_nombre', 'categoria', 'marca', 'cantidad', 'precio_unitario', 'descuento_pct', 'subtotal_item', 'forma_pago', 'total_venta', 'estado', 'vendedor_nombre', 'atribuido_nombre', 'atribuido_categoria'],
-    headers: ['Fecha', 'Sede', 'Tipo', 'Serie', 'Número', 'Doc. Cliente', 'Cliente', 'Cód. Producto', 'Producto', 'Categoría', 'Marca/Proveedor', 'Cantidad', 'Precio Unit.', '% Descuento', 'Subtotal Ítem', 'Forma de Pago', 'Total Venta', 'Estado', 'Vendedor', 'Atribuido a', 'Categoría Atribuido'],
-    descripcion: 'Detalle de cada producto vendido (Boletas, Facturas, Notas de Crédito y Notas de Venta Interna), con marca/proveedor, categoría, vendedor y a quién se atribuyó — sin filtro de fecha.',
+    columnas: ['fecha_emision', 'sede', 'tipo', 'serie', 'numero', 'cliente_documento', 'cliente_nombre', 'producto_codigo', 'producto_nombre', 'categoria', 'marca', 'proveedor', 'cantidad', 'precio_unitario', 'descuento_pct', 'subtotal_item', 'forma_pago', 'total_venta', 'estado', 'vendedor_nombre', 'atribuido_nombre', 'atribuido_categoria'],
+    headers: ['Fecha', 'Sede', 'Tipo', 'Serie', 'Número', 'Doc. Cliente', 'Cliente', 'Cód. Producto', 'Producto', 'Categoría', 'Marca', 'Proveedor', 'Cantidad', 'Precio Unit.', '% Descuento', 'Subtotal Ítem', 'Forma de Pago', 'Total Venta', 'Estado', 'Vendedor', 'Atribuido a', 'Categoría Atribuido'],
+    descripcion: 'Detalle de cada producto vendido (Boletas, Facturas, Notas de Crédito y Notas de Venta Interna), con marca y proveedor por separado, categoría, vendedor y a quién se atribuyó — sin filtro de fecha.',
   },
 ];
 
