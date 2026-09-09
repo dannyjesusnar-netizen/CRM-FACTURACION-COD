@@ -94,6 +94,34 @@ router.get('/', (req, res) => {
   res.json(rows);
 });
 
+// GET /api/movements/resumen-por-producto?tipo=&canal=&from=&to=&q=
+// Agrupa los movimientos por producto y suma la cantidad — para saber,
+// por ejemplo, cuántas unidades de cada producto salieron por un canal
+// como "Canje" en un rango de fechas, sin sumar a mano la lista completa
+// (que además está limitada a las últimas 300 filas en GET /).
+router.get('/resumen-por-producto', (req, res) => {
+  const { tipo, canal, from, to, q } = req.query;
+  let sql = `
+    SELECT p.id AS product_id, p.codigo AS producto_codigo, p.nombre AS producto_nombre, p.unidad AS producto_unidad,
+           SUM(m.cantidad) AS cantidad_total, COUNT(*) AS total_movimientos
+    FROM stock_movements m
+    JOIN products p ON p.id = m.product_id
+    WHERE m.sucursal_id = ?
+  `;
+  const params = [req.sucursalId];
+  if (tipo) { sql += ' AND m.tipo = ?'; params.push(tipo); }
+  if (canal) { sql += ' AND m.canal = ?'; params.push(canal); }
+  if (from) { sql += " AND date(m.created_at, '-5 hours') >= date(?)"; params.push(from); }
+  if (to) { sql += " AND date(m.created_at, '-5 hours') <= date(?)"; params.push(to); }
+  if (q) {
+    sql += ' AND (p.nombre LIKE ? OR p.codigo LIKE ?)';
+    params.push(`%${q}%`, `%${q}%`);
+  }
+  sql += ' GROUP BY m.product_id ORDER BY ABS(cantidad_total) DESC';
+  const rows = db.prepare(sql).all(...params);
+  res.json(rows);
+});
+
 // POST /api/movements  { product_id, cantidad, motivo, codigo_lote?, fecha_vencimiento? }  -- ajuste manual (+ ingreso / - salida)
 // Si es un ingreso (cantidad > 0) y viene codigo_lote, se crea el lote junto con el
 // movimiento en la misma transacción (mismo patrón que POST /api/lotes).
