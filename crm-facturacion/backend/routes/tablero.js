@@ -97,10 +97,16 @@ router.get('/ranking-personal', (req, res) => {
   `).all(String(anio), mesPad, String(anio), mesPad, categoria, sucursalId, sucursalId);
 
   const pools = db.prepare(
-    'SELECT sucursal_id, monto_meta, dotacion FROM metas_venta_sede WHERE categoria_staff = ? AND anio = ? AND mes = ?'
+    'SELECT sucursal_id, monto_meta, dotacion, monto_individual FROM metas_venta_sede WHERE categoria_staff = ? AND anio = ? AND mes = ?'
   ).all(categoria, anio, mes);
   const poolMap = new Map(pools.map((p) => [p.sucursal_id, p.monto_meta]));
   const dotacionMap = new Map(pools.map((p) => [p.sucursal_id, p.dotacion]));
+  // monto_individual: cuota asignada a mano por vendedor de esa sede (ver
+  // metasVenta.js) — solo aplica a categoria='vendedor'; si está asignada,
+  // reemplaza el cálculo pool/dotación por completo.
+  const individualMap = categoria === 'vendedor'
+    ? new Map(pools.filter((p) => p.monto_individual !== null && p.monto_individual !== undefined).map((p) => [p.sucursal_id, p.monto_individual]))
+    : new Map();
   const conteos = db.prepare(
     `SELECT sucursal_id, COUNT(*) AS cantidad FROM users
      WHERE categoria_staff = ? AND activo = 1 AND sucursal_id IS NOT NULL GROUP BY sucursal_id`
@@ -108,9 +114,14 @@ router.get('/ranking-personal', (req, res) => {
   const conteoMap = new Map(conteos.map((c) => [c.sucursal_id, c.cantidad]));
 
   const withPct = rows.map((r) => {
-    const cantidad = dotacionMap.get(r.sucursal_id) || conteoMap.get(r.sucursal_id) || 0;
-    const pool = poolMap.get(r.sucursal_id) || 0;
-    const meta = cantidad > 0 ? pool / cantidad : 0;
+    let meta;
+    if (individualMap.has(r.sucursal_id)) {
+      meta = individualMap.get(r.sucursal_id);
+    } else {
+      const cantidad = dotacionMap.get(r.sucursal_id) || conteoMap.get(r.sucursal_id) || 0;
+      const pool = poolMap.get(r.sucursal_id) || 0;
+      meta = cantidad > 0 ? pool / cantidad : 0;
+    }
     return {
       user_id: r.user_id, nombre: r.nombre, turno: r.turno, sede: r.sede,
       venta: round2(r.venta), meta: round2(meta),
@@ -136,7 +147,7 @@ router.get('/ranking-personal', (req, res) => {
       const faltantes = dotacion - real;
       if (faltantes <= 0) continue;
       const pool = poolMap.get(sId) || 0;
-      const meta = dotacion > 0 ? pool / dotacion : 0;
+      const meta = individualMap.has(sId) ? individualMap.get(sId) : (dotacion > 0 ? pool / dotacion : 0);
       for (let i = 1; i <= faltantes; i += 1) {
         withPct.push({
           user_id: `faltante-${sId}-${i}`,
