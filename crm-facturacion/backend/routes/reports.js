@@ -234,7 +234,10 @@ const ATRIBUIDO_CATEGORIA_EXPR = (alias) => `CASE ${alias}.categoria_staff
 // categoría, vendedor y a quién se le atribuyó la venta (y si es
 // Entrenador/Supervisor/Vendedor) — pensado para el Exportador de Datos
 // Masivos de Configuración, sin límite de fecha (a diferencia de los demás
-// reportes de esta pantalla, que sí filtran por mes/año).
+// reportes de esta pantalla, que sí filtran por mes/año). Trae los dos
+// descuentos que puede tener una venta por separado: descuento_pct (el de
+// ese ítem puntual, de una Oferta o Combo) y descuento_global_pct (el de
+// toda la venta, de un Descuento con nombre elegido al facturar).
 router.get('/ventas-detalle', requireAlgunPermiso(['ventas', 'reportes']), (req, res) => {
   const sql = `
     SELECT i.fecha_emision, suc.nombre AS sede,
@@ -246,7 +249,7 @@ router.get('/ventas-detalle', requireAlgunPermiso(['ventas', 'reportes']), (req,
       COALESCE(p.marca, '') AS marca,
       ${proveedorExpr('p')} AS proveedor,
       ii.cantidad, ii.precio_unitario, ii.descuento_pct, ii.subtotal AS subtotal_item,
-      i.forma_pago, i.total AS total_venta, i.estado,
+      i.forma_pago, i.descuento_global_pct, i.total AS total_venta, i.estado,
       u.full_name AS vendedor_nombre, au.full_name AS atribuido_nombre,
       ${ATRIBUIDO_CATEGORIA_EXPR('au')} AS atribuido_categoria
     FROM invoice_items ii
@@ -267,7 +270,7 @@ router.get('/ventas-detalle', requireAlgunPermiso(['ventas', 'reportes']), (req,
       COALESCE(p2.marca, '') AS marca,
       ${proveedorExpr('p2')} AS proveedor,
       nvi.cantidad, nvi.precio_unitario, nvi.descuento_pct, nvi.subtotal AS subtotal_item,
-      nv.forma_pago, nv.total AS total_venta, nv.estado,
+      nv.forma_pago, nv.descuento_global_pct, nv.total AS total_venta, nv.estado,
       u2.full_name AS vendedor_nombre, au2.full_name AS atribuido_nombre,
       ${ATRIBUIDO_CATEGORIA_EXPR('au2')} AS atribuido_categoria
     FROM nota_venta_items nvi
