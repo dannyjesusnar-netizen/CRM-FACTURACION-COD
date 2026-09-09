@@ -777,6 +777,13 @@ CREATE TABLE IF NOT EXISTS metas_venta_sede (
   if (!metasVentaSedeColumns.includes('dotacion')) {
     db.exec('ALTER TABLE metas_venta_sede ADD COLUMN dotacion INTEGER NOT NULL DEFAULT 0');
   }
+  // monto_individual: cuota individual asignada a mano por Gerencia (solo
+  // para categoria_staff='vendedor' desde la UI) — cuando tiene un valor,
+  // reemplaza por completo el cálculo pool/dotación para esa sede+mes; NULL
+  // (sin asignar) sigue usando pool/dotación como siempre.
+  if (!metasVentaSedeColumns.includes('monto_individual')) {
+    db.exec('ALTER TABLE metas_venta_sede ADD COLUMN monto_individual REAL');
+  }
 
   const empresaColumns = db.prepare("PRAGMA table_info(empresa_config)").all().map((c) => c.name);
   const EMPRESA_NEW_COLUMNS = [

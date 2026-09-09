@@ -507,6 +507,24 @@ export default function Configuracion() {
     }
   }
 
+  // Cuota individual manual (solo vendedor): reemplaza por completo el
+  // cálculo pool/dotación para esa sede+mes. montoIndividual === null borra
+  // la asignación manual y vuelve al cálculo automático.
+  async function guardarMontoIndividual(sucursalId, categoriaStaff, montoIndividual) {
+    const key = `${sucursalId}:${categoriaStaff}`;
+    setMetasGuardando(key);
+    try {
+      await api.put('/metas-venta', { sucursal_id: sucursalId, categoria_staff: categoriaStaff, anio: metasAnio, mes: metasMes, monto_individual: montoIndividual });
+      setFilasMetas((filas) => filas.map((f) => (
+        f.sucursal_id === sucursalId && f.categoria_staff === categoriaStaff ? { ...f, monto_individual: montoIndividual } : f
+      )));
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'No se pudo guardar la cuota individual.');
+    } finally {
+      setMetasGuardando(null);
+    }
+  }
+
   function loadDescuentos() {
     api.get('/descuentos').then((res) => setDescuentos(res.data));
   }
@@ -1864,8 +1882,9 @@ export default function Configuracion() {
               <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -8 }}>
                 Asigna una meta mensual (S/) por sede para Vendedores y para Trainers, y opcionalmente la
                 dotación de ese equipo (cuántas personas la reparten) — si no la asignas, se reparte entre
-                los empleados activos de esa categoría en esa sede. Alimenta el Ranking Trainers/Vendedores
-                y el Resumen de sedes del Dashboard.
+                los empleados activos de esa categoría en esa sede. Para Vendedores, además puedes asignar
+                una cuota individual manual (en soles) que reemplaza por completo ese cálculo. Alimenta el
+                Ranking Trainers/Vendedores y el Resumen de sedes del Dashboard.
               </p>
               <div className="filter-panel">
                 <div className="filter-field">
@@ -1887,14 +1906,17 @@ export default function Configuracion() {
                     <th>Sede</th><th>Categoría</th><th style={{ textAlign: 'right' }}>Empleados activos</th>
                     <th style={{ textAlign: 'right' }}>Dotación</th>
                     <th style={{ textAlign: 'right' }}>Meta total del pool (S/)</th>
-                    <th style={{ textAlign: 'right' }}>Meta individual aprox.</th>
+                    <th style={{ textAlign: 'right' }}>Cuota individual manual (S/)</th>
+                    <th style={{ textAlign: 'right' }}>Meta individual</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filasMetas.map((f) => {
                     const key = `${f.sucursal_id}:${f.categoria_staff}`;
+                    const esVendedor = f.categoria_staff === 'vendedor';
+                    const tieneManual = esVendedor && f.monto_individual !== null && f.monto_individual !== undefined;
                     const dotacionEfectiva = f.dotacion > 0 ? f.dotacion : f.cantidad_empleados;
-                    const individual = dotacionEfectiva > 0 ? f.monto_meta / dotacionEfectiva : 0;
+                    const individual = tieneManual ? f.monto_individual : (dotacionEfectiva > 0 ? f.monto_meta / dotacionEfectiva : 0);
                     return (
                       <tr key={key}>
                         <td>{f.sede_nombre}</td>
@@ -1939,14 +1961,41 @@ export default function Configuracion() {
                             onBlur={(e) => guardarMetaPool(f.sucursal_id, f.categoria_staff, Number(e.target.value) || 0)}
                           />
                         </td>
+                        <td style={{ textAlign: 'right' }}>
+                          {esVendedor ? (
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              style={{ width: 130, textAlign: 'right' }}
+                              disabled={metasGuardando === key}
+                              placeholder="Sin asignar"
+                              value={f.monto_individual ?? ''}
+                              onChange={(e) => {
+                                const valor = e.target.value;
+                                setFilasMetas((filas) => filas.map((fila) => (
+                                  fila.sucursal_id === f.sucursal_id && fila.categoria_staff === f.categoria_staff
+                                    ? { ...fila, monto_individual: valor === '' ? null : Number(valor) }
+                                    : fila
+                                )));
+                              }}
+                              onBlur={(e) => {
+                                const valor = e.target.value;
+                                guardarMontoIndividual(f.sucursal_id, f.categoria_staff, valor === '' ? null : Number(valor));
+                              }}
+                            />
+                          ) : (
+                            <span style={{ color: 'var(--ink-muted)' }} title="Solo disponible para Vendedores — Trainer sigue por dotación.">—</span>
+                          )}
+                        </td>
                         <td style={{ textAlign: 'right', color: 'var(--ink-muted)' }}>
-                          {dotacionEfectiva > 0 ? `S/ ${individual.toFixed(2)}` : '—'}
+                          {tieneManual || dotacionEfectiva > 0 ? `S/ ${individual.toFixed(2)}` : '—'}
                         </td>
                       </tr>
                     );
                   })}
                   {filasMetas.length === 0 && (
-                    <tr><td colSpan={6} className="empty-row">No hay sedes activas.</td></tr>
+                    <tr><td colSpan={7} className="empty-row">No hay sedes activas.</td></tr>
                   )}
                 </tbody>
               </table>
