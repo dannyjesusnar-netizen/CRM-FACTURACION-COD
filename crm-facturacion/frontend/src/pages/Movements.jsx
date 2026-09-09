@@ -117,9 +117,9 @@ export default function Movements() {
 
   async function handleExportar(formato) {
     if (verResumenPorProducto) {
-      const header = ['Código', 'Producto', 'U.M.', 'Cantidad total', 'N.º de movimientos'];
+      const header = ['Código', 'Producto', 'U.M.', 'Usuario', 'Cantidad total', 'N.º de movimientos'];
       const rows = resumenProductos.map((r) => [
-        r.producto_codigo, r.producto_nombre, r.producto_unidad, r.cantidad_total, r.total_movimientos,
+        r.producto_codigo, r.producto_nombre, r.producto_unidad, r.usuario_nombre || '—', r.cantidad_total, r.total_movimientos,
       ]);
       await exportarTabla(`resumen_movimientos_${desde}_a_${hasta}`, header, rows, formato);
       toast.success(`Archivo ${formato === 'excel' ? 'Excel' : 'CSV'} exportado.`);
@@ -359,23 +359,24 @@ export default function Movements() {
             <table className="data-table compact">
               <thead>
                 <tr>
-                  <th>Código</th><th>Producto</th><th>U.M.</th>
+                  <th>Código</th><th>Producto</th><th>U.M.</th><th>Usuario</th>
                   <th style={{ textAlign: 'right' }}>Cantidad total</th>
                   <th style={{ textAlign: 'right' }}>N.º de movimientos</th>
                 </tr>
               </thead>
               <tbody>
-                {resumenProductos.map((r) => (
-                  <tr key={r.product_id}>
+                {resumenProductos.map((r, idx) => (
+                  <tr key={`${r.product_id}-${idx}`}>
                     <td>{r.producto_codigo}</td>
                     <td>{r.producto_nombre}</td>
                     <td>{r.producto_unidad}</td>
+                    <td>{r.usuario_nombre || '—'}</td>
                     <td style={{ textAlign: 'right' }}>{r.cantidad_total > 0 ? `+${r.cantidad_total}` : r.cantidad_total}</td>
                     <td style={{ textAlign: 'right' }}>{r.total_movimientos}</td>
                   </tr>
                 ))}
                 {resumenProductos.length === 0 && (
-                  <tr><td colSpan={5} className="empty-row">No hay movimientos con estos filtros.</td></tr>
+                  <tr><td colSpan={6} className="empty-row">No hay movimientos con estos filtros.</td></tr>
                 )}
               </tbody>
             </table>

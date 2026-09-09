@@ -96,17 +96,20 @@ router.get('/', (req, res) => {
 });
 
 // GET /api/movements/resumen-por-producto?tipo=&canal=&from=&to=&q=
-// Agrupa los movimientos por producto y suma la cantidad — para saber,
-// por ejemplo, cuántas unidades de cada producto salieron por un canal
-// como "Canje" en un rango de fechas, sin sumar a mano la lista completa
-// (que además está limitada a las últimas 300 filas en GET /).
+// Agrupa los movimientos por producto Y por usuario que los registró —
+// para saber, por ejemplo, cuántas unidades de cada producto salieron por
+// un canal como "Canje" en un rango de fechas (y quién las registró), sin
+// sumar a mano la lista completa (que además está limitada a las últimas
+// 300 filas en GET /).
 router.get('/resumen-por-producto', (req, res) => {
   const { tipo, canal, from, to, q } = req.query;
   let sql = `
     SELECT p.id AS product_id, p.codigo AS producto_codigo, p.nombre AS producto_nombre, p.unidad AS producto_unidad,
+           u.full_name AS usuario_nombre,
            SUM(m.cantidad) AS cantidad_total, COUNT(*) AS total_movimientos
     FROM stock_movements m
     JOIN products p ON p.id = m.product_id
+    LEFT JOIN users u ON u.id = m.created_by
     WHERE m.sucursal_id = ?
   `;
   const params = [req.sucursalId];
@@ -118,7 +121,7 @@ router.get('/resumen-por-producto', (req, res) => {
     sql += ' AND (p.nombre LIKE ? OR p.codigo LIKE ?)';
     params.push(`%${q}%`, `%${q}%`);
   }
-  sql += ' GROUP BY m.product_id ORDER BY ABS(cantidad_total) DESC';
+  sql += ' GROUP BY m.product_id, m.created_by ORDER BY p.nombre ASC, ABS(cantidad_total) DESC';
   const rows = db.prepare(sql).all(...params);
   res.json(rows);
 });
