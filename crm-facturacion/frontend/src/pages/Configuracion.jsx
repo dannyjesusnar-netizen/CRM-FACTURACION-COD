@@ -91,6 +91,7 @@ const IMPORTADORES_MASIVOS = [
     columnas: ['codigo', 'stock'],
     filaEjemplo: ['PROD001', '25'],
     descripcion: 'Actualiza solo el stock (de tu sede activa) de productos que YA existen, por código. No crea productos nuevos ni cambia nombre o precio.',
+    permiteSumarStock: true,
   },
   {
     key: 'productos_nuevos',
@@ -100,6 +101,7 @@ const IMPORTADORES_MASIVOS = [
     columnas: ['codigo', 'nombre', 'categoria', 'unidad', 'precio_unitario', 'precio_compra', 'stock', 'stock_minimo'],
     filaEjemplo: ['PROD002', 'Proteína Whey 1kg', 'Suplementos', 'NIU', '120', '80', '30', '5'],
     descripcion: 'Crea productos nuevos por código. Si el código ya existe, actualiza sus datos (mismo criterio de siempre).',
+    permiteSumarStock: true,
   },
   {
     key: 'actualizacion_datos',
@@ -110,6 +112,7 @@ const IMPORTADORES_MASIVOS = [
     columnas: ['codigo', 'nombre', 'categoria', 'unidad', 'precio_unitario', 'precio_compra', 'stock', 'stock_minimo'],
     filaEjemplo: ['PROD001', 'Creatina Monohidratada 300g', 'Suplementos', 'NIU', '89.9', '55', '40', '5'],
     descripcion: 'Actualiza productos que YA existen por código. Si un código no existe, esa fila queda en error (a diferencia de "Productos nuevos", esta opción nunca crea productos).',
+    permiteSumarStock: true,
   },
   {
     key: 'clientes',
@@ -344,6 +347,7 @@ export default function Configuracion() {
   const [importResult, setImportResult] = useState(null);
   const [errorImport, setErrorImport] = useState('');
   const [savingImport, setSavingImport] = useState(false);
+  const [importSumarStock, setImportSumarStock] = useState(false);
 
   // --- Metas de venta (Tablero de Ventas) ---
   // Gerencia asigna un monto "pool" por sede y categoría (Vendedores /
@@ -1102,6 +1106,7 @@ export default function Configuracion() {
     setImportRows([]);
     setImportResult(null);
     setErrorImport('');
+    setImportSumarStock(false);
     setImportadorActivo(key);
   }
 
@@ -1130,7 +1135,11 @@ export default function Configuracion() {
     if (importRows.length === 0) { setErrorImport('Selecciona un archivo CSV o Excel con al menos una fila.'); return; }
     setSavingImport(true);
     try {
-      const res = await api.post(config.endpoint, { rows: importRows, ...(config.extraBody || {}) });
+      const res = await api.post(config.endpoint, {
+        rows: importRows,
+        ...(config.permiteSumarStock ? { sumar_stock: importSumarStock } : {}),
+        ...(config.extraBody || {}),
+      });
       setImportResult(res.data);
       if (res.data.aplicado === false) {
         toast.error(`No se cargó nada: ${res.data.errores.length} fila(s) con errores. Corrige tu archivo y vuelve a subirlo.`);
@@ -2444,6 +2453,12 @@ export default function Configuracion() {
                 <input required type="file" accept=".csv,text/csv,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" onChange={handleImportFileChange} />
                 {importFileName && (
                   <p className="caja-row-auto">{importFileName} — {importRows.length} fila(s) detectadas.</p>
+                )}
+                {config.permiteSumarStock && (
+                  <label className="caja-row-auto" style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}>
+                    <input type="checkbox" checked={importSumarStock} onChange={(e) => setImportSumarStock(e.target.checked)} />
+                    Sumar el stock de la fila al que ya existe (en vez de reemplazarlo) — para productos que ya tienen stock.
+                  </label>
                 )}
                 {importResult && (
                   <div style={{ marginTop: 10 }}>

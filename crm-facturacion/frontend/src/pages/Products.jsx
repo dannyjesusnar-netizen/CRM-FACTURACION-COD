@@ -92,6 +92,7 @@ export default function Products() {
   const [cargaRows, setCargaRows] = useState([]);
   const [cargaResult, setCargaResult] = useState(null);
   const [errorCarga, setErrorCarga] = useState('');
+  const [cargaSumarStock, setCargaSumarStock] = useState(false);
 
   const [suppliers, setSuppliers] = useState([]);
   const [showSupplierForm, setShowSupplierForm] = useState(false);
@@ -245,6 +246,7 @@ export default function Products() {
     setCargaRows([]);
     setCargaResult(null);
     setErrorCarga('');
+    setCargaSumarStock(false);
     setShowCargaMasiva(true);
   }
 
@@ -269,7 +271,7 @@ export default function Products() {
     setErrorCarga('');
     if (cargaRows.length === 0) { setErrorCarga('Selecciona un archivo CSV con al menos una fila.'); return; }
     try {
-      const res = await api.post('/products/carga-masiva', { rows: cargaRows });
+      const res = await api.post('/products/carga-masiva', { rows: cargaRows, sumar_stock: cargaSumarStock });
       setCargaResult(res.data);
       if (res.data.aplicado) {
         if (res.data.creados.length > 0) toast.success(`${res.data.creados.length} producto(s) creados.`);
@@ -656,6 +658,10 @@ export default function Products() {
               {cargaFileName && (
                 <p className="caja-row-auto">{cargaFileName} — {cargaRows.length} fila(s) detectadas.</p>
               )}
+              <label className="caja-row-auto" style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}>
+                <input type="checkbox" checked={cargaSumarStock} onChange={(e) => setCargaSumarStock(e.target.checked)} />
+                Sumar el stock de la fila al que ya existe (en vez de reemplazarlo) — para productos que ya tienen stock.
+              </label>
               {cargaResult && (
                 <div style={{ marginTop: 10 }}>
                   {cargaResult.aplicado ? (

@@ -146,8 +146,12 @@ router.post('/', requireAccion('inventario', 'productos'), (req, res) => {
 // usuario nunca se encuentre con una carga a medias. La respuesta trae
 // `aplicado: false` en ese caso, junto con el detalle de errores para
 // corregir el archivo y volver a intentar.
+// sumarStock: false (default) = el stock de la fila REEMPLAZA el de la sede
+// activa (comportamiento de siempre, necesario para migraciones/conteos
+// exactos). true = el stock de la fila se SUMA al que ya había en la sede
+// (para cargas de mercadería nueva sin tener que calcular el total a mano).
 router.post('/carga-masiva', requireAccion('inventario', 'productos'), (req, res) => {
-  const { rows, crear_nuevos: crearNuevos = true } = req.body || {};
+  const { rows, crear_nuevos: crearNuevos = true, sumar_stock: sumarStock = false } = req.body || {};
   if (!Array.isArray(rows) || rows.length === 0) {
     return res.status(400).json({ error: 'rows es requerido y debe tener al menos una fila.' });
   }
@@ -180,14 +184,21 @@ router.post('/carga-masiva', requireAccion('inventario', 'productos'), (req, res
       }
       try {
         if (existing) {
-          const nuevoAgregado = tipo === 'servicio' || stock === null
-            ? existing.stock
-            : round2(existing.stock + (stock - getStockSucursal(existing.id, req.sucursalId)));
+          let nuevoAgregado = existing.stock;
+          let sedeStockNuevo = stock;
+          if (tipo !== 'servicio' && stock !== null) {
+            if (sumarStock) {
+              sedeStockNuevo = round2(getStockSucursal(existing.id, req.sucursalId) + stock);
+              nuevoAgregado = round2(existing.stock + stock);
+            } else {
+              nuevoAgregado = round2(existing.stock + (stock - getStockSucursal(existing.id, req.sucursalId)));
+            }
+          }
           db.prepare(
             `UPDATE products SET nombre = ?, categoria = ?, unidad = ?, tipo = ?, precio_unitario = ?, precio_compra = ?,
              codigo_barras = ?, stock = ?, stock_minimo = ? WHERE id = ?`
           ).run(nombre, categoria, unidad, tipo, precioUnitario, precioCompra, codigoBarras, nuevoAgregado, stockMinimo, existing.id);
-          if (tipo !== 'servicio') setStockSucursal(existing.id, req.sucursalId, stock);
+          if (tipo !== 'servicio') setStockSucursal(existing.id, req.sucursalId, sedeStockNuevo);
           actualizados.push({ codigo, nombre });
         } else {
           const info = db.prepare(
@@ -216,8 +227,11 @@ router.post('/carga-masiva', requireAccion('inventario', 'productos'), (req, res
 //
 // Todo o nada (ver utils/cargaMasiva.js): si CUALQUIER fila tiene un error,
 // no se guarda NADA.
+// sumar_stock: false (default) = el stock de la fila REEMPLAZA el de la
+// sede activa. true = se SUMA al que ya había (para ingresos de mercadería
+// nueva sin calcular el total a mano).
 router.post('/carga-masiva/inventario', requireAccion('inventario', 'productos'), (req, res) => {
-  const { rows } = req.body || {};
+  const { rows, sumar_stock: sumarStock = false } = req.body || {};
   if (!Array.isArray(rows) || rows.length === 0) {
     return res.status(400).json({ error: 'rows es requerido y debe tener al menos una fila.' });
   }
@@ -243,9 +257,13 @@ router.post('/carga-masiva/inventario', requireAccion('inventario', 'productos')
         continue;
       }
       try {
-        const nuevoAgregado = round2(existing.stock + (stock - getStockSucursal(existing.id, req.sucursalId)));
+        const sedeStockActual = getStockSucursal(existing.id, req.sucursalId);
+        const sedeStockNuevo = sumarStock ? round2(sedeStockActual + stock) : stock;
+        const nuevoAgregado = sumarStock
+          ? round2(existing.stock + stock)
+          : round2(existing.stock + (stock - sedeStockActual));
         db.prepare('UPDATE products SET stock = ? WHERE id = ?').run(nuevoAgregado, existing.id);
-        setStockSucursal(existing.id, req.sucursalId, stock);
+        setStockSucursal(existing.id, req.sucursalId, sedeStockNuevo);
         actualizados.push({ codigo, nombre: existing.nombre });
       } catch (err) {
         errores.push({ codigo, error: 'No se pudo guardar esta fila.' });
