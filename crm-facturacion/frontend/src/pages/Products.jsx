@@ -370,7 +370,7 @@ export default function Products() {
                 <th>U.M.</th>
                 <th>Afectación IGV</th>
                 <th>Proveedor</th>
-                <th>Favorito</th>
+                <th>Canal</th>
                 <th style={{ textAlign: 'right' }}>Mínimo</th>
                 <th style={{ textAlign: 'right' }}>{verTodasSedes ? 'Stock (todas las sedes)' : 'Stock'}</th>
                 <th style={{ textAlign: 'right' }}>Precio</th>
@@ -390,7 +390,7 @@ export default function Products() {
                     <td>{p.unidad}</td>
                     <td>{afectacionLabel}</td>
                     <td>{p.proveedor_nombre || '—'}</td>
-                    <td>{p.favorito ? <span className="badge badge-good">Sí</span> : 'No'}</td>
+                    <td>{p.canal_origen || '—'}</td>
                     <td style={{ textAlign: 'right' }}>{p.stock_minimo ?? '—'}</td>
                     <td style={{ textAlign: 'right' }}>
                       {stockMostrado === null ? '—' : (
