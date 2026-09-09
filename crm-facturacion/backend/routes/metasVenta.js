@@ -6,7 +6,7 @@ const router = express.Router();
 router.use(requireAuth);
 router.use(requireGerencia);
 
-const CATEGORIAS = ['vendedor', 'trainer'];
+const CATEGORIAS = ['vendedor', 'trainer', 'supervisor'];
 
 // GET /api/metas-venta?anio=&mes= — una fila por sede activa x categoría,
 // con el monto del pool ya asignado (0 si no hay ninguno todavía), cuántos
@@ -21,7 +21,7 @@ router.get('/', (req, res) => {
   const sedes = db.prepare('SELECT id, nombre FROM sucursales WHERE activo = 1 ORDER BY nombre ASC').all();
   const conteos = db.prepare(
     `SELECT sucursal_id, categoria_staff, COUNT(*) AS cantidad FROM users
-     WHERE activo = 1 AND sucursal_id IS NOT NULL AND categoria_staff IN ('vendedor', 'trainer')
+     WHERE activo = 1 AND sucursal_id IS NOT NULL AND categoria_staff IN ('vendedor', 'trainer', 'supervisor')
      GROUP BY sucursal_id, categoria_staff`
   ).all();
   const conteoMap = new Map(conteos.map((c) => [`${c.sucursal_id}:${c.categoria_staff}`, c.cantidad]));
@@ -63,7 +63,7 @@ router.put('/', (req, res) => {
     return res.status(400).json({ error: 'sucursal_id, anio y mes son requeridos.' });
   }
   if (!CATEGORIAS.includes(categoria_staff)) {
-    return res.status(400).json({ error: 'categoria_staff inválida. Use vendedor o trainer.' });
+    return res.status(400).json({ error: 'categoria_staff inválida. Use vendedor, trainer o supervisor.' });
   }
   const sede = db.prepare('SELECT id FROM sucursales WHERE id = ?').get(sucursal_id);
   if (!sede) return res.status(404).json({ error: 'Sede no encontrada.' });

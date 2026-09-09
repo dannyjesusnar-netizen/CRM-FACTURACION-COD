@@ -175,6 +175,7 @@ export default function Dashboard() {
   const colorTablero = empresa?.color_tablero_ventas || '#16a34a';
   const rankingTrainersRef = useRef(null);
   const rankingVendedoresRef = useRef(null);
+  const rankingSupervisoresRef = useRef(null);
   const totalMarcaRef = useRef(null);
   const totalProductoRef = useRef(null);
   const resumenSedesRef = useRef(null);
@@ -205,6 +206,7 @@ export default function Dashboard() {
   const [sucursalesTablero, setSucursalesTablero] = useState([]);
   const [rankingTrainers, setRankingTrainers] = useState([]);
   const [rankingVendedores, setRankingVendedores] = useState([]);
+  const [rankingSupervisores, setRankingSupervisores] = useState([]);
   const [totalMarca, setTotalMarca] = useState([]);
   const [totalProducto, setTotalProducto] = useState([]);
   const [resumenSedes, setResumenSedes] = useState({ sedes: [], total: null, ventas_totales: 0 });
@@ -234,12 +236,14 @@ export default function Dashboard() {
     Promise.all([
       api.get('/tablero/ranking-personal', { params: { ...params, categoria: 'trainer' } }),
       api.get('/tablero/ranking-personal', { params: { ...params, categoria: 'vendedor' } }),
+      api.get('/tablero/ranking-personal', { params: { ...params, categoria: 'supervisor' } }),
       api.get('/tablero/total-por-marca', { params }),
       api.get('/tablero/total-por-producto', { params }),
       api.get('/tablero/resumen-sedes', { params }),
-    ]).then(([trainers, vendedores, marca, producto, sedes]) => {
+    ]).then(([trainers, vendedores, supervisores, marca, producto, sedes]) => {
       setRankingTrainers(trainers.data);
       setRankingVendedores(vendedores.data);
+      setRankingSupervisores(supervisores.data);
       setTotalMarca(marca.data);
       setTotalProducto(producto.data);
       setResumenSedes(sedes.data);
@@ -524,6 +528,59 @@ export default function Dashboard() {
                     </tbody>
                     {rankingVendedores.length > 0 && (() => {
                       const t = totalesRanking(rankingVendedores);
+                      return (
+                        <tfoot>
+                          <tr className="totals-footer">
+                            <td>Total</td>
+                            <td></td>
+                            <td style={{ textAlign: 'right' }}>{money(t.venta)}</td>
+                            <td style={{ textAlign: 'right' }}>{money(t.meta)}</td>
+                            <td>{pctBadge(t.porcentaje)}</td>
+                          </tr>
+                        </tfoot>
+                      );
+                    })()}
+                  </table>
+                </div>
+
+                <div className="panel" ref={rankingSupervisoresRef}>
+                  <PanelHeader
+                    color={colorTablero}
+                    onCopiar={() => copiarPanelComoImagen(rankingSupervisoresRef, 'ranking-supervisores.png', toast)}
+                    onDescargarExcel={() => descargarPanelComoExcel(
+                      'ranking-supervisores.xlsx',
+                      ['Supervisor', 'Sede', 'Venta', 'Meta', '%'],
+                      rankingSupervisores.map((r) => [r.nombre, r.sede || '', r.venta, r.meta, r.porcentaje ?? '']),
+                      toast
+                    )}
+                    onDescargarDetalle={() => descargarDetalleRankingComoExcel(
+                      'supervisor',
+                      'detalle-ventas-supervisores.xlsx',
+                      'Supervisor',
+                      { anio: tableroAnio, mes: tableroMes, sucursal_id: tableroSedeId || undefined },
+                      toast
+                    )}
+                  >Ranking Supervisores</PanelHeader>
+                  <table className="data-table">
+                    <thead>
+                      <tr><th>Supervisor</th><th>Sede</th><th style={{ textAlign: 'right' }}>Venta</th><th style={{ textAlign: 'right' }}>Meta</th><th>%</th></tr>
+                    </thead>
+                    <tbody>
+                      {rankingSupervisores.map((r) => (
+                        <tr key={r.user_id} style={r.faltante ? { color: 'var(--ink-muted)', fontStyle: 'italic' } : undefined}>
+                          <td>{r.nombre}</td>
+                          <td>{r.sede || '—'}</td>
+                          <td style={{ textAlign: 'right' }}>{money(r.venta)}</td>
+                          <td style={{ textAlign: 'right' }}>{money(r.meta)}</td>
+                          <td>{pctBadge(r.porcentaje)}</td>
+                        </tr>
+                      ))}
+                      {rankingSupervisores.length === 0 && (
+                        <tr><td colSpan={5} className="empty-row">No hay supervisores con ventas en el período.</td></tr>
+                      )}
+                    </tbody>
+                    {rankingSupervisores.length > 0 && (() => {
+                      const t = totalesRanking(rankingSupervisores);
                       return (
                         <tfoot>
                           <tr className="totals-footer">
