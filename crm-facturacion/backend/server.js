@@ -71,6 +71,15 @@ const panelCompanyRoutes = panelCentralDisponible ? require(path.join(panelBacke
 const app = express();
 const PORT = process.env.PORT || 4000;
 
+// Render (y cualquier proxy delante de este servicio) reenvía la IP real del
+// visitante en X-Forwarded-For — sin esto, Express ve la IP del proxy para
+// TODAS las peticiones, y el límite de intentos de login (ver routes/auth.js
+// y panel-central/backend/routes/auth.js, montado en este mismo app) se
+// aplicaría a todo el tráfico junto en vez de por usuario. "1" = confiar en
+// un solo salto de proxy (el de Render), no en cualquier IP que el cliente
+// diga tener.
+app.set('trust proxy', 1);
+
 app.use(cors());
 // Limite mayor al default (100kb) para permitir subir el logo de la empresa
 // y las fotos de comprobantes de pago (QR estático) como data URL.

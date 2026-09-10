@@ -10,6 +10,13 @@ const companyRoutes = require('./routes/companies');
 const app = express();
 const PORT = process.env.PORT || 4100;
 
+// Mismo motivo que crm-facturacion/backend/server.js: sin esto, el límite de
+// intentos de login (ver routes/auth.js) vería la IP del proxy delante de
+// este servicio en vez de la del visitante real. Solo aplica cuando este
+// server.js corre standalone (desarrollo) — en producción panel-central se
+// monta dentro de crm-facturacion, que ya trae su propio trust proxy.
+app.set('trust proxy', 1);
+
 app.use(cors());
 app.use(express.json());
 
