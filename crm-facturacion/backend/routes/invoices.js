@@ -658,9 +658,15 @@ router.post('/preview-pdf', async (req, res) => {
       .map((p) => ({ monto: Number(p.monto), medio: p.medio, created_at: fechaFinal }));
   }
 
+  let doc;
+  try {
+    doc = await buildInvoicePdf(invoicePreview, preparedItems, cobrosPreview);
+  } catch (err) {
+    console.error('Error generando la vista previa del PDF:', err);
+    return res.status(500).json({ error: 'No se pudo generar la vista previa del comprobante.' });
+  }
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', 'inline; filename="vista-previa.pdf"');
-  const doc = await buildInvoicePdf(invoicePreview, preparedItems, cobrosPreview);
   doc.pipe(res);
   doc.end();
 });
@@ -798,9 +804,15 @@ router.get('/:id/pdf', async (req, res) => {
     ? db.prepare('SELECT * FROM cobros WHERE invoice_id = ? ORDER BY id ASC').all(invoice.id)
     : [];
 
+  let doc;
+  try {
+    doc = await buildInvoicePdf(invoice, items, cobros);
+  } catch (err) {
+    console.error('Error generando el PDF del comprobante:', err);
+    return res.status(500).json({ error: 'No se pudo generar el PDF del comprobante.' });
+  }
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `inline; filename="${invoice.serie}-${invoice.numero}.pdf"`);
-  const doc = await buildInvoicePdf(invoice, items, cobros);
   doc.pipe(res);
   doc.end();
 });

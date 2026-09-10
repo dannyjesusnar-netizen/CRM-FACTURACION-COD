@@ -144,9 +144,15 @@ router.get('/comprobante-preview', requireGerencia, async (req, res) => {
     { descripcion: 'Producto de ejemplo A', cantidad: 2, unidad: 'NIU', codigo: 'P001', precio_unitario: 45.9, descuento_pct: 0, subtotal: 91.8 },
     { descripcion: 'Producto de ejemplo B', cantidad: 1, unidad: 'NIU', codigo: 'P002', precio_unitario: 87.99, descuento_pct: 5, subtotal: 87.99 },
   ];
+  let doc;
+  try {
+    doc = await buildInvoicePdf(sampleInvoice, sampleItems, []);
+  } catch (err) {
+    console.error('Error generando la vista previa de diseño del comprobante:', err);
+    return res.status(500).json({ error: 'No se pudo generar la vista previa del comprobante.' });
+  }
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', 'inline; filename="vista-previa-comprobante.pdf"');
-  const doc = await buildInvoicePdf(sampleInvoice, sampleItems, []);
   doc.pipe(res);
   doc.end();
 });
