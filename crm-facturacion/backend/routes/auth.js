@@ -201,6 +201,7 @@ function loginSoloConDni(req, res, dni, password) {
 // hasta que el dueño del producto la apruebe (ver /api/platform) — no se
 // puede iniciar sesión todavía con ella.
 router.post('/register', registerLimiter, async (req, res) => {
+  try {
   const {
     ruc, razon_social, nombre_comercial, direccion_fiscal, telefono, email,
     nombres, apellidos, dni, password, acepta_terminos,
@@ -266,6 +267,10 @@ router.post('/register', registerLimiter, async (req, res) => {
     ok: true,
     mensaje: 'Registro recibido. Tu empresa quedará activa apenas sea aprobada.',
   });
+  } catch (err) {
+    console.error('Error al registrar una empresa nueva:', err);
+    res.status(500).json({ error: 'No se pudo completar el registro. Intenta de nuevo.' });
+  }
 });
 
 router.get('/me', requireAuth, (req, res) => {
