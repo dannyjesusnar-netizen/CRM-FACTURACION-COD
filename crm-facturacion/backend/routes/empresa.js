@@ -327,9 +327,13 @@ router.post('/borrar-inventario-sede', requireGerencia, (req, res) => {
 
 // Respaldos de la base de datos: además del respaldo automático diario (ver
 // server.js), Gerencia puede crear uno al instante y descargar cualquiera de
-// los últimos 7 guardados — todo dentro del mismo disco persistente.
+// los últimos 7 guardados — todo dentro del mismo disco persistente. Todas
+// las empresas de esta instancia comparten la misma carpeta de respaldos,
+// así que cada operación se acota al nombreBase de la empresa actual (ver
+// utils/backup.js) para que Gerencia de una empresa nunca vea ni pueda
+// descargar el respaldo de otra.
 router.get('/respaldos', requireGerencia, (req, res) => {
-  res.json(backup.listarRespaldos());
+  res.json(backup.listarRespaldos(backup.nombreBaseDe(db.currentDb())));
 });
 
 // Le dice al frontend si, además del respaldo local, cada copia también se
@@ -341,7 +345,7 @@ router.get('/respaldos-nube', requireGerencia, (req, res) => {
 
 router.post('/respaldos', requireGerencia, async (req, res) => {
   try {
-    const nombre = await backup.crearRespaldo(db);
+    const nombre = await backup.crearRespaldo(db.currentDb());
     res.status(201).json({ nombre });
   } catch (err) {
     res.status(500).json({ error: 'No se pudo crear el respaldo.' });
@@ -349,7 +353,7 @@ router.post('/respaldos', requireGerencia, async (req, res) => {
 });
 
 router.get('/respaldos/:nombre/descargar', requireGerencia, (req, res) => {
-  const ruta = backup.rutaRespaldo(req.params.nombre);
+  const ruta = backup.rutaRespaldo(req.params.nombre, backup.nombreBaseDe(db.currentDb()));
   if (!ruta) return res.status(404).json({ error: 'Respaldo no encontrado.' });
   res.download(ruta, req.params.nombre);
 });

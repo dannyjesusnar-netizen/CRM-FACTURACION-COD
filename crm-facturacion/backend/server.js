@@ -190,13 +190,43 @@ setInterval(() => {
 }, SEIS_HORAS_MS);
 procesarCobrosVencidos().catch((err) => console.error('Error procesando cobros de suscripción:', err));
 
-// Respaldo automático de la base de datos por defecto (empresa base de esta
-// instancia) — una vez al arrancar y luego cada 24 horas. Se guarda en el
-// mismo disco persistente (DATA_DIR/backups), conservando los últimos 7 (ver
-// utils/backup.js). Gerencia puede además crear uno al instante y descargar
-// cualquiera desde Configuración.
+// Respaldo automático de CADA empresa de esta instancia (la del despliegue
+// original + cada una que se auto-registró desde "Registrar mi empresa" —
+// ver tenantRegistry.listTodos()) — una vez al arrancar y luego cada 24
+// horas. Se guarda en el mismo disco persistente (DATA_DIR/backups),
+// conservando los últimos 7 por empresa (ver utils/backup.js, que nombra
+// cada respaldo con el mismo identificador que ya distingue a esa empresa).
+// Antes esto solo respaldaba la base por defecto (`db` fuera de una
+// petición cae siempre ahí) — cualquier empresa auto-registrada se quedaba
+// sin respaldo automático propio. Cada empresa se respalda por separado
+// (try/catch individual) para que si una falla no impida el respaldo de
+// las demás. Gerencia puede además crear uno al instante y descargar
+// cualquiera de los suyos desde Configuración.
+async function respaldarTodasLasEmpresas() {
+  const tenants = tenantRegistry.listTodos();
+  for (const tenant of tenants) {
+    try {
+      const tenantDb = db.openTenantDb(tenant.db_file);
+      await backup.crearRespaldo(tenantDb);
+    } catch (err) {
+      console.error(`Error en respaldo automático de ${tenant.ruc}:`, err);
+    }
+  }
+  // Antes de que la instalación base tenga su RUC configurado (ver
+  // adoptarInstanciaBase más arriba), todavía no aparece en
+  // tenantRegistry.listTodos() — se respalda igual "a mano" para que una
+  // instancia recién desplegada nunca se quede sin respaldo automático.
+  const yaIncluida = tenants.some((t) => t.db_file === db.DEFAULT_DB_PATH);
+  if (!yaIncluida) {
+    try {
+      await backup.crearRespaldo(db.openTenantDb(db.DEFAULT_DB_PATH));
+    } catch (err) {
+      console.error('Error en respaldo automático de la instalación base:', err);
+    }
+  }
+}
 const UN_DIA_MS = 24 * 60 * 60 * 1000;
 setInterval(() => {
-  backup.crearRespaldo(db).catch((err) => console.error('Error en respaldo automático:', err));
+  respaldarTodasLasEmpresas();
 }, UN_DIA_MS);
-backup.crearRespaldo(db).catch((err) => console.error('Error en respaldo automático:', err));
+respaldarTodasLasEmpresas();
