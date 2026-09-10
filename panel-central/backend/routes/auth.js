@@ -1,13 +1,28 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const rateLimit = require('express-rate-limit');
 const db = require('../db');
 const { JWT_SECRET, requireAuth } = require('../middleware/auth');
 const { passwordError } = require('../utils/password');
 
 const router = express.Router();
 
-router.post('/login', (req, res) => {
+// Esta cuenta es la más privilegiada de toda la plataforma (ver la auditoría
+// de panel-central: puede ver empleados y mensajes de soporte de cualquier
+// empresa, y resetear la contraseña de cualquiera) — sin límite de intentos
+// antes de esto. 10 intentos cada 15 minutos por IP, sin contar los que sí
+// terminan en login correcto.
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  message: { error: 'Demasiados intentos de inicio de sesión. Espera unos minutos y vuelve a intentar.' },
+});
+
+router.post('/login', loginLimiter, (req, res) => {
   const { email, password } = req.body || {};
   if (!email || !password) {
     return res.status(400).json({ error: 'Correo y contraseña son requeridos.' });

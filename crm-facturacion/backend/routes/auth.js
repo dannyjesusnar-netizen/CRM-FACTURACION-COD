@@ -1,6 +1,7 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const rateLimit = require('express-rate-limit');
 const db = require('../db');
 const tenantRegistry = require('../tenantRegistry');
 const { resolveTenantDb } = require('../utils/tenant');
@@ -10,6 +11,32 @@ const { passwordError } = require('../utils/password');
 const { permisosDeUsuario, esGerenciaOSupervisor, puedeVerTableroVentas } = require('../utils/permisos');
 
 const router = express.Router();
+
+// Sin esto, /login no tenía ningún límite de intentos — alguien podía probar
+// DNI+contraseña sin parar (y cada intento sin RUC, ver loginSoloConDni,
+// revisa TODAS las empresas de esta instancia, así que además es costoso en
+// cómputo). 10 intentos cada 15 minutos por IP alcanza de sobra para un
+// usuario real que se equivoca de contraseña un par de veces; no cuenta los
+// intentos que sí terminan en login correcto.
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  message: { error: 'Demasiados intentos de inicio de sesión. Espera unos minutos y vuelve a intentar.' },
+});
+
+// /register crea una empresa (y su base de datos) entera por intento — un
+// límite más estricto que el de login, para no dejar que alguien la use para
+// probar RUCs en bucle o saturar de bases de datos vacías.
+const registerLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Demasiados intentos de registro. Espera un momento y vuelve a intentar.' },
+});
 
 function emitirToken(res, user, ruc) {
   const token = jwt.sign(
@@ -40,7 +67,7 @@ function emitirToken(res, user, ruc) {
   });
 }
 
-router.post('/login', (req, res) => {
+router.post('/login', loginLimiter, (req, res) => {
   const { ruc, dni, password } = req.body || {};
   if (!dni || !password) {
     return res.status(400).json({ error: 'DNI y contraseña son requeridos.' });
@@ -173,7 +200,7 @@ function loginSoloConDni(req, res, dni, password) {
 // (aislada del resto) y su primera cuenta Gerencia, pero queda "pendiente"
 // hasta que el dueño del producto la apruebe (ver /api/platform) — no se
 // puede iniciar sesión todavía con ella.
-router.post('/register', async (req, res) => {
+router.post('/register', registerLimiter, async (req, res) => {
   const {
     ruc, razon_social, nombre_comercial, direccion_fiscal, telefono, email,
     nombres, apellidos, dni, password, acepta_terminos,
