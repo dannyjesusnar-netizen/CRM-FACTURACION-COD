@@ -15,7 +15,6 @@ const B2_KEY_ID = process.env.B2_KEY_ID || null; // "keyID" de una Application K
 const B2_APPLICATION_KEY = process.env.B2_APPLICATION_KEY || null;
 const B2_BUCKET_ID = process.env.B2_BUCKET_ID || null;
 
-const PREFIJO = 'crm-'; // debe coincidir con NOMBRE_BASE de utils/backup.js
 const MAX_RESPALDOS_REMOTOS = 14;
 
 function estaConfigurado() {
@@ -69,11 +68,11 @@ async function subirArchivo(rutaLocal, nombreArchivo) {
   return data;
 }
 
-async function listarArchivosRemotos(sesion) {
+async function listarArchivosRemotos(sesion, prefijo) {
   const res = await fetch(`${sesion.apiUrl}/b2api/v2/b2_list_file_names`, {
     method: 'POST',
     headers: { Authorization: sesion.authorizationToken, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ bucketId: B2_BUCKET_ID, prefix: PREFIJO, maxFileCount: 1000 }),
+    body: JSON.stringify({ bucketId: B2_BUCKET_ID, prefix: prefijo, maxFileCount: 1000 }),
   });
   const data = await res.json().catch(() => null);
   if (!res.ok || !data) throw new Error(data?.message || `Backblaze no pudo listar los archivos (HTTP ${res.status}).`);
@@ -81,12 +80,14 @@ async function listarArchivosRemotos(sesion) {
 }
 
 // Igual que limpiarRespaldosViejos() en utils/backup.js, pero en la nube:
-// conserva solo los más recientes para no acumular almacenamiento sin
-// límite (aunque con la capa gratuita de B2 una base de este tamaño
-// tardaría años en acercarse al límite).
-async function limpiarViejosRemotos() {
+// conserva solo los más recientes de ESA empresa (prefijo = nombreBase de
+// utils/backup.js + "-", ej. "crm-" o "<ruc>-") para no acumular
+// almacenamiento sin límite ni mezclar la rotación de una empresa con la de
+// otra (aunque con la capa gratuita de B2 una base de este tamaño tardaría
+// años en acercarse al límite).
+async function limpiarViejosRemotos(prefijo) {
   const sesion = await autorizar();
-  const archivos = (await listarArchivosRemotos(sesion)).sort((a, b) => b.fileName.localeCompare(a.fileName));
+  const archivos = (await listarArchivosRemotos(sesion, prefijo)).sort((a, b) => b.fileName.localeCompare(a.fileName));
   const viejos = archivos.slice(MAX_RESPALDOS_REMOTOS);
   for (const archivo of viejos) {
     await fetch(`${sesion.apiUrl}/b2api/v2/b2_delete_file_version`, {
