@@ -1428,6 +1428,50 @@ CREATE TABLE IF NOT EXISTS caja_turnos (
     }
   }
 
+  // Índices sobre las columnas que de verdad filtran/ordenan los reportes y
+  // listados del sistema (sucursal_id, fecha, product_id/invoice_id/etc. en
+  // los JOIN de detalle) — sin esto, cada reporte hace un table scan
+  // completo, algo que no se nota con pocos cientos de filas pero sí cuando
+  // stock_movements/invoices crecen con el uso diario. CREATE INDEX IF NOT
+  // EXISTS es barato de repetir en cada arranque (SQLite no rehace el índice
+  // si ya existe), así que corre siempre, no solo en el primer arranque.
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_invoices_sucursal_estado_fecha ON invoices(sucursal_id, estado, fecha_emision);
+    CREATE INDEX IF NOT EXISTS idx_invoices_client_fecha ON invoices(client_id, fecha_emision);
+    CREATE INDEX IF NOT EXISTS idx_invoice_items_invoice_id ON invoice_items(invoice_id);
+    CREATE INDEX IF NOT EXISTS idx_cobros_invoice_id ON cobros(invoice_id);
+
+    CREATE INDEX IF NOT EXISTS idx_notas_venta_sucursal_estado_fecha ON notas_venta(sucursal_id, estado, fecha_emision);
+    CREATE INDEX IF NOT EXISTS idx_nota_venta_items_nota_venta_id ON nota_venta_items(nota_venta_id);
+    CREATE INDEX IF NOT EXISTS idx_nota_venta_cobros_nota_venta_id ON nota_venta_cobros(nota_venta_id);
+
+    CREATE INDEX IF NOT EXISTS idx_stock_movements_sucursal_created ON stock_movements(sucursal_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_stock_movements_product_sucursal ON stock_movements(product_id, sucursal_id);
+
+    CREATE INDEX IF NOT EXISTS idx_purchases_sucursal_estado_fecha ON purchases(sucursal_id, estado, fecha);
+    CREATE INDEX IF NOT EXISTS idx_purchase_items_purchase_id ON purchase_items(purchase_id);
+    CREATE INDEX IF NOT EXISTS idx_purchase_items_product_id ON purchase_items(product_id);
+    CREATE INDEX IF NOT EXISTS idx_purchase_orders_sucursal_fecha ON purchase_orders(sucursal_id, fecha);
+    CREATE INDEX IF NOT EXISTS idx_purchase_order_items_purchase_order_id ON purchase_order_items(purchase_order_id);
+
+    CREATE INDEX IF NOT EXISTS idx_cotizaciones_sucursal_fecha ON cotizaciones(sucursal_id, fecha_emision);
+    CREATE INDEX IF NOT EXISTS idx_cotizacion_items_cotizacion_id ON cotizacion_items(cotizacion_id);
+
+    CREATE INDEX IF NOT EXISTS idx_guias_remitentes_sucursal_id ON guias_remitentes(sucursal_id);
+    CREATE INDEX IF NOT EXISTS idx_guia_items_guia_id ON guia_items(guia_id);
+
+    CREATE INDEX IF NOT EXISTS idx_traslado_items_traslado_id ON traslado_items(traslado_id);
+    CREATE INDEX IF NOT EXISTS idx_lotes_product_activo ON lotes(product_id, activo);
+    CREATE INDEX IF NOT EXISTS idx_equivalencias_product_activo ON equivalencias(product_id, activo);
+
+    CREATE INDEX IF NOT EXISTS idx_caja_movimientos_sucursal_fecha ON caja_movimientos(sucursal_id, fecha);
+    CREATE INDEX IF NOT EXISTS idx_pagos_qr_sucursal_created ON pagos_qr(sucursal_id, created_at);
+
+    CREATE INDEX IF NOT EXISTS idx_users_dni_activo ON users(dni, activo);
+    CREATE INDEX IF NOT EXISTS idx_users_categoria_staff_activo ON users(categoria_staff, activo);
+    CREATE INDEX IF NOT EXISTS idx_users_puede_iniciar_sesion ON users(puede_iniciar_sesion);
+  `);
+
   return db;
 }
 
