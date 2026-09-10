@@ -450,14 +450,19 @@ router.post('/analizar-guia-archivo', requireAccion('inventario', 'ajustes'), up
   const esPdf = nombreArchivo.endsWith('.pdf') || req.file.mimetype === 'application/pdf';
 
   let resultado;
-  if (esXml) {
-    resultado = await parseGuiaXml(req.file.buffer);
-  } else if (esPdf) {
-    resultado = await parseGuiaPdf(req.file.buffer);
-  } else {
-    return res.status(400).json({
-      error: 'Formato no soportado. Sube el XML de la guía o un PDF con texto (no una foto/escaneo).',
-    });
+  try {
+    if (esXml) {
+      resultado = await parseGuiaXml(req.file.buffer);
+    } else if (esPdf) {
+      resultado = await parseGuiaPdf(req.file.buffer);
+    } else {
+      return res.status(400).json({
+        error: 'Formato no soportado. Sube el XML de la guía o un PDF con texto (no una foto/escaneo).',
+      });
+    }
+  } catch (err) {
+    console.error('Error leyendo el archivo de guía:', err);
+    return res.status(422).json({ error: 'No se pudo leer este archivo — verifica que sea un XML o PDF de guía válido.' });
   }
   if (resultado.error) return res.status(422).json({ error: resultado.error });
 

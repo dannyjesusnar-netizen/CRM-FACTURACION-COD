@@ -387,9 +387,15 @@ router.get('/:id/pdf', async (req, res) => {
   if (!nv) return res.status(404).json({ error: 'Nota de venta interna no encontrada.' });
   const items = db.prepare('SELECT * FROM nota_venta_items WHERE nota_venta_id = ?').all(nv.id);
   const empresa = db.prepare('SELECT * FROM empresa_config WHERE id = 1').get();
+  let doc;
+  try {
+    doc = await buildNotaVentaPdf(nv, items, empresa);
+  } catch (err) {
+    console.error('Error generando el PDF de la nota de venta:', err);
+    return res.status(500).json({ error: 'No se pudo generar el PDF de la nota de venta.' });
+  }
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `inline; filename="${nv.serie}-${String(nv.numero).padStart(6, '0')}.pdf"`);
-  const doc = await buildNotaVentaPdf(nv, items, empresa);
   doc.pipe(res);
   doc.end();
 });

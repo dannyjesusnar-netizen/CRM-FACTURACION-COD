@@ -4,6 +4,19 @@ const fs = require('fs');
 const express = require('express');
 const cors = require('cors');
 
+// Red de seguridad: Express 4 no atrapa un error async sin try/catch dentro
+// de un route handler (a diferencia de Express 5) — esa promesa rechazada
+// queda "unhandled", y desde Node 15 el comportamiento por defecto es
+// terminar el proceso completo, afectando a todas las empresas de esta
+// instancia, no solo a la petición que falló. Cada ruta async debería tener
+// su propio try/catch (ver routes/invoices.js, routes/movements.js, etc.),
+// pero esto evita que un caso que se nos haya escapado tumbe el servidor
+// entero — la petición que causó el error queda sin respuesta (el cliente
+// verá un timeout), pero el resto de usuarios sigue funcionando.
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled promise rejection (revisar el try/catch de la ruta que la originó):', reason);
+});
+
 const authRoutes = require('./routes/auth');
 const clientRoutes = require('./routes/clients');
 const productRoutes = require('./routes/products');
