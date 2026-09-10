@@ -23,6 +23,24 @@ CREATE TABLE IF NOT EXISTS platform_admins (
 );
 `);
 
+// Registro de auditoría para las acciones más sensibles que este panel puede
+// hacer directamente sobre los datos de una empresa (ver localTenants.js) —
+// hoy solo el reseteo de la contraseña de un empleado, la única que permite
+// tomar control de una cuenta. Queda constancia de quién la hizo, sobre qué
+// empresa/usuario y por qué, para que sea auditable incluso cuando la acción
+// en sí es legítima (soporte real a un cliente).
+db.exec(`
+CREATE TABLE IF NOT EXISTS acciones_sensibles (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  admin_id INTEGER NOT NULL REFERENCES platform_admins(id),
+  accion TEXT NOT NULL,
+  ruc TEXT NOT NULL,
+  detalle TEXT,
+  motivo TEXT NOT NULL,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+`);
+
 // Limpieza de la funcionalidad "empresas en otras instancias" (administrar
 // remotamente una empresa con su propio despliegue de Render, vía URL +
 // PLATFORM_TOKEN): se decidió no usarla — todos los clientes comparten esta

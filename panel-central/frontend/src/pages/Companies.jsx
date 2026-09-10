@@ -30,6 +30,10 @@ export default function Companies() {
   const [sedesLibresValor, setSedesLibresValor] = useState('');
   const [solicitudesRuc, setSolicitudesRuc] = useState(null);
   const [solicitudes, setSolicitudes] = useState([]);
+  const [resetTarget, setResetTarget] = useState(null); // { ruc, usuario } o null
+  const [resetMotivo, setResetMotivo] = useState('');
+  const [resetAdminPassword, setResetAdminPassword] = useState('');
+  const [resetSubmitting, setResetSubmitting] = useState(false);
 
   const CLAVE_DEFECTO = 'Lima2026*';
 
@@ -157,13 +161,33 @@ export default function Companies() {
     setUsuarios(res.data);
   }
 
-  async function restablecerClaveDefecto(u) {
-    if (!window.confirm(`¿Restablecer la contraseña de "${u.full_name}" a "${CLAVE_DEFECTO}"?`)) return;
+  // Resetear la contraseña de un empleado equivale a tomar control de esa
+  // cuenta — por eso, a diferencia del resto de acciones de este panel, no
+  // es de un solo clic: pide el motivo y la propia contraseña del admin de
+  // plataforma antes de ejecutarse (ver el mismo candado en el backend,
+  // routes/companies.js), y queda registrado en acciones_sensibles.
+  function abrirResetClave(u) {
+    setResetTarget({ ruc: usuariosRuc, usuario: u });
+    setResetMotivo('');
+    setResetAdminPassword('');
+  }
+
+  async function confirmarResetClave(e) {
+    e.preventDefault();
+    if (!resetTarget) return;
+    setResetSubmitting(true);
     try {
-      await api.put(`/companies/locales/${usuariosRuc}/usuarios/${u.id}/password`, { new_password: CLAVE_DEFECTO });
-      toast.success(`Contraseña restablecida a "${CLAVE_DEFECTO}".`);
+      await api.put(`/companies/locales/${resetTarget.ruc}/usuarios/${resetTarget.usuario.id}/password`, {
+        new_password: CLAVE_DEFECTO,
+        motivo: resetMotivo,
+        admin_password: resetAdminPassword,
+      });
+      toast.success(`Contraseña de "${resetTarget.usuario.full_name}" restablecida a "${CLAVE_DEFECTO}".`);
+      setResetTarget(null);
     } catch (err) {
       toast.error(err.response?.data?.error || 'No se pudo restablecer la contraseña.');
+    } finally {
+      setResetSubmitting(false);
     }
   }
 
@@ -428,7 +452,7 @@ export default function Companies() {
                       </span>
                     </td>
                     <td className="row-actions">
-                      <button className="btn-link" onClick={() => restablecerClaveDefecto(u)}>Restablecer a Lima2026*</button>
+                      <button className="btn-link" onClick={() => abrirResetClave(u)}>Restablecer contraseña</button>
                     </td>
                   </tr>
                 ))}
@@ -440,6 +464,45 @@ export default function Companies() {
             <div className="modal-actions">
               <button type="button" className="btn-secondary" onClick={() => setUsuariosRuc(null)}>Cerrar</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {resetTarget && (
+        <div className="modal-overlay" onClick={() => !resetSubmitting && setResetTarget(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h2>Restablecer contraseña</h2>
+            <p style={{ fontSize: 12, color: 'var(--ink-muted)' }}>
+              Vas a restablecer la contraseña de <strong>{resetTarget.usuario.full_name}</strong> ({resetTarget.ruc})
+              a "{CLAVE_DEFECTO}". Esta acción queda registrada — escribe el motivo y confirma con tu propia
+              contraseña.
+            </p>
+            <form onSubmit={confirmarResetClave}>
+              <label>Motivo</label>
+              <textarea
+                required
+                rows={2}
+                value={resetMotivo}
+                onChange={(e) => setResetMotivo(e.target.value)}
+                placeholder="Ej. el cliente reportó por soporte que perdió el acceso de este empleado"
+              />
+              <label>Tu contraseña</label>
+              <input
+                required
+                type="password"
+                value={resetAdminPassword}
+                onChange={(e) => setResetAdminPassword(e.target.value)}
+                autoComplete="current-password"
+              />
+              <div className="modal-actions">
+                <button type="button" className="btn-secondary" disabled={resetSubmitting} onClick={() => setResetTarget(null)}>
+                  Cancelar
+                </button>
+                <button type="submit" className="btn-primary" disabled={resetSubmitting}>
+                  {resetSubmitting ? 'Restableciendo...' : 'Confirmar'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

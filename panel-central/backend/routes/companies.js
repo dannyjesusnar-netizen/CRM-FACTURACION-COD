@@ -1,6 +1,8 @@
 const express = require('express');
+const bcrypt = require('bcryptjs');
 const { requireAuth } = require('../middleware/auth');
 const localTenants = require('../localTenants');
+const db = require('../db');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -125,13 +127,35 @@ router.get('/locales/:ruc/usuarios', (req, res) => {
   res.json(localTenants.listarUsuarios(req.params.ruc));
 });
 
-// PUT /api/companies/locales/:ruc/usuarios/:userId/password { new_password }
+// PUT /api/companies/locales/:ruc/usuarios/:userId/password
+// { new_password, motivo, admin_password }
+// Es la acción más sensible que este panel puede hacer directamente sobre
+// los datos de una empresa (ver auditoría de estructura: equivale a tomar
+// control de la cuenta de un empleado) — por eso, a diferencia del resto de
+// endpoints de este archivo, exige dos cosas además del token: que el admin
+// de plataforma vuelva a escribir SU PROPIA contraseña (así un token
+// robado/filtrado no alcanza por sí solo) y un motivo no vacío, que queda
+// guardado en acciones_sensibles junto con quién y cuándo.
 router.put('/locales/:ruc/usuarios/:userId/password', (req, res) => {
   if (!getLocalTenantOr404(req, res)) return;
-  const { new_password } = req.body || {};
+  const { new_password, motivo, admin_password } = req.body || {};
   if (!new_password) return res.status(400).json({ error: 'Falta la nueva contraseña.' });
+  const motivoLimpio = (motivo || '').toString().trim();
+  if (!motivoLimpio) return res.status(400).json({ error: 'Escribe el motivo de este reseteo de contraseña.' });
+  if (!admin_password) return res.status(400).json({ error: 'Vuelve a escribir tu contraseña para confirmar.' });
+
+  const admin = db.prepare('SELECT * FROM platform_admins WHERE id = ?').get(req.admin.id);
+  if (!admin || !bcrypt.compareSync(admin_password, admin.password_hash)) {
+    return res.status(401).json({ error: 'Tu contraseña no es correcta.' });
+  }
+
   const usuario = localTenants.restablecerClave(req.params.ruc, req.params.userId, new_password);
   if (!usuario) return res.status(404).json({ error: 'Usuario no encontrado.' });
+
+  db.prepare(
+    'INSERT INTO acciones_sensibles (admin_id, accion, ruc, detalle, motivo) VALUES (?, ?, ?, ?, ?)'
+  ).run(req.admin.id, 'reset_password', req.params.ruc, `Usuario: ${usuario.full_name} (id ${usuario.id})`, motivoLimpio);
+
   res.json(usuario);
 });
 
