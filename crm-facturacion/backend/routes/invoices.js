@@ -209,6 +209,15 @@ function esMetodoPagoValido(codigo) {
 }
 
 router.post('/', async (req, res) => {
+  // Toda la función queda bajo un único try/catch: antes había dos "throw
+  // err" (más abajo, en la resolución de descuentos) que re-lanzaban sin que
+  // nada los atrapara, y el await a emitirComprobante tampoco tenía
+  // protección propia — cualquiera de los dos podía quedar como una promesa
+  // rechazada sin manejar en este endpoint (el que registra cada venta), con
+  // el mismo riesgo que las rutas de PDF/OCR ya corregidas. Los catch
+  // internos de más abajo siguen resolviendo sus casos específicos (código
+  // de estado correcto); este es solo la red de seguridad para todo lo demás.
+  try {
   const {
     tipo_comprobante, client_id, items, moneda, observaciones, fecha_emision, forma_pago,
     numero: numeroManual, descuento_global_pct, descuento_id,
@@ -570,6 +579,12 @@ router.post('/', async (req, res) => {
   }
 
   res.status(201).json({ ...invoice, items: invoiceItems });
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ error: err.message });
+    if (err instanceof StockInsuficienteError) return res.status(409).json({ error: err.message });
+    console.error('Error al registrar la venta:', err);
+    res.status(500).json({ error: 'No se pudo registrar la venta. Intenta de nuevo.' });
+  }
 });
 
 // POST /api/invoices/preview-pdf -> genera un PDF de vista previa con el
