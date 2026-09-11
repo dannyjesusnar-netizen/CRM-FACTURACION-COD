@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CheckCircle2, Clock, XCircle, AlertTriangle, Minus } from 'lucide-react';
+import { Check, CheckCircle2, Clock, XCircle, AlertTriangle, Minus } from 'lucide-react';
 import api from '../api';
 import { hoyPeru } from '../utils/fechas';
 import { useToast } from '../context/ToastContext';
@@ -25,14 +25,6 @@ function envioBadgeLabel(inv) {
   return 'Pendiente';
 }
 
-function envioBadgeClass(inv) {
-  if (inv.estado === 'anulado') return 'badge-critical';
-  if (inv.modo_emision !== 'real') return 'badge-good';
-  if (inv.sunat_estado === 'aceptado') return 'badge-good';
-  if (inv.sunat_estado === 'rechazado' || inv.sunat_estado === 'error') return 'badge-critical';
-  return 'badge-neutral';
-}
-
 // Columna "SUNAT": un símbolo en vez de texto, como en Nubefact/RapiFac — el
 // detalle (motivo de rechazo, etc.) sigue disponible al pasar el mouse.
 function SunatEstadoIcon({ inv }) {
@@ -52,6 +44,19 @@ function SunatEstadoIcon({ inv }) {
     return <span className="icon-link" style={{ color: 'var(--critical)' }} title={inv.sunat_mensaje || 'Error de envío'}><AlertTriangle size={18} /></span>;
   }
   return <span className="icon-link" style={{ color: '#b45309' }} title={inv.sunat_mensaje || 'Enviado a SUNAT, pendiente de confirmación'}><Clock size={18} /></span>;
+}
+
+// Columna "Enviado": el detalle fino (aceptado/pendiente/rechazado/error) ya
+// vive en la columna SUNAT de al lado — acá solo interesa si el comprobante
+// se registró/envió o si está anulado, como un check simple estilo Nubefact.
+function EnviadoIcon({ inv }) {
+  if (inv._source === 'nota_venta') {
+    return <span className="icon-link muted" title="Documento sin efectos tributarios, no se envía a SUNAT"><Minus size={16} /></span>;
+  }
+  if (inv.estado === 'anulado') {
+    return <span className="icon-link" style={{ color: 'var(--critical)' }} title="Comprobante anulado"><XCircle size={18} /></span>;
+  }
+  return <span className="icon-link" style={{ color: 'var(--good)' }} title={envioBadgeLabel(inv)}><Check size={18} /></span>;
 }
 
 function todayStr() {
@@ -283,13 +288,7 @@ export default function Invoices() {
                   <td style={{ textAlign: 'right' }}>S/ {Number(inv.total).toFixed(2)}</td>
                   <td>{formaPagoLabel(inv.forma_pago)}</td>
                   <td>
-                    {inv._source === 'nota_venta' ? (
-                      <span className="badge badge-neutral" title="Documento sin efectos tributarios, no se envía a SUNAT">Sin IGV</span>
-                    ) : (
-                      <span className={'badge ' + envioBadgeClass(inv)} title={inv.sunat_mensaje || ''}>
-                        {envioBadgeLabel(inv)}
-                      </span>
-                    )}
+                    <EnviadoIcon inv={inv} />
                   </td>
                   <td>
                     <a className="icon-link" href={inv._source === 'nota_venta' ? `/api/notas-venta/${inv.id}/pdf` : `/api/invoices/${inv.id}/pdf`} target="_blank" rel="noreferrer" title="Imprimir">🖨️</a>
