@@ -270,10 +270,10 @@ export default function Invoices() {
                     )}
                   </td>
                   <td>
-                    <a className="icon-link" href={inv._source === 'nota_venta' ? `/api/notas-venta/${inv.id}/pdf` : (inv.sunat_pdf_url || `/api/invoices/${inv.id}/pdf`)} target="_blank" rel="noreferrer" title="Imprimir">🖨️</a>
+                    <a className="icon-link" href={inv._source === 'nota_venta' ? `/api/notas-venta/${inv.id}/pdf` : `/api/invoices/${inv.id}/pdf`} target="_blank" rel="noreferrer" title="Imprimir">🖨️</a>
                   </td>
                   <td>
-                    <a className="icon-link" href={inv._source === 'nota_venta' ? `/api/notas-venta/${inv.id}/pdf` : (inv.sunat_pdf_url || `/api/invoices/${inv.id}/pdf`)} target="_blank" rel="noreferrer" title="Ver PDF">📄</a>
+                    <a className="icon-link" href={inv._source === 'nota_venta' ? `/api/notas-venta/${inv.id}/pdf` : `/api/invoices/${inv.id}/pdf`} target="_blank" rel="noreferrer" title="Ver PDF">📄</a>
                   </td>
                   <td>
                     {inv._source === 'nota_venta' ? (
