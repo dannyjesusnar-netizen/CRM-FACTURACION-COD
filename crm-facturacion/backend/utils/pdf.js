@@ -194,11 +194,16 @@ function buildA4Pdf(invoice, items, empresa, acento, logo, qr, cobros) {
   // datos de la empresa (infoY, variable según el logo) y el recuadro de
   // RUC/tipo/serie (que termina en y=116) — nunca a una y fija.
   const avisoY = Math.max(infoY, 116);
+  // El comprobante ya es válido para el cliente desde que se transmite —
+  // "pendiente" es solo el estado de confirmación de SUNAT (ver la columna
+  // SUNAT en Ventas, de uso interno). No tiene sentido alarmar al cliente
+  // con eso en su propia copia; solo avisamos cuando el documento de verdad
+  // no es válido (simulado, rechazado o con error de envío).
   if (esReal) {
     doc.fontSize(7).fillColor('#0ca30c').text(`Aceptado por SUNAT — Hash: ${invoice.sunat_hash || '-'}`, 40, avisoY, { width: 515 });
-  } else if (invoice.modo_emision === 'real') {
-    doc.fontSize(7).fillColor('#b45309').text(`Enviado a SUNAT — estado: ${invoice.sunat_estado || 'pendiente'} (aún sin confirmar)`, 40, avisoY, { width: 515 });
-  } else {
+  } else if (invoice.modo_emision === 'real' && (invoice.sunat_estado === 'rechazado' || invoice.sunat_estado === 'error')) {
+    doc.fontSize(7).fillColor('#dc2626').text(`Comprobante con error de envío a SUNAT (estado: ${invoice.sunat_estado}) — no válido hasta corregirlo`, 40, avisoY, { width: 515 });
+  } else if (invoice.modo_emision !== 'real') {
     doc.fontSize(7).fillColor('#999').text('Documento generado en modo SIMULADO (sin validez tributaria real)', 40, avisoY, { width: 515 });
   }
 
@@ -335,11 +340,16 @@ function buildA4Pdf(invoice, items, empresa, acento, logo, qr, cobros) {
   doc.rect(0, barY, 595, 62).fill(acento);
   doc.font('Helvetica-Bold').fontSize(10).fillColor('#fff').text('¡Gracias por su preferencia!', 40, barY + 14, { width: 515, align: 'center' });
   doc.font('Helvetica').fontSize(8).fillColor('#fff').text(empresa.razon_social || '', 40, barY + 32, { width: 515, align: 'center' });
-  if (!esReal) {
+  // Igual que el aviso de arriba: "pendiente" no se le muestra al cliente
+  // (el comprobante ya es válido), solo lo que de verdad no lo es.
+  if (invoice.modo_emision !== 'real') {
     doc.fontSize(6.5).fillColor('#fff').text(
-      invoice.modo_emision === 'real'
-        ? `Enviado a SUNAT pero no aceptado (estado: ${invoice.sunat_estado || 'desconocido'}). No tiene validez tributaria.`
-        : 'Documento en modo simulado, sin conexion real a SUNAT. No tiene validez tributaria.',
+      'Documento en modo simulado, sin conexion real a SUNAT. No tiene validez tributaria.',
+      40, barY + 46, { width: 515, align: 'center' }
+    );
+  } else if (invoice.sunat_estado === 'rechazado' || invoice.sunat_estado === 'error') {
+    doc.fontSize(6.5).fillColor('#fff').text(
+      `Comprobante con error de envío a SUNAT (estado: ${invoice.sunat_estado}). No válido hasta corregirlo.`,
       40, barY + 46, { width: 515, align: 'center' }
     );
   }
@@ -607,12 +617,20 @@ function buildTicketPdf(invoice, items, empresa, acento, logo, qr, cobros) {
     y += doc.heightOfString(empresa.terminos_condiciones_pdf, { width: contentWidth, align: 'center' }) + 6;
   }
 
-  const estadoTicket = esReal
-    ? { color: '#0ca30c', texto: 'Comprobante electronico aceptado por SUNAT.' }
-    : invoice.modo_emision === 'real'
-      ? { color: '#b45309', texto: `Enviado a SUNAT, estado: ${invoice.sunat_estado || 'pendiente'} (aun sin confirmar).` }
-      : { color: '#999', texto: 'Documento en modo simulado, sin validez tributaria.' };
-  doc.fontSize(6.5).fillColor(estadoTicket.color).text(estadoTicket.texto, margin, y, { width: contentWidth, align: 'center' });
+  // "Pendiente" no se muestra al cliente (el comprobante ya es válido apenas
+  // se transmite) — solo lo que de verdad no lo es: simulado, rechazado o
+  // con error de envío.
+  let estadoTicket = null;
+  if (esReal) {
+    estadoTicket = { color: '#0ca30c', texto: 'Comprobante electronico aceptado por SUNAT.' };
+  } else if (invoice.modo_emision !== 'real') {
+    estadoTicket = { color: '#999', texto: 'Documento en modo simulado, sin validez tributaria.' };
+  } else if (invoice.sunat_estado === 'rechazado' || invoice.sunat_estado === 'error') {
+    estadoTicket = { color: '#dc2626', texto: `Comprobante con error de envio a SUNAT (estado: ${invoice.sunat_estado}). No valido hasta corregirlo.` };
+  }
+  if (estadoTicket) {
+    doc.fontSize(6.5).fillColor(estadoTicket.color).text(estadoTicket.texto, margin, y, { width: contentWidth, align: 'center' });
+  }
 
   return doc;
 }
