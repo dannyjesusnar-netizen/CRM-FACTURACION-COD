@@ -55,8 +55,12 @@ function logoBuffer(dataUrl) {
 // enlace de consulta real, se usa ese; si no, un resumen local (no es el
 // formato oficial de SUNAT, solo una referencia legible al escanear).
 async function qrBuffer(invoice, empresa) {
-  const esReal = invoice.modo_emision === 'real' && invoice.sunat_estado === 'aceptado';
-  const contenido = esReal && invoice.sunat_pdf_url
+  // Nubefact ya entrega un enlace real mientras el comprobante está
+  // "pendiente" de confirmación, no solo cuando queda "aceptado" — usarlo
+  // también ahí evita mostrar el QR de respaldo (no es el formato oficial
+  // de SUNAT) mientras se espera la respuesta.
+  const tieneDocumentoReal = invoice.modo_emision === 'real' && invoice.sunat_pdf_url;
+  const contenido = tieneDocumentoReal
     ? invoice.sunat_pdf_url
     : [
       empresa.ruc || '', invoice.tipo_comprobante, invoice.serie, invoice.numero,
@@ -192,6 +196,8 @@ function buildA4Pdf(invoice, items, empresa, acento, logo, qr, cobros) {
   const avisoY = Math.max(infoY, 116);
   if (esReal) {
     doc.fontSize(7).fillColor('#0ca30c').text(`Aceptado por SUNAT — Hash: ${invoice.sunat_hash || '-'}`, 40, avisoY, { width: 515 });
+  } else if (invoice.modo_emision === 'real') {
+    doc.fontSize(7).fillColor('#b45309').text(`Enviado a SUNAT — estado: ${invoice.sunat_estado || 'pendiente'} (aún sin confirmar)`, 40, avisoY, { width: 515 });
   } else {
     doc.fontSize(7).fillColor('#999').text('Documento generado en modo SIMULADO (sin validez tributaria real)', 40, avisoY, { width: 515 });
   }
@@ -601,10 +607,12 @@ function buildTicketPdf(invoice, items, empresa, acento, logo, qr, cobros) {
     y += doc.heightOfString(empresa.terminos_condiciones_pdf, { width: contentWidth, align: 'center' }) + 6;
   }
 
-  doc.fontSize(6.5).fillColor(esReal ? '#0ca30c' : '#999').text(
-    esReal ? 'Comprobante electronico aceptado por SUNAT.' : 'Documento en modo simulado, sin validez tributaria.',
-    margin, y, { width: contentWidth, align: 'center' }
-  );
+  const estadoTicket = esReal
+    ? { color: '#0ca30c', texto: 'Comprobante electronico aceptado por SUNAT.' }
+    : invoice.modo_emision === 'real'
+      ? { color: '#b45309', texto: `Enviado a SUNAT, estado: ${invoice.sunat_estado || 'pendiente'} (aun sin confirmar).` }
+      : { color: '#999', texto: 'Documento en modo simulado, sin validez tributaria.' };
+  doc.fontSize(6.5).fillColor(estadoTicket.color).text(estadoTicket.texto, margin, y, { width: contentWidth, align: 'center' });
 
   return doc;
 }
