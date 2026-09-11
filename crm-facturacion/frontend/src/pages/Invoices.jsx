@@ -180,6 +180,25 @@ export default function Invoices() {
     }
   }
 
+  // El endpoint del PDF exige el token de sesión (Authorization: Bearer) y a
+  // veces la sede activa (X-Sucursal-Id) — un <a href> normal no puede
+  // mandar esos headers, así que se pide con el cliente `api` (que sí los
+  // agrega) y se abre el PDF resultante como blob. La pestaña se abre ANTES
+  // del await, en el mismo gesto del click, para que el navegador no la
+  // bloquee como popup.
+  async function abrirPdf(inv) {
+    const ventana = window.open('', '_blank');
+    const base = inv._source === 'nota_venta' ? '/notas-venta' : '/invoices';
+    try {
+      const res = await api.get(`${base}/${inv.id}/pdf`, { responseType: 'blob' });
+      const blobUrl = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+      if (ventana) ventana.location.href = blobUrl;
+    } catch (err) {
+      if (ventana) ventana.close();
+      toast.error(err.response?.data?.error || 'No se pudo abrir el PDF.');
+    }
+  }
+
   const vigentes = invoices.filter((i) => i.estado === 'emitido');
   const sumaSoles = vigentes.filter((i) => i.moneda !== 'USD').reduce((s, i) => s + i.total, 0);
   const sumaDolares = vigentes.filter((i) => i.moneda === 'USD').reduce((s, i) => s + i.total, 0);
@@ -291,10 +310,10 @@ export default function Invoices() {
                     <EnviadoIcon inv={inv} />
                   </td>
                   <td>
-                    <a className="icon-link" href={inv._source === 'nota_venta' ? `/api/notas-venta/${inv.id}/pdf` : `/api/invoices/${inv.id}/pdf`} target="_blank" rel="noreferrer" title="Imprimir">🖨️</a>
+                    <button type="button" className="icon-link" onClick={() => abrirPdf(inv)} title="Imprimir" style={{ background: 'none', border: 'none', padding: 0, font: 'inherit' }}>🖨️</button>
                   </td>
                   <td>
-                    <a className="icon-link" href={inv._source === 'nota_venta' ? `/api/notas-venta/${inv.id}/pdf` : `/api/invoices/${inv.id}/pdf`} target="_blank" rel="noreferrer" title="Ver PDF">📄</a>
+                    <button type="button" className="icon-link" onClick={() => abrirPdf(inv)} title="Ver PDF" style={{ background: 'none', border: 'none', padding: 0, font: 'inherit' }}>📄</button>
                   </td>
                   <td>
                     {inv._source === 'nota_venta' ? (
