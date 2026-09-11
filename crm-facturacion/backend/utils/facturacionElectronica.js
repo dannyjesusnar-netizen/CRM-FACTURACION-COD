@@ -193,7 +193,11 @@ async function emitirComprobante(invoice, items, client) {
       sunat_hash: data.codigo_hash || null,
       sunat_pdf_url: data.enlace_del_pdf || null,
       sunat_xml_url: data.enlace_del_xml || null,
-      sunat_mensaje: 'Nubefact generó el comprobante; SUNAT todavía no confirmó su validación (normal mientras la cuenta esté en modo demo).',
+      // No es un problema ni algo exclusivo del modo demo: SUNAT confirma las
+      // boletas a través del Resumen Diario de Boletas (RDB), no una por una
+      // -- por norma, la confirmación final puede llegar recién al día
+      // siguiente aunque el comprobante ya sea válido desde que se emitió.
+      sunat_mensaje: 'Comprobante enviado a SUNAT. La confirmación final puede tardar hasta el día siguiente (SUNAT valida las boletas por resumen diario, no una por una) — el comprobante ya es válido.',
     };
   } catch (err) {
     return { modo_emision: 'real', sunat_estado: 'error', sunat_mensaje: err.message };

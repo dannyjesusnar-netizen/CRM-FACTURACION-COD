@@ -21,8 +21,7 @@ function envioBadgeLabel(inv) {
   if (inv.sunat_estado === 'aceptado') return 'Aceptado SUNAT';
   if (inv.sunat_estado === 'rechazado') return 'Rechazado SUNAT';
   if (inv.sunat_estado === 'error') return 'Error de envío';
-  if (inv.sunat_estado === 'pendiente') return 'Pendiente SUNAT';
-  return 'Pendiente';
+  return 'Enviado a SUNAT';
 }
 
 // Columna "SUNAT": un símbolo en vez de texto, como en Nubefact/RapiFac — el
@@ -43,7 +42,7 @@ function SunatEstadoIcon({ inv }) {
   if (inv.sunat_estado === 'error') {
     return <span className="icon-link" style={{ color: 'var(--critical)' }} title={inv.sunat_mensaje || 'Error de envío'}><AlertTriangle size={18} /></span>;
   }
-  return <span className="icon-link" style={{ color: '#b45309' }} title={inv.sunat_mensaje || 'Enviado a SUNAT, pendiente de confirmación'}><Clock size={18} /></span>;
+  return <span className="icon-link" style={{ color: 'var(--brand-blue-dark)' }} title={inv.sunat_mensaje || 'Enviado a SUNAT — la confirmación final puede tardar hasta el día siguiente (normal, comprobante ya válido)'}><Clock size={18} /></span>;
 }
 
 // Columna "Enviado": el detalle fino (aceptado/pendiente/rechazado/error) ya
