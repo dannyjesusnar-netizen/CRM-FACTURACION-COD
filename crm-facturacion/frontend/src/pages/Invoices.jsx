@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { CheckCircle2, Clock, XCircle, AlertTriangle, Minus } from 'lucide-react';
 import api from '../api';
 import { hoyPeru } from '../utils/fechas';
 import { useToast } from '../context/ToastContext';
@@ -30,6 +31,27 @@ function envioBadgeClass(inv) {
   if (inv.sunat_estado === 'aceptado') return 'badge-good';
   if (inv.sunat_estado === 'rechazado' || inv.sunat_estado === 'error') return 'badge-critical';
   return 'badge-neutral';
+}
+
+// Columna "SUNAT": un símbolo en vez de texto, como en Nubefact/RapiFac — el
+// detalle (motivo de rechazo, etc.) sigue disponible al pasar el mouse.
+function SunatEstadoIcon({ inv }) {
+  if (inv._source === 'nota_venta') {
+    return <span className="icon-link muted" title="No aplica — documento sin IGV, no fiscal"><Minus size={16} /></span>;
+  }
+  if (inv.modo_emision !== 'real') {
+    return <span className="icon-link muted" title="Sin conexión real a SUNAT"><Minus size={16} /></span>;
+  }
+  if (inv.sunat_estado === 'aceptado') {
+    return <span className="icon-link" style={{ color: 'var(--good)' }} title={inv.sunat_mensaje || 'Aceptado por SUNAT'}><CheckCircle2 size={18} /></span>;
+  }
+  if (inv.sunat_estado === 'rechazado') {
+    return <span className="icon-link" style={{ color: 'var(--critical)' }} title={inv.sunat_mensaje || 'Rechazado por SUNAT'}><XCircle size={18} /></span>;
+  }
+  if (inv.sunat_estado === 'error') {
+    return <span className="icon-link" style={{ color: 'var(--critical)' }} title={inv.sunat_mensaje || 'Error de envío'}><AlertTriangle size={18} /></span>;
+  }
+  return <span className="icon-link" style={{ color: '#b45309' }} title={inv.sunat_mensaje || 'Enviado a SUNAT, pendiente de confirmación'}><Clock size={18} /></span>;
 }
 
 function todayStr() {
@@ -294,15 +316,7 @@ export default function Invoices() {
                     )}
                   </td>
                   <td>
-                    {inv._source === 'nota_venta' ? (
-                      <span className="icon-link muted" title="No aplica — documento sin IGV, no fiscal">—</span>
-                    ) : inv.modo_emision === 'real' ? (
-                      <span className={'icon-link ' + (inv.sunat_estado === 'aceptado' ? '' : 'muted')} title={inv.sunat_mensaje || ''}>
-                        {inv.sunat_estado || '—'}
-                      </span>
-                    ) : (
-                      <span className="icon-link muted" title="Sin conexión real a SUNAT">—</span>
-                    )}
+                    <SunatEstadoIcon inv={inv} />
                   </td>
                   <td>
                     {inv.estado === 'emitido' ? (
