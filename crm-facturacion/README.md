@@ -335,24 +335,31 @@ por cada una.
   rechazadas, con fecha de alta y de aprobación) y botones para
   aprobar/rechazar sin necesitar `curl`.
 
-### Verificación real del RUC contra SUNAT (`RUC_LOOKUP_TOKEN`)
+### Verificación de RUC/DNI y autocompletado de clientes (`RUC_LOOKUP_TOKEN`)
 
-SUNAT no expone una API pública oficial para consultar RUC. El registro
-puede verificar el RUC contra un proveedor externo que sí ofrece una API
-sobre esos mismos datos públicos ([apis.net.pe](https://apis.net.pe/), con
-plan gratuito limitado):
+SUNAT no expone una API pública oficial para consultar RUC ni DNI. Con la
+misma variable de entorno, este token de un proveedor externo que sí ofrece
+una API sobre esos mismos datos públicos ([apis.net.pe](https://apis.net.pe/),
+con plan gratuito limitado) se usa en dos lugares:
 
 | Variable | Valor |
 | --- | --- |
 | `RUC_LOOKUP_TOKEN` | token de tu cuenta en apis.net.pe (u otro proveedor compatible) |
 
-- Sin esta variable, el registro sigue funcionando igual que antes: solo
-  valida que el RUC tenga 11 dígitos.
-- Con la variable configurada, el registro se rechaza si el proveedor
-  confirma que el RUC **no existe** o que figura **inactivo** en SUNAT.
-- Si el proveedor externo falla o no responde a tiempo, el registro
-  **nunca se bloquea** por eso — es una verificación de mejor esfuerzo, no
-  un requisito indispensable.
+1. **Registrar mi empresa** (`POST /api/auth/register`): sin esta variable,
+   el registro sigue funcionando igual que antes, validando solo que el RUC
+   tenga 11 dígitos. Con la variable configurada, el registro se rechaza si
+   el proveedor confirma que el RUC **no existe** o que figura **inactivo**
+   en SUNAT.
+2. **Alta de cliente nuevo en Ventas** (`GET /api/clients/consultar-documento`):
+   al escribir un DNI (8 dígitos) o RUC (11 dígitos) completo en "Cliente
+   Nuevo", se autocompleta el nombre/razón social (y la dirección, para RUC)
+   si el proveedor lo encuentra. Sin esta variable, ese campo simplemente se
+   sigue completando a mano, como siempre.
+
+En ambos casos, si el proveedor externo falla o no responde a tiempo, la
+acción **nunca se bloquea** por eso — es una verificación/autocompletado de
+mejor esfuerzo, no un requisito indispensable.
 
 ## Suscripción a la plataforma: cobro recurrente con Izipay (`IZIPAY_USERNAME` / `IZIPAY_PASSWORD`)
 
