@@ -312,6 +312,7 @@ export default function Configuracion() {
   // --- Empleados ---
   const [usuarios, setUsuarios] = useState([]);
   const [q, setQ] = useState('');
+  const [estadoUsuarios, setEstadoUsuarios] = useState('activo');
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyUserForm());
@@ -463,9 +464,14 @@ export default function Configuracion() {
     if (sucursalSeleccionadaId && user?.role === 'gerencia') loadSeries(sucursalSeleccionadaId);
   }, [sucursalSeleccionadaId, user]);
 
-  function loadUsuarios() {
+  // estadoOverride permite recargar con el valor nuevo del filtro justo al
+  // cambiarlo (el estado de React no se actualiza a tiempo dentro del mismo
+  // onChange) sin esperar a un segundo render.
+  function loadUsuarios(estadoOverride) {
+    const estado = estadoOverride !== undefined ? estadoOverride : estadoUsuarios;
     const params = {};
     if (q) params.q = q;
+    if (estado !== 'todos') params.estado = estado;
     api.get('/users', { params }).then((res) => setUsuarios(res.data));
   }
 
@@ -1795,6 +1801,14 @@ export default function Configuracion() {
                 <div className="filter-field grow">
                   <label>Buscar por nombre, apellido, DNI o correo</label>
                   <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar.." />
+                </div>
+                <div className="filter-field">
+                  <label>Estado</label>
+                  <select value={estadoUsuarios} onChange={(e) => { setEstadoUsuarios(e.target.value); loadUsuarios(e.target.value); }}>
+                    <option value="activo">Activos</option>
+                    <option value="inactivo">Inactivos</option>
+                    <option value="todos">Todos</option>
+                  </select>
                 </div>
                 <div className="filter-actions">
                   <button type="submit" className="btn-secondary">Buscar</button>
