@@ -15,7 +15,35 @@ export default function ClientPicker({ value, onChange, required }) {
   const [open, setOpen] = useState(false);
   const [showNew, setShowNew] = useState(false);
   const [newClient, setNewClient] = useState(emptyClient());
+  const [buscandoDoc, setBuscandoDoc] = useState(false);
   const boxRef = useRef(null);
+
+  // Autocompletar nombre/razón social apenas se completa un DNI (8 dígitos)
+  // o RUC (11 dígitos) válido — sin API key configurada o si el proveedor
+  // falla, /consultar-documento responde encontrado:false y este efecto no
+  // hace nada (nunca bloquea ni pisa lo que la persona ya haya escrito a mano).
+  useEffect(() => {
+    if (!showNew) return;
+    const tipo = newClient.tipo_documento;
+    const numero = newClient.numero_documento.trim();
+    const largoValido = (tipo === 'DNI' && numero.length === 8) || (tipo === 'RUC' && numero.length === 11);
+    if (!largoValido) return;
+    let cancelado = false;
+    setBuscandoDoc(true);
+    api.get('/clients/consultar-documento', { params: { tipo_documento: tipo, numero_documento: numero } })
+      .then((res) => {
+        if (cancelado || !res.data.encontrado) return;
+        setNewClient((c) => (
+          c.numero_documento.trim() === numero && c.tipo_documento === tipo
+            ? { ...c, nombre: c.nombre.trim() ? c.nombre : res.data.nombre, direccion: c.direccion.trim() ? c.direccion : (res.data.direccion || c.direccion) }
+            : c
+        ));
+      })
+      .catch(() => {})
+      .finally(() => { if (!cancelado) setBuscandoDoc(false); });
+    return () => { cancelado = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [newClient.tipo_documento, newClient.numero_documento, showNew]);
 
   useEffect(() => {
     if (!q.trim()) { setResults([]); return; }
@@ -108,7 +136,7 @@ export default function ClientPicker({ value, onChange, required }) {
                   <input required value={newClient.numero_documento} onChange={(e) => setNewClient((c) => ({ ...c, numero_documento: e.target.value }))} />
                 </div>
               </div>
-              <label>Nombre / Razón social</label>
+              <label>Nombre / Razón social{buscandoDoc ? ' — buscando...' : ''}</label>
               <input required value={newClient.nombre} onChange={(e) => setNewClient((c) => ({ ...c, nombre: e.target.value }))} />
               <label>Dirección</label>
               <input value={newClient.direccion} onChange={(e) => setNewClient((c) => ({ ...c, direccion: e.target.value }))} />

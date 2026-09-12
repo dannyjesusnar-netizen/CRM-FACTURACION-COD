@@ -3,6 +3,7 @@ const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { requirePermiso, requireAccion } = require('../utils/permisos');
 const { ejecutarTodoONada } = require('../utils/cargaMasiva');
+const { consultarRuc, consultarDni } = require('../utils/rucLookup');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -27,6 +28,34 @@ router.get('/', (req, res) => {
     rows = db.prepare(`${base} ORDER BY c.nombre ASC`).all();
   }
   res.json(rows);
+});
+
+// GET /api/clients/consultar-documento?tipo_documento=DNI|RUC&numero_documento=...
+// -> autocompletar nombre/razón social al registrar un cliente nuevo desde
+// una venta. Va antes de /:id para no chocar con esa ruta. Nunca falla la
+// petición por un problema del proveedor externo -- responde 200 con
+// encontrado:false en cualquier caso donde no se pudo autocompletar, para
+// que el frontend simplemente no rellene nada (nunca bloquea el alta manual).
+router.get('/consultar-documento', async (req, res) => {
+  const tipoDocumento = (req.query.tipo_documento || '').toUpperCase();
+  const numeroDocumento = (req.query.numero_documento || '').trim();
+  if (tipoDocumento === 'DNI' && /^\d{8}$/.test(numeroDocumento)) {
+    const info = await consultarDni(numeroDocumento);
+    if (info.verificado && info.existe) {
+      return res.json({ encontrado: true, nombre: info.nombreCompleto });
+    }
+    return res.json({ encontrado: false });
+  }
+  if (tipoDocumento === 'RUC' && /^\d{11}$/.test(numeroDocumento)) {
+    const info = await consultarRuc(numeroDocumento);
+    if (info.verificado && info.existe) {
+      return res.json({ encontrado: true, nombre: info.razonSocial, direccion: info.direccion || undefined });
+    }
+    return res.json({ encontrado: false });
+  }
+  // CE (Carnet de Extranjería) u otro documento: no hay proveedor gratuito
+  // de consulta -- se completa siempre a mano.
+  return res.json({ encontrado: false });
 });
 
 router.get('/:id', (req, res) => {
