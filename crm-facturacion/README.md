@@ -339,12 +339,16 @@ por cada una.
 
 SUNAT no expone una API pública oficial para consultar RUC ni DNI. Con la
 misma variable de entorno, este token de un proveedor externo que sí ofrece
-una API sobre esos mismos datos públicos ([apis.net.pe](https://apis.net.pe/),
+una API sobre esos mismos datos públicos ([Decolecta](https://decolecta.com/),
 con plan gratuito limitado) se usa en dos lugares:
 
 | Variable | Valor |
 | --- | --- |
-| `RUC_LOOKUP_TOKEN` | token de tu cuenta en apis.net.pe (u otro proveedor compatible) |
+| `RUC_LOOKUP_TOKEN` | API Key de tu cuenta en decolecta.com (empieza con `sk_...`) |
+
+Ojo: no es lo mismo que apis.net.pe (otro proveedor similar, pero con una URL
+y token incompatibles) — si generaste un token ahí en vez de en decolecta.com,
+esta verificación no va a funcionar.
 
 1. **Registrar mi empresa** (`POST /api/auth/register`): sin esta variable,
    el registro sigue funcionando igual que antes, validando solo que el RUC
