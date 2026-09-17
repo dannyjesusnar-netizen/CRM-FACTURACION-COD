@@ -126,6 +126,49 @@ function round2(n) {
   return Math.round((n + Number.EPSILON) * 100) / 100;
 }
 
+// Traduce la respuesta cruda del OSE (misma forma tanto al emitir como al
+// volver a consultar un comprobante ya enviado) al estado que guardamos
+// nosotros. Separado de emitirComprobante para poder reusarlo en
+// consultarComprobante sin duplicar esta lógica.
+function interpretarRespuestaOse(data) {
+  if (data.aceptada_por_sunat) {
+    return {
+      modo_emision: 'real',
+      sunat_estado: 'aceptado',
+      sunat_hash: data.codigo_hash || null,
+      sunat_pdf_url: data.enlace_del_pdf || null,
+      sunat_xml_url: data.enlace_del_xml || null,
+      sunat_cdr_url: data.enlace_del_cdr || null,
+      sunat_mensaje: data.sunat_description || 'Aceptado por SUNAT.',
+    };
+  }
+
+  // aceptada_por_sunat=false no siempre es un rechazo: Nubefact devuelve
+  // ese mismo valor tanto cuando SUNAT rechazó el comprobante (con un
+  // motivo real en sunat_description/sunat_note/sunat_responsecode) como
+  // cuando todavía no hay respuesta de SUNAT — sobre todo en modo demo,
+  // donde Nubefact firma y genera el documento pero nunca llega a
+  // consultar a SUNAT, y esos tres campos quedan null para siempre.
+  // Solo lo marcamos "rechazado" cuando de verdad viene un motivo.
+  const motivoRechazo = data.sunat_description || data.sunat_note || data.sunat_soap_error || null;
+  if (motivoRechazo) {
+    return { modo_emision: 'real', sunat_estado: 'rechazado', sunat_mensaje: motivoRechazo };
+  }
+
+  return {
+    modo_emision: 'real',
+    sunat_estado: 'pendiente',
+    sunat_hash: data.codigo_hash || null,
+    sunat_pdf_url: data.enlace_del_pdf || null,
+    sunat_xml_url: data.enlace_del_xml || null,
+    // No es un problema ni algo exclusivo del modo demo: SUNAT confirma las
+    // boletas a través del Resumen Diario de Boletas (RDB), no una por una
+    // -- por norma, la confirmación final puede llegar recién al día
+    // siguiente aunque el comprobante ya sea válido desde que se emitió.
+    sunat_mensaje: 'Comprobante enviado a SUNAT. La confirmación final puede tardar hasta el día siguiente (SUNAT valida las boletas por resumen diario, no una por una) — el comprobante ya es válido.',
+  };
+}
+
 // Emite un comprobante contra el OSE configurado. Si no hay credenciales
 // configuradas, no hace ninguna llamada de red y devuelve modo simulado
 // (comportamiento idéntico al actual). Nunca lanza excepción: los errores
@@ -159,49 +202,51 @@ async function emitirComprobante(invoice, items, client) {
       };
     }
 
-    if (data.aceptada_por_sunat) {
-      return {
-        modo_emision: 'real',
-        sunat_estado: 'aceptado',
-        sunat_hash: data.codigo_hash || null,
-        sunat_pdf_url: data.enlace_del_pdf || null,
-        sunat_xml_url: data.enlace_del_xml || null,
-        sunat_cdr_url: data.enlace_del_cdr || null,
-        sunat_mensaje: data.sunat_description || 'Aceptado por SUNAT.',
-      };
-    }
-
-    // aceptada_por_sunat=false no siempre es un rechazo: Nubefact devuelve
-    // ese mismo valor tanto cuando SUNAT rechazó el comprobante (con un
-    // motivo real en sunat_description/sunat_note/sunat_responsecode) como
-    // cuando todavía no hay respuesta de SUNAT — sobre todo en modo demo,
-    // donde Nubefact firma y genera el documento pero nunca llega a
-    // consultar a SUNAT, y esos tres campos quedan null para siempre.
-    // Solo lo marcamos "rechazado" cuando de verdad viene un motivo.
-    const motivoRechazo = data.sunat_description || data.sunat_note || data.sunat_soap_error || null;
-    if (motivoRechazo) {
-      return {
-        modo_emision: 'real',
-        sunat_estado: 'rechazado',
-        sunat_mensaje: motivoRechazo,
-      };
-    }
-
-    return {
-      modo_emision: 'real',
-      sunat_estado: 'pendiente',
-      sunat_hash: data.codigo_hash || null,
-      sunat_pdf_url: data.enlace_del_pdf || null,
-      sunat_xml_url: data.enlace_del_xml || null,
-      // No es un problema ni algo exclusivo del modo demo: SUNAT confirma las
-      // boletas a través del Resumen Diario de Boletas (RDB), no una por una
-      // -- por norma, la confirmación final puede llegar recién al día
-      // siguiente aunque el comprobante ya sea válido desde que se emitió.
-      sunat_mensaje: 'Comprobante enviado a SUNAT. La confirmación final puede tardar hasta el día siguiente (SUNAT valida las boletas por resumen diario, no una por una) — el comprobante ya es válido.',
-    };
+    return interpretarRespuestaOse(data);
   } catch (err) {
     return { modo_emision: 'real', sunat_estado: 'error', sunat_mensaje: err.message };
   }
 }
 
-module.exports = { emitirComprobante, estaConfigurado };
+// Vuelve a preguntarle al OSE por un comprobante YA enviado, para boletas
+// que quedaron 'pendiente' porque en el momento de emitir SUNAT todavía no
+// había respondido (normal: SUNAT confirma boletas al día siguiente, por
+// el Resumen Diario). Usa la operación "consultar_comprobante" documentada
+// en la API de Nubefact — misma RUTA/token que emitirComprobante, sin
+// verificación en vivo desde este entorno (sin acceso a internet acá); si
+// Nubefact cambia el nombre/forma de esta operación, revisar primero este
+// payload contra su documentación actual.
+// Devuelve null (sin tocar nada) si no hay nada que consultar o la
+// consulta falla — nunca lanza excepción.
+async function consultarComprobante(invoice) {
+  if (!estaConfigurado()) return null;
+  const tipoComprobanteId = TIPO_COMPROBANTE_NUBEFACT[invoice.tipo_comprobante];
+  if (!tipoComprobanteId) return null;
+
+  try {
+    const res = await fetch(NUBEFACT_RUTA, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${NUBEFACT_TOKEN}`,
+      },
+      body: JSON.stringify({
+        operacion: 'consultar_comprobante',
+        tipo_de_comprobante: tipoComprobanteId,
+        serie: invoice.serie,
+        numero: invoice.numero,
+      }),
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data) {
+      console.error(`[facturacionElectronica] consultar_comprobante ${invoice.serie}-${invoice.numero}: HTTP ${res.status}`);
+      return null;
+    }
+    return interpretarRespuestaOse(data);
+  } catch (err) {
+    console.error(`[facturacionElectronica] consultar_comprobante ${invoice.serie}-${invoice.numero}: no se pudo conectar:`, err.message);
+    return null;
+  }
+}
+
+module.exports = { emitirComprobante, consultarComprobante, estaConfigurado };
