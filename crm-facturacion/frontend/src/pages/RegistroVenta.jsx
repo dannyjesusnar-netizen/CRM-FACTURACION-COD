@@ -231,8 +231,18 @@ export default function RegistroVenta() {
     if (tipo === 'factura' && (!cliente || cliente.tipo_documento !== 'RUC')) {
       return 'Para emitir factura selecciona un cliente con RUC.';
     }
+    // Avisos preventivos de ODIN: errores que SUNAT rechaza en el envío al
+    // OSE y que es mejor atajar acá, antes de emitir, que descubrir después
+    // con el comprobante ya generado (ver conversación de soporte sobre el
+    // error 0154/2282 con comprobantes mal formados).
+    if (tipo === 'factura' && cliente && String(cliente.numero_documento || '').length !== 11) {
+      return 'ODIN: el RUC del cliente no tiene 11 dígitos — revísalo antes de emitir, SUNAT rechaza la factura si el RUC está mal formado.';
+    }
     if (tipo !== 'cotizacion' && !cliente) {
       return 'Selecciona un cliente.';
+    }
+    if (tipo === 'boleta' && computed.total >= 700 && cliente?.numero_documento === '10000000') {
+      return 'ODIN: SUNAT exige identificar al cliente (DNI o RUC) en boletas desde S/ 700 — selecciona un cliente con documento en vez de "Clientes Varios".';
     }
     if (tipo !== 'cotizacion' && cuenta === 'mixto') {
       if (pagosMixto.some((p) => !p.medio || !(Number(p.monto) > 0))) {
