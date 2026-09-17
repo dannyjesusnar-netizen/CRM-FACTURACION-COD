@@ -67,6 +67,7 @@ CREATE TABLE IF NOT EXISTS products (
   tipo TEXT NOT NULL DEFAULT 'producto',         -- producto | servicio
   categoria TEXT DEFAULT 'General',
   marca TEXT,
+  linea TEXT,                                    -- organic | fit | NULL (línea de producto propia, ver Dashboard)
   unidad TEXT NOT NULL DEFAULT 'NIU',
   precio_unitario REAL NOT NULL DEFAULT 0,
   stock REAL DEFAULT 0,
@@ -600,6 +601,9 @@ CREATE TABLE IF NOT EXISTS qr_unico_medios (
   }
   if (!productColumns.includes('stock_minimo')) {
     db.exec('ALTER TABLE products ADD COLUMN stock_minimo REAL DEFAULT 0');
+  }
+  if (!productColumns.includes('linea')) {
+    db.exec('ALTER TABLE products ADD COLUMN linea TEXT');
   }
   const movementColumns = db.prepare("PRAGMA table_info(stock_movements)").all().map((c) => c.name);
   if (!movementColumns.includes('lote_id')) {

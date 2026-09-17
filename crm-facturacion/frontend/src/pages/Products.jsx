@@ -25,7 +25,7 @@ function parseCsvProductos(text) {
 }
 
 const EMPTY_FORM = {
-  codigo: '', nombre: '', descripcion: '', categoria: 'General', marca: '',
+  codigo: '', nombre: '', descripcion: '', categoria: 'General', marca: '', linea: '',
   unidad: 'NIU', afectacion_igv: 'gravado', control: 'ninguno', tipo_inventario: 'MERCADERÍAS',
   tipo_clasificacion: 'Otros', subtipo_clasificacion: 'Otros', peso: '', favorito: false,
   precio_compra: '', precio_unitario: '', stock: '', palabras_clave: '', proveedor_id: '',
@@ -68,6 +68,7 @@ export default function Products() {
   const [categorias, setCategorias] = useState([]);
   const [q, setQ] = useState('');
   const [categoriaFiltro, setCategoriaFiltro] = useState('');
+  const [lineaFiltro, setLineaFiltro] = useState('');
   // Ver el stock sumado de todas las sedes en vez del de la sede activa —
   // solo Gerencia/Supervisor (mismo criterio que el Tablero de Ventas,
   // user.puede_ver_tablero). El backend ya manda ambos valores en cada fila
@@ -103,6 +104,7 @@ export default function Products() {
     const params = {};
     if (q) params.q = q;
     if (categoriaFiltro) params.categoria = categoriaFiltro;
+    if (lineaFiltro) params.linea = lineaFiltro;
     api.get('/products', { params }).then((res) => setProducts(res.data));
   }
 
@@ -142,6 +144,7 @@ export default function Products() {
       descripcion: p.descripcion || '',
       categoria: p.categoria || 'General',
       marca: p.marca || '',
+      linea: p.linea || '',
       unidad: p.unidad,
       afectacion_igv: p.afectacion_igv || 'gravado',
       control: p.control || 'ninguno',
@@ -347,6 +350,14 @@ export default function Products() {
             {categorias.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
         </div>
+        <div className="filter-field">
+          <label>Línea</label>
+          <select value={lineaFiltro} onChange={(e) => setLineaFiltro(e.target.value)}>
+            <option value="">Todas</option>
+            <option value="organic">Organic</option>
+            <option value="fit">Fit</option>
+          </select>
+        </div>
         <div className="filter-actions">
           <button type="submit" className="btn-secondary">Buscar</button>
           <ExportButton onExport={handleExportar} />
@@ -369,6 +380,7 @@ export default function Products() {
                 <th>Código</th>
                 <th>Producto</th>
                 <th>Categoría</th>
+                <th>Línea</th>
                 <th>Marca</th>
                 <th>U.M.</th>
                 <th>Afectación IGV</th>
@@ -388,6 +400,7 @@ export default function Products() {
                     <td>{p.codigo}</td>
                     <td>{p.nombre}</td>
                     <td>{p.categoria || '—'}</td>
+                    <td>{p.linea === 'organic' ? 'Organic' : p.linea === 'fit' ? 'Fit' : '—'}</td>
                     <td>{p.marca || '—'}</td>
                     <td>{p.unidad}</td>
                     <td>{afectacionLabel}</td>
@@ -431,6 +444,14 @@ export default function Products() {
                   <datalist id="categorias-list">
                     {categorias.map((c) => <option key={c} value={c} />)}
                   </datalist>
+                </div>
+                <div>
+                  <label>Línea</label>
+                  <select value={form.linea} onChange={(e) => setForm({ ...form, linea: e.target.value })}>
+                    <option value="">— Sin línea —</option>
+                    <option value="organic">Organic</option>
+                    <option value="fit">Fit</option>
+                  </select>
                 </div>
               </div>
 

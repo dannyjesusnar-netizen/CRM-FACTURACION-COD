@@ -45,11 +45,16 @@ const CANAL_SUBQUERY = `(
 router.get('/', (req, res) => {
   const q = (req.query.q || '').trim();
   const categoria = (req.query.categoria || '').trim();
+  const linea = (req.query.linea || '').trim().toLowerCase();
   let sql = `SELECT p.*, ${PROVEEDOR_SUBQUERY}, ${CANAL_SUBQUERY} FROM products p WHERE p.activo = 1`;
   const params = [req.sucursalId];
   if (categoria) {
     sql += ' AND p.categoria = ?';
     params.push(categoria);
+  }
+  if (linea) {
+    sql += ' AND p.linea = ?';
+    params.push(linea);
   }
   sql += ' ORDER BY p.nombre ASC';
   let rows = db.prepare(sql).all(...params);
@@ -82,23 +87,40 @@ function tipoDesdeUnidad(unidad) {
   return unidad === 'ZZ' ? 'servicio' : 'producto';
 }
 
+// Línea propia del producto (Organic / Fit, ver empresa "Organic and Fit")
+// — distinta de "categoria" (libre, la define cada empresa) porque acá
+// solo hay dos valores fijos, usados también para la métrica de ventas por
+// línea en el Dashboard (ver routes/tablero.js:total-por-linea).
+const LINEAS_VALIDAS = ['organic', 'fit'];
+function normalizarLinea(valor) {
+  if (valor === undefined) return undefined; // no vino en el body: no tocar
+  if (valor === null || valor === '') return null; // "sin línea", explícito
+  const v = String(valor).trim().toLowerCase();
+  if (!LINEAS_VALIDAS.includes(v)) return { error: true };
+  return v;
+}
+
 router.post('/', requireAccion('inventario', 'productos'), (req, res) => {
   const {
-    codigo, codigo_barras, nombre, descripcion, categoria, marca, unidad,
+    codigo, codigo_barras, nombre, descripcion, categoria, marca, linea, unidad,
     afectacion_igv, control, tipo_inventario, tipo_clasificacion, subtipo_clasificacion,
     peso, favorito, precio_compra, precio_unitario, stock, palabras_clave, proveedor_id,
   } = req.body || {};
   if (!codigo || !nombre || precio_unitario === undefined) {
     return res.status(400).json({ error: 'codigo, nombre y precio_unitario son requeridos.' });
   }
+  const lineaNormalizada = normalizarLinea(linea);
+  if (lineaNormalizada && lineaNormalizada.error) {
+    return res.status(400).json({ error: 'linea inválida — use "organic" o "fit" (o déjelo vacío).' });
+  }
   const tipo = tipoDesdeUnidad(unidad || 'NIU');
   try {
     const info = db.prepare(
       `INSERT INTO products (
-         codigo, codigo_barras, nombre, descripcion, tipo, categoria, marca, unidad,
+         codigo, codigo_barras, nombre, descripcion, tipo, categoria, marca, linea, unidad,
          afectacion_igv, control, tipo_inventario, tipo_clasificacion, subtipo_clasificacion,
          peso, favorito, precio_compra, precio_unitario, stock, palabras_clave, proveedor_id
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       codigo,
       codigo_barras || null,
@@ -107,6 +129,7 @@ router.post('/', requireAccion('inventario', 'productos'), (req, res) => {
       tipo,
       categoria || 'General',
       marca || null,
+      lineaNormalizada || null,
       unidad || 'NIU',
       afectacion_igv || 'gravado',
       control || 'ninguno',
@@ -332,10 +355,14 @@ router.put('/:id', requireAccion('inventario', 'productos'), (req, res) => {
   const existing = db.prepare('SELECT * FROM products WHERE id = ?').get(req.params.id);
   if (!existing) return res.status(404).json({ error: 'Producto no encontrado.' });
   const {
-    codigo, codigo_barras, nombre, descripcion, categoria, marca, unidad,
+    codigo, codigo_barras, nombre, descripcion, categoria, marca, linea, unidad,
     afectacion_igv, control, tipo_inventario, tipo_clasificacion, subtipo_clasificacion,
     peso, favorito, precio_compra, precio_unitario, stock, palabras_clave, activo, proveedor_id,
   } = req.body || {};
+  const lineaNormalizada = normalizarLinea(linea);
+  if (lineaNormalizada && lineaNormalizada.error) {
+    return res.status(400).json({ error: 'linea inválida — use "organic" o "fit" (o déjelo vacío).' });
+  }
   const unidadFinal = unidad ?? existing.unidad;
   const tipo = tipoDesdeUnidad(unidadFinal);
 
@@ -350,7 +377,7 @@ router.put('/:id', requireAccion('inventario', 'productos'), (req, res) => {
   }
 
   db.prepare(
-    `UPDATE products SET codigo = ?, codigo_barras = ?, nombre = ?, descripcion = ?, tipo = ?, categoria = ?, marca = ?, unidad = ?,
+    `UPDATE products SET codigo = ?, codigo_barras = ?, nombre = ?, descripcion = ?, tipo = ?, categoria = ?, marca = ?, linea = ?, unidad = ?,
      afectacion_igv = ?, control = ?, tipo_inventario = ?, tipo_clasificacion = ?, subtipo_clasificacion = ?,
      peso = ?, favorito = ?, precio_compra = ?, precio_unitario = ?, stock = ?, palabras_clave = ?, activo = ?, proveedor_id = ?
      WHERE id = ?`
@@ -362,6 +389,7 @@ router.put('/:id', requireAccion('inventario', 'productos'), (req, res) => {
     tipo,
     categoria ?? existing.categoria,
     marca === undefined ? existing.marca : (marca === '' ? null : marca),
+    lineaNormalizada === undefined ? existing.linea : lineaNormalizada,
     unidadFinal,
     afectacion_igv ?? existing.afectacion_igv,
     control ?? existing.control,

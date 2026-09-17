@@ -312,6 +312,25 @@ router.get('/total-por-marca', (req, res) => {
   res.json(conPorcentaje(rows));
 });
 
+const LINEA_LABEL = { organic: 'Organic', fit: 'Fit' };
+
+// Total por línea propia (Organic / Fit) — mismo patrón que total-por-marca,
+// agrupando por products.linea en vez de por proveedor. Los productos sin
+// línea asignada se agrupan en "Sin línea" para que la suma siga cuadrando
+// con el total de ventas real (no se pierden productos silenciosamente).
+router.get('/total-por-linea', (req, res) => {
+  const { anio, mesPad } = anioMes(req);
+  const sucursalId = sedeFiltro(req);
+  const rows = db.prepare(`
+    SELECT COALESCE(p.linea, 'sin_linea') AS linea, SUM(x.cantidad) AS cantidad, SUM(x.subtotal) AS venta
+    FROM (${ITEMS_VENDIDOS_SUBQUERY}) x
+    LEFT JOIN products p ON p.id = x.product_id
+    GROUP BY COALESCE(p.linea, 'sin_linea')
+    ORDER BY venta DESC
+  `).all(String(anio), mesPad, sucursalId, sucursalId, String(anio), mesPad, sucursalId, sucursalId);
+  res.json(conPorcentaje(rows).map((r) => ({ ...r, label: LINEA_LABEL[r.linea] || 'Sin línea' })));
+});
+
 // Total por producto (agrupado por categoría del producto).
 router.get('/total-por-producto', (req, res) => {
   const { anio, mesPad } = anioMes(req);
