@@ -55,6 +55,7 @@ const metasVentaRoutes = require('./routes/metasVenta');
 const tableroRoutes = require('./routes/tablero');
 const planillaRoutes = require('./routes/planilla');
 const { procesarCobrosVencidos } = require('./utils/facturacionPlataforma');
+const { sincronizarPendientesDeTodasLasEmpresas } = require('./utils/sincronizarSunat');
 const backup = require('./utils/backup');
 const db = require('./db');
 const tenantRegistry = require('./tenantRegistry');
@@ -191,6 +192,16 @@ setInterval(() => {
   procesarCobrosVencidos().catch((err) => console.error('Error procesando cobros de suscripción:', err));
 }, SEIS_HORAS_MS);
 procesarCobrosVencidos().catch((err) => console.error('Error procesando cobros de suscripción:', err));
+
+// Vuelve a preguntarle al OSE por las boletas que quedaron "pendiente" (ver
+// utils/sincronizarSunat.js) — SUNAT las confirma recién al día siguiente
+// por el Resumen Diario, así que cada 6 horas es más que suficiente para
+// que el estado se ponga al día solo, sin que nadie tenga que entrar a
+// Nubefact ni hacer clic en nada.
+setInterval(() => {
+  sincronizarPendientesDeTodasLasEmpresas().catch((err) => console.error('Error sincronizando estado SUNAT:', err));
+}, SEIS_HORAS_MS);
+sincronizarPendientesDeTodasLasEmpresas().catch((err) => console.error('Error sincronizando estado SUNAT:', err));
 
 // Respaldo automático de CADA empresa de esta instancia (la del despliegue
 // original + cada una que se auto-registró desde "Registrar mi empresa" —

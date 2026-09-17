@@ -25,8 +25,11 @@ function envioBadgeLabel(inv) {
 }
 
 // Columna "SUNAT": un símbolo en vez de texto, como en Nubefact/RapiFac — el
-// detalle (motivo de rechazo, etc.) sigue disponible al pasar el mouse.
-function SunatEstadoIcon({ inv }) {
+// detalle (motivo de rechazo, etc.) sigue disponible al pasar el mouse. El
+// reloj (pendiente) es además un botón: sunat_estado solo se graba una vez,
+// al emitir, así que si SUNAT no había respondido en ese momento queda
+// "pendiente" para siempre a menos que alguien vuelva a preguntar.
+function SunatEstadoIcon({ inv, onSincronizar, sincronizando }) {
   if (inv._source === 'nota_venta') {
     return <span className="icon-link muted" title="No aplica — documento sin IGV, no fiscal"><Minus size={16} /></span>;
   }
@@ -42,7 +45,18 @@ function SunatEstadoIcon({ inv }) {
   if (inv.sunat_estado === 'error') {
     return <span className="icon-link" style={{ color: 'var(--critical)' }} title={inv.sunat_mensaje || 'Error de envío'}><AlertTriangle size={18} /></span>;
   }
-  return <span className="icon-link" style={{ color: 'var(--brand-blue-dark)' }} title={inv.sunat_mensaje || 'Enviado a SUNAT — la confirmación final puede tardar hasta el día siguiente (normal, comprobante ya válido)'}><Clock size={18} /></span>;
+  return (
+    <button
+      type="button"
+      className="icon-link"
+      style={{ color: 'var(--brand-blue-dark)', background: 'none', border: 'none', padding: 0, cursor: sincronizando ? 'wait' : 'pointer' }}
+      onClick={onSincronizar}
+      disabled={sincronizando}
+      title={`${inv.sunat_mensaje || 'Enviado a SUNAT — la confirmación final puede tardar hasta el día siguiente (normal, comprobante ya válido)'} — clic para volver a consultar con SUNAT.`}
+    >
+      <Clock size={18} />
+    </button>
+  );
 }
 
 // Columna "Enviado": el detalle fino (aceptado/pendiente/rechazado/error) ya
@@ -150,6 +164,32 @@ export default function Invoices() {
     ]);
     await exportarTabla(`ventas_${desde}_a_${hasta}`, header, rows, formato);
     toast.success(`Archivo ${formato === 'excel' ? 'Excel' : 'CSV'} exportado.`);
+  }
+
+  const [sincronizandoId, setSincronizandoId] = useState(null);
+
+  // Botón manual sobre el reloj "pendiente": sunat_estado solo se guarda al
+  // emitir, así que una boleta que quedó pendiente porque SUNAT todavía no
+  // había respondido (normal, se confirma al día siguiente) se queda así
+  // para siempre si nadie vuelve a preguntar (ver
+  // backend/routes/invoices.js:sincronizar-sunat).
+  async function handleSincronizarSunat(inv) {
+    setSincronizandoId(inv.id);
+    try {
+      const res = await api.post(`/invoices/${inv.id}/sincronizar-sunat`);
+      setInvoices((rows) => rows.map((r) => (
+        r._source === 'invoice' && r.id === inv.id ? { ...r, ...res.data } : r
+      )));
+      if (res.data.sunat_estado === 'aceptado') {
+        toast.success('SUNAT ya aceptó este comprobante.');
+      } else if (res.data.sunat_estado === 'pendiente') {
+        toast.info('Sigue pendiente — SUNAT aún no responde.');
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'No se pudo consultar el estado con SUNAT.');
+    } finally {
+      setSincronizandoId(null);
+    }
   }
 
   async function handleReatribuir(inv, atribuidoAId) {
@@ -333,7 +373,11 @@ export default function Invoices() {
                     )}
                   </td>
                   <td>
-                    <SunatEstadoIcon inv={inv} />
+                    <SunatEstadoIcon
+                      inv={inv}
+                      sincronizando={sincronizandoId === inv.id}
+                      onSincronizar={() => handleSincronizarSunat(inv)}
+                    />
                   </td>
                   <td>
                     {inv.estado === 'emitido' ? (
