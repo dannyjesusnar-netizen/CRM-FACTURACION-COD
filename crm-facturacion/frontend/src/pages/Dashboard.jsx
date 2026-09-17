@@ -547,7 +547,7 @@ export default function Dashboard() {
                   </table>
                 </div>
 
-                <div className="panel" ref={rankingSupervisoresRef}>
+                <div className="panel" ref={rankingSupervisoresRef} style={{ gridColumn: '1 / -1' }}>
                   <PanelHeader
                     color={colorTablero}
                     onCopiar={() => copiarPanelComoImagen(rankingSupervisoresRef, 'ranking-supervisores.png', toast)}
@@ -662,7 +662,7 @@ export default function Dashboard() {
                     </tbody>
                   </table>
                 </div>
-                <div className="panel" ref={totalProductoRef}>
+                <div className="panel" ref={totalProductoRef} style={{ gridColumn: '1 / -1' }}>
                   <PanelHeader
                     color={colorTablero}
                     onCopiar={() => copiarPanelComoImagen(totalProductoRef, 'total-por-producto.png', toast)}
