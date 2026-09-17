@@ -1433,7 +1433,12 @@ export default function Configuracion() {
                 </button>
               ) : (
                 <div style={{ maxWidth: 560, marginTop: 8 }}>
-                  <p style={{ fontSize: 13 }}>Tu navegador no muestra el botón directo todavía — instálalo así:</p>
+                  <p style={{ fontSize: 13 }}>
+                    Tu navegador no ofrece el botón directo ahora — lo más probable es que <strong>ya lo hayas
+                    instalado antes en esta computadora</strong> (Chrome no vuelve a ofrecerlo una vez instalado):
+                    busca el ícono de QORIA en tu escritorio o menú de inicio de Windows.
+                  </p>
+                  <p style={{ fontSize: 13 }}>Si nunca lo instalaste en esta computadora, hazlo así:</p>
                   {isIosDevice() ? (
                     <ol style={{ paddingLeft: 20, fontSize: 13, lineHeight: 1.7 }}>
                       <li>Abre esta página en Safari (no en Chrome).</li>
