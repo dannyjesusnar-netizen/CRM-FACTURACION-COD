@@ -177,6 +177,7 @@ export default function Dashboard() {
   const rankingVendedoresRef = useRef(null);
   const rankingSupervisoresRef = useRef(null);
   const totalMarcaRef = useRef(null);
+  const totalLineaRef = useRef(null);
   const totalProductoRef = useRef(null);
   const resumenSedesRef = useRef(null);
   const ventasTotalesRef = useRef(null);
@@ -208,6 +209,7 @@ export default function Dashboard() {
   const [rankingVendedores, setRankingVendedores] = useState([]);
   const [rankingSupervisores, setRankingSupervisores] = useState([]);
   const [totalMarca, setTotalMarca] = useState([]);
+  const [totalLinea, setTotalLinea] = useState([]);
   const [totalProducto, setTotalProducto] = useState([]);
   const [resumenSedes, setResumenSedes] = useState({ sedes: [], total: null, ventas_totales: 0 });
   const [tableroLoading, setTableroLoading] = useState(false);
@@ -238,13 +240,15 @@ export default function Dashboard() {
       api.get('/tablero/ranking-personal', { params: { ...params, categoria: 'vendedor' } }),
       api.get('/tablero/ranking-personal', { params: { ...params, categoria: 'supervisor' } }),
       api.get('/tablero/total-por-marca', { params }),
+      api.get('/tablero/total-por-linea', { params }),
       api.get('/tablero/total-por-producto', { params }),
       api.get('/tablero/resumen-sedes', { params }),
-    ]).then(([trainers, vendedores, supervisores, marca, producto, sedes]) => {
+    ]).then(([trainers, vendedores, supervisores, marca, linea, producto, sedes]) => {
       setRankingTrainers(trainers.data);
       setRankingVendedores(vendedores.data);
       setRankingSupervisores(supervisores.data);
       setTotalMarca(marca.data);
+      setTotalLinea(linea.data);
       setTotalProducto(producto.data);
       setResumenSedes(sedes.data);
     }).finally(() => setTableroLoading(false));
@@ -623,6 +627,36 @@ export default function Dashboard() {
                         </tr>
                       ))}
                       {totalMarca.length === 0 && (
+                        <tr><td colSpan={4} className="empty-row">Sin ventas en el período.</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="panel" ref={totalLineaRef}>
+                  <PanelHeader
+                    color={colorTablero}
+                    onCopiar={() => copiarPanelComoImagen(totalLineaRef, 'total-por-linea.png', toast)}
+                    onDescargarExcel={() => descargarPanelComoExcel(
+                      'total-por-linea.xlsx',
+                      ['Línea', 'Cantidad', 'Venta', '% Venta'],
+                      totalLinea.map((l) => [l.label, l.cantidad, l.venta, l.porcentaje]),
+                      toast
+                    )}
+                  >Total por Línea (Organic / Fit)</PanelHeader>
+                  <table className="data-table">
+                    <thead>
+                      <tr><th>Línea</th><th style={{ textAlign: 'right' }}>Cantidad</th><th style={{ textAlign: 'right' }}>Venta</th><th style={{ textAlign: 'right' }}>% Venta</th></tr>
+                    </thead>
+                    <tbody>
+                      {totalLinea.map((l) => (
+                        <tr key={l.linea}>
+                          <td>{l.label}</td>
+                          <td style={{ textAlign: 'right' }}>{l.cantidad}</td>
+                          <td style={{ textAlign: 'right' }}>{money(l.venta)}</td>
+                          <td style={{ textAlign: 'right' }}>{l.porcentaje.toFixed(2)}%</td>
+                        </tr>
+                      ))}
+                      {totalLinea.length === 0 && (
                         <tr><td colSpan={4} className="empty-row">Sin ventas en el período.</td></tr>
                       )}
                     </tbody>
