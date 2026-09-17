@@ -4,6 +4,7 @@ const { requireAuth, resolveSucursal } = require('../middleware/auth');
 const { buildInvoicePdf } = require('../utils/pdf');
 const { consumirStock, incrementarStock, ajustarStockSucursal, getStockSucursal, StockInsuficienteError } = require('../utils/stock');
 const { emitirComprobante, consultarComprobante, estaConfigurado } = require('../utils/facturacionElectronica');
+const { reenviarComprobante } = require('../utils/sincronizarSunat');
 const { requirePermiso, requireAccion, requireAlgunPermiso, tieneAccion, tienePermiso, requireGerenciaOSupervisor } = require('../utils/permisos');
 const { siguienteNumero } = require('../utils/series');
 const { resolverDescuentoPct } = require('../utils/descuentos');
@@ -199,36 +200,30 @@ router.get('/:id', (req, res) => {
   res.json({ ...invoice, items });
 });
 
-// POST /:id/sincronizar-sunat -> vuelve a preguntarle al OSE por este
-// comprobante (ver utils/facturacionElectronica.js:consultarComprobante).
-// Existe porque hoy sunat_estado solo se graba una vez, al emitir — una
-// boleta que quedó "pendiente" porque SUNAT aún no había respondido en ese
-// momento (normal: se confirman al día siguiente por el resumen diario)
-// se queda así para siempre si nadie vuelve a consultar. Botón manual por
-// ahora, no un job automático, hasta confirmar en producción que el
-// nombre/forma de la operación "consultar_comprobante" es correcto.
+// POST /:id/sincronizar-sunat -> pone al día el estado de este comprobante
+// con el OSE. Existe porque hoy sunat_estado solo se graba una vez, al
+// emitir, y dos cosas distintas pueden quedar sin resolver ahí para siempre
+// si nadie vuelve a actuar:
+//   - 'pendiente': sí se envió, pero SUNAT aún no había respondido (normal,
+//     se confirman al día siguiente) -> solo hay que volver a CONSULTAR.
+//   - 'error': ni siquiera llegó a enviarse (Nubefact/SUNAT caídos, sin
+//     internet) -> hay que REENVIAR. Esto es seguro para la numeración: la
+//     fila ya existe con su serie/número desde el primer intento, reenviar
+//     solo repite la llamada al OSE con esos mismos datos — nunca genera ni
+//     consume un número nuevo.
+// Botón manual, además del job automático (ver utils/sincronizarSunat.js).
 router.post('/:id/sincronizar-sunat', async (req, res) => {
   const invoice = db.prepare('SELECT * FROM invoices WHERE id = ? AND sucursal_id = ?').get(req.params.id, req.sucursalId);
   if (!invoice) return res.status(404).json({ error: 'Comprobante no encontrado.' });
   if (invoice.modo_emision !== 'real') {
     return res.status(400).json({ error: 'Este comprobante no se envió realmente a SUNAT (modo simulado).' });
   }
-  const resultado = await consultarComprobante(invoice);
+  const resultado = invoice.sunat_estado === 'error'
+    ? await reenviarComprobante(invoice.id)
+    : await consultarComprobante(invoice);
   if (!resultado) {
-    return res.status(502).json({ error: 'No se pudo consultar el estado con el OSE. Intenta de nuevo en un momento.' });
+    return res.status(502).json({ error: 'No se pudo comunicar con el OSE. Intenta de nuevo en un momento.' });
   }
-  db.prepare(
-    `UPDATE invoices SET sunat_estado = ?, sunat_hash = ?, sunat_pdf_url = ?,
-     sunat_xml_url = ?, sunat_cdr_url = ?, sunat_mensaje = ? WHERE id = ?`
-  ).run(
-    resultado.sunat_estado || invoice.sunat_estado,
-    resultado.sunat_hash || invoice.sunat_hash,
-    resultado.sunat_pdf_url || invoice.sunat_pdf_url,
-    resultado.sunat_xml_url || invoice.sunat_xml_url,
-    resultado.sunat_cdr_url || invoice.sunat_cdr_url,
-    resultado.sunat_mensaje || invoice.sunat_mensaje,
-    invoice.id
-  );
   res.json(db.prepare('SELECT * FROM invoices WHERE id = ?').get(invoice.id));
 });
 

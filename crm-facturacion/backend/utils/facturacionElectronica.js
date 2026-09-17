@@ -202,7 +202,18 @@ async function emitirComprobante(invoice, items, client) {
       };
     }
 
-    return interpretarRespuestaOse(data);
+    const resultado = interpretarRespuestaOse(data);
+    // Un reenvío (ver utils/sincronizarSunat.js) puede toparse con un
+    // comprobante que en realidad SÍ había llegado la primera vez —
+    // solo que la respuesta nunca nos llegó (caída justo al responder,
+    // timeout, etc.) — Nubefact lo rechaza como "ya informado" en vez de
+    // aceptarlo de nuevo. Eso no es un rechazo real: consultamos el
+    // estado verdadero en vez de quedarnos con "rechazado".
+    if (resultado.sunat_estado === 'rechazado' && /ya\s+(fue\s+)?informado/i.test(resultado.sunat_mensaje || '')) {
+      const real = await consultarComprobante(invoice);
+      if (real) return real;
+    }
+    return resultado;
   } catch (err) {
     return { modo_emision: 'real', sunat_estado: 'error', sunat_mensaje: err.message };
   }

@@ -43,7 +43,18 @@ function SunatEstadoIcon({ inv, onSincronizar, sincronizando }) {
     return <span className="icon-link" style={{ color: 'var(--critical)' }} title={inv.sunat_mensaje || 'Rechazado por SUNAT'}><XCircle size={18} /></span>;
   }
   if (inv.sunat_estado === 'error') {
-    return <span className="icon-link" style={{ color: 'var(--critical)' }} title={inv.sunat_mensaje || 'Error de envío'}><AlertTriangle size={18} /></span>;
+    return (
+      <button
+        type="button"
+        className="icon-link"
+        style={{ color: 'var(--critical)', background: 'none', border: 'none', padding: 0, cursor: sincronizando ? 'wait' : 'pointer' }}
+        onClick={onSincronizar}
+        disabled={sincronizando}
+        title={`${inv.sunat_mensaje || 'Error de envío'} — clic para reintentar el envío a SUNAT (no genera un número nuevo, reenvía con el mismo).`}
+      >
+        <AlertTriangle size={18} />
+      </button>
+    );
   }
   return (
     <button
@@ -184,6 +195,8 @@ export default function Invoices() {
         toast.success('SUNAT ya aceptó este comprobante.');
       } else if (res.data.sunat_estado === 'pendiente') {
         toast.info('Sigue pendiente — SUNAT aún no responde.');
+      } else if (res.data.sunat_estado === 'error') {
+        toast.error('Sigue sin poder enviarse — probablemente Nubefact/SUNAT sigue caído. Se reintentará solo más tarde.');
       }
     } catch (err) {
       toast.error(err.response?.data?.error || 'No se pudo consultar el estado con SUNAT.');
