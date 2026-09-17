@@ -4,6 +4,7 @@ const { requireAuth, resolveSucursal } = require('../middleware/auth');
 const { getStockSucursal, setStockSucursal, round2 } = require('../utils/stock');
 const { requirePermiso, requireAccion } = require('../utils/permisos');
 const { ejecutarTodoONada } = require('../utils/cargaMasiva');
+const { coincideProducto } = require('../utils/textMatch');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -46,16 +47,19 @@ router.get('/', (req, res) => {
   const categoria = (req.query.categoria || '').trim();
   let sql = `SELECT p.*, ${PROVEEDOR_SUBQUERY}, ${CANAL_SUBQUERY} FROM products p WHERE p.activo = 1`;
   const params = [req.sucursalId];
-  if (q) {
-    sql += ' AND (p.nombre LIKE ? OR p.codigo LIKE ? OR p.codigo_barras LIKE ?)';
-    params.push(`%${q}%`, `%${q}%`, `%${q}%`);
-  }
   if (categoria) {
     sql += ' AND p.categoria = ?';
     params.push(categoria);
   }
   sql += ' ORDER BY p.nombre ASC';
-  const rows = db.prepare(sql).all(...params);
+  let rows = db.prepare(sql).all(...params);
+  // Coincidencia tolerante (sin tildes, sin importar el orden de las
+  // palabras, con margen para errores de tipeo chicos) en vez de un solo
+  // LIKE exacto — el vendedor rara vez escribe el nombre tal cual está
+  // registrado (ver utils/textMatch.js).
+  if (q) {
+    rows = rows.filter((r) => coincideProducto(q, r.nombre, `${r.codigo || ''} ${r.codigo_barras || ''}`));
+  }
   res.json(rows.map((r) => conStockDeSede(r, req.sucursalId)));
 });
 

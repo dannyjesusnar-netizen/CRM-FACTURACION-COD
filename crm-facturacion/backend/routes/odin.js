@@ -6,6 +6,7 @@
 const express = require('express');
 const db = require('../db');
 const { requireAuth, resolveSucursal } = require('../middleware/auth');
+const { coincideProducto } = require('../utils/textMatch');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -62,16 +63,21 @@ router.get('/resumen', (req, res) => {
 
 // GET /api/odin/stock?q=texto -> productos de esa sede cuyo nombre o código
 // coincide, con el stock real de la sede activa (no el agregado global).
+// Coincidencia tolerante (sin tildes, sin importar orden de palabras, con
+// margen para errores de tipeo chicos) — igual que en products.js, porque
+// el vendedor le pregunta a ODIN con sus propias palabras, no con el
+// nombre exacto del catálogo (ver utils/textMatch.js).
 router.get('/stock', (req, res) => {
   const q = String(req.query.q || '').trim();
   if (!q) return res.json([]);
-  const like = `%${q}%`;
   const rows = db.prepare(
     `SELECT p.nombre, p.codigo, COALESCE(ss.stock, 0) AS stock
      FROM products p LEFT JOIN sucursal_stock ss ON ss.product_id = p.id AND ss.sucursal_id = ?
-     WHERE p.activo = 1 AND p.tipo = 'producto' AND (p.nombre LIKE ? OR p.codigo LIKE ?)
-     ORDER BY p.nombre ASC LIMIT 8`
-  ).all(req.sucursalId, like, like);
+     WHERE p.activo = 1 AND p.tipo = 'producto'
+     ORDER BY p.nombre ASC`
+  ).all(req.sucursalId)
+    .filter((p) => coincideProducto(q, p.nombre, p.codigo))
+    .slice(0, 8);
   res.json(rows);
 });
 
