@@ -11,6 +11,7 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { leerArchivoComoTextoCsv, descargarComoExcel, exportarTabla, parsearLineaCsv } from '../utils/excelImport';
 import ExportButton from '../components/ExportButton';
+import { canInstallPwa, isIosDevice, isRunningStandalone, promptPwaInstall, subscribePwaInstall } from '../utils/pwaInstall';
 
 const DEPARTAMENTOS_PERU = [
   'Amazonas', 'Áncash', 'Apurímac', 'Arequipa', 'Ayacucho', 'Cajamarca', 'Callao', 'Cusco',
@@ -296,6 +297,28 @@ export default function Configuracion() {
   const navigate = useNavigate();
   const toast = useToast();
   const [seccion, setSeccion] = useState('empresa');
+
+  // --- Instalar App (PWA) ---
+  // pwaReady: el navegador ya disparó "beforeinstallprompt" (Chrome/Edge en
+  // Windows y Android) — se puede abrir el diálogo nativo directo. Si no,
+  // (Safari/iOS, o Chrome antes de que dispare el evento) se muestran los
+  // pasos manuales en vez del botón directo.
+  const [pwaReady, setPwaReady] = useState(canInstallPwa());
+  const [pwaInstalada, setPwaInstalada] = useState(isRunningStandalone());
+  useEffect(() => subscribePwaInstall(() => {
+    setPwaReady(canInstallPwa());
+    setPwaInstalada(isRunningStandalone());
+  }), []);
+
+  async function handleInstalarEnEstaComputadora() {
+    if (pwaReady) {
+      const choice = await promptPwaInstall();
+      if (choice?.outcome === 'accepted') {
+        toast.success('¡Listo! QORIA quedó instalado en esta computadora.');
+        setPwaInstalada(true);
+      }
+    }
+  }
 
   // --- Datos de la empresa ---
   const [empresa, setEmpresa] = useState(null);
@@ -1345,6 +1368,9 @@ export default function Configuracion() {
           <div className={'reports-sidebar-item' + (seccion === 'empresa' ? ' active' : '')} onClick={() => setSeccion('empresa')} role="button" tabIndex={0}>
             <Building2 size={16} /><span>Empresa</span>
           </div>
+          <div className={'reports-sidebar-item' + (seccion === 'instalar_app' ? ' active' : '')} onClick={() => setSeccion('instalar_app')} role="button" tabIndex={0}>
+            <Download size={16} /><span>Instalar App</span>
+          </div>
           <div className={'reports-sidebar-item' + (seccion === 'comprobantes' ? ' active' : '')} onClick={() => setSeccion('comprobantes')} role="button" tabIndex={0}>
             <FileText size={16} /><span>Comprobantes</span>
           </div>
@@ -1391,6 +1417,40 @@ export default function Configuracion() {
         </div>
 
         <div className="reports-content">
+          {seccion === 'instalar_app' && (
+            <>
+              <h3 style={{ marginTop: 0 }}>Instalar QORIA en esta computadora</h3>
+              <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -8, maxWidth: 560 }}>
+                Queda como una app de escritorio: un ícono propio, su propia ventana (sin la barra del navegador), sin
+                tener que escribir la dirección cada vez. Es la misma QORIA de siempre — solo cambia cómo se abre.
+              </p>
+              {pwaInstalada ? (
+                <p style={{ fontSize: 14, marginTop: 16 }}>✅ Ya está instalado en esta computadora.</p>
+              ) : pwaReady ? (
+                <button type="button" className="btn-primary" style={{ width: 'auto', marginTop: 8 }} onClick={handleInstalarEnEstaComputadora}>
+                  <Download size={16} style={{ marginRight: 6, verticalAlign: 'text-bottom' }} />
+                  Instalar en esta computadora
+                </button>
+              ) : (
+                <div style={{ maxWidth: 560, marginTop: 8 }}>
+                  <p style={{ fontSize: 13 }}>Tu navegador no muestra el botón directo todavía — instálalo así:</p>
+                  {isIosDevice() ? (
+                    <ol style={{ paddingLeft: 20, fontSize: 13, lineHeight: 1.7 }}>
+                      <li>Abre esta página en Safari (no en Chrome).</li>
+                      <li>Toca el botón <strong>Compartir</strong> (el cuadrado con la flecha hacia arriba).</li>
+                      <li>Elige <strong>"Agregar a pantalla de inicio"</strong> y confirma.</li>
+                    </ol>
+                  ) : (
+                    <ol style={{ paddingLeft: 20, fontSize: 13, lineHeight: 1.7 }}>
+                      <li>En Chrome o Edge, mira el ícono de instalar en la barra de direcciones (junto a los favoritos) — o abre el menú ⋮ de arriba a la derecha.</li>
+                      <li>Elige <strong>"Instalar QORIA..."</strong> (o "Agregar a pantalla de inicio").</li>
+                      <li>Confirma. Queda un ícono en el escritorio/menú de inicio.</li>
+                    </ol>
+                  )}
+                </div>
+              )}
+            </>
+          )}
           {seccion === 'empresa' && empresa && (
             <>
               <h3 style={{ marginTop: 0 }}>Información de tu empresa</h3>

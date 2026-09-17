@@ -134,9 +134,9 @@ export default function Layout() {
               <div className="user-dropdown-item" onClick={() => navigate('/cambiar-contrasena')}>
                 <Lock size={15} className="dropdown-icon" /> Cambiar contraseña
               </div>
-              {user?.role !== 'gerencia' && !isRunningStandalone() && (
+              {!isRunningStandalone() && (
                 <div className="user-dropdown-item" onClick={handleInstalarApp}>
-                  <Smartphone size={15} className="dropdown-icon" /> Instalar app en tu celular
+                  <Smartphone size={15} className="dropdown-icon" /> Instalar app
                 </div>
               )}
               {user?.role === 'gerencia' && (
@@ -193,7 +193,7 @@ export default function Layout() {
       {showInstalarModal && (
         <div className="modal-overlay" onClick={() => setShowInstalarModal(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h2>Instalar QORIA en tu celular</h2>
+            <h2>Instalar QORIA</h2>
             {isIosDevice() ? (
               <ol style={{ paddingLeft: 20, fontSize: 14, lineHeight: 1.7 }}>
                 <li>Abre esta página en Safari (no en Chrome).</li>
@@ -202,9 +202,9 @@ export default function Layout() {
               </ol>
             ) : (
               <ol style={{ paddingLeft: 20, fontSize: 14, lineHeight: 1.7 }}>
-                <li>Toca el menú de tu navegador (los tres puntos ⋮).</li>
+                <li>Toca o haz clic en el menú de tu navegador (los tres puntos ⋮).</li>
                 <li>Elige <strong>"Agregar a pantalla de inicio"</strong> o <strong>"Instalar app"</strong>.</li>
-                <li>Confirma para que quede el ícono de QORIA en tu celular.</li>
+                <li>Confirma para que quede el ícono de QORIA en tu celular/computadora.</li>
               </ol>
             )}
             <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: 4 }}>
