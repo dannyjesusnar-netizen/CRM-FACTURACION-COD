@@ -194,6 +194,11 @@ export default function Layout() {
         <div className="modal-overlay" onClick={() => setShowInstalarModal(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h2>Instalar QORIA</h2>
+            <p style={{ fontSize: 13, marginTop: -4 }}>
+              Si no te aparece ningún aviso de instalar, es probable que <strong>ya lo hayas instalado antes en este
+              dispositivo</strong> — busca el ícono de QORIA en tu escritorio, menú de inicio, o pantalla de celular.
+              Si nunca lo instalaste aquí, sigue estos pasos:
+            </p>
             {isIosDevice() ? (
               <ol style={{ paddingLeft: 20, fontSize: 14, lineHeight: 1.7 }}>
                 <li>Abre esta página en Safari (no en Chrome).</li>
