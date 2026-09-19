@@ -1417,11 +1417,6 @@ export default function Configuracion() {
           <div className={'reports-sidebar-item' + (seccion === 'instalar_app' ? ' active' : '')} onClick={() => setSeccion('instalar_app')} role="button" tabIndex={0}>
             <Download size={16} /><span>Instalar App</span>
           </div>
-          {user?.role === 'gerencia' && (
-            <div className={'reports-sidebar-item' + (seccion === 'power_bi' ? ' active' : '')} onClick={() => setSeccion('power_bi')} role="button" tabIndex={0}>
-              <Plug size={16} /><span>Power BI</span>
-            </div>
-          )}
           <div className={'reports-sidebar-item' + (seccion === 'comprobantes' ? ' active' : '')} onClick={() => setSeccion('comprobantes')} role="button" tabIndex={0}>
             <FileText size={16} /><span>Comprobantes</span>
           </div>
@@ -1463,6 +1458,11 @@ export default function Configuracion() {
           {user?.role === 'gerencia' && (
             <div className={'reports-sidebar-item' + (seccion === 'zona_peligro' ? ' active' : '')} onClick={() => setSeccion('zona_peligro')} role="button" tabIndex={0} style={{ color: 'var(--critical, #dc2626)' }}>
               <AlertTriangle size={16} /><span>Zona de peligro</span>
+            </div>
+          )}
+          {user?.role === 'gerencia' && (
+            <div className={'reports-sidebar-item' + (seccion === 'power_bi' ? ' active' : '')} onClick={() => setSeccion('power_bi')} role="button" tabIndex={0}>
+              <Plug size={16} /><span>Power BI</span>
             </div>
           )}
         </div>
