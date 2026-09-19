@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Building2, Users as UsersIcon, Store, ShieldCheck, FileText, Wallet, Hash, Percent,
   Upload, Download, Boxes, PackagePlus, RefreshCw, UserPlus, Tags, AlertTriangle, DatabaseBackup,
-  Cloud, CloudOff,
+  Cloud, CloudOff, Plug, Copy, Trash2,
 } from 'lucide-react';
 import api from '../api';
 import { hoyPeru } from '../utils/fechas';
@@ -319,6 +319,52 @@ export default function Configuracion() {
       }
     }
   }
+
+  // --- Power BI (tokens de solo lectura para /api/bi/*) ---
+  const [biTokens, setBiTokens] = useState([]);
+  const [biTokenNombre, setBiTokenNombre] = useState('');
+  const [biTokenNuevo, setBiTokenNuevo] = useState(null); // { id, nombre, token } — solo se ve una vez
+  const [creandoBiToken, setCreandoBiToken] = useState(false);
+
+  function loadBiTokens() {
+    api.get('/bi-tokens').then((res) => setBiTokens(res.data)).catch(() => {});
+  }
+
+  async function handleCrearBiToken(e) {
+    e.preventDefault();
+    if (!biTokenNombre.trim()) return;
+    setCreandoBiToken(true);
+    try {
+      const res = await api.post('/bi-tokens', { nombre: biTokenNombre.trim() });
+      setBiTokenNuevo(res.data);
+      setBiTokenNombre('');
+      loadBiTokens();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'No se pudo crear el token.');
+    } finally {
+      setCreandoBiToken(false);
+    }
+  }
+
+  async function handleRevocarBiToken(id) {
+    if (!window.confirm('¿Revocar este token? Cualquier reporte de Power BI que lo use dejará de poder actualizarse hasta que generes uno nuevo.')) return;
+    try {
+      await api.delete(`/bi-tokens/${id}`);
+      loadBiTokens();
+      toast.success('Token revocado.');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'No se pudo revocar el token.');
+    }
+  }
+
+  function copiarAlPortapapeles(texto) {
+    navigator.clipboard?.writeText(texto).then(() => toast.success('Copiado.')).catch(() => {});
+  }
+
+  useEffect(() => {
+    if (user?.role === 'gerencia') loadBiTokens();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // --- Datos de la empresa ---
   const [empresa, setEmpresa] = useState(null);
@@ -1371,6 +1417,11 @@ export default function Configuracion() {
           <div className={'reports-sidebar-item' + (seccion === 'instalar_app' ? ' active' : '')} onClick={() => setSeccion('instalar_app')} role="button" tabIndex={0}>
             <Download size={16} /><span>Instalar App</span>
           </div>
+          {user?.role === 'gerencia' && (
+            <div className={'reports-sidebar-item' + (seccion === 'power_bi' ? ' active' : '')} onClick={() => setSeccion('power_bi')} role="button" tabIndex={0}>
+              <Plug size={16} /><span>Power BI</span>
+            </div>
+          )}
           <div className={'reports-sidebar-item' + (seccion === 'comprobantes' ? ' active' : '')} onClick={() => setSeccion('comprobantes')} role="button" tabIndex={0}>
             <FileText size={16} /><span>Comprobantes</span>
           </div>
@@ -1454,6 +1505,97 @@ export default function Configuracion() {
                   )}
                 </div>
               )}
+            </>
+          )}
+          {seccion === 'power_bi' && (
+            <>
+              <h3 style={{ marginTop: 0 }}>Conectar Power BI</h3>
+              <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -8, maxWidth: 640 }}>
+                En vez de descargar un archivo y subirlo a mano, Power BI puede conectarse directo a QORIA y
+                actualizarse solo (programado). Genera un token acá, y úsalo en Power BI como se explica más abajo.
+                Este token solo da acceso de lectura a los reportes de BI — nunca al resto del sistema.
+              </p>
+
+              <form onSubmit={handleCrearBiToken} style={{ display: 'flex', gap: 8, alignItems: 'flex-end', maxWidth: 500, marginTop: 16 }}>
+                <div style={{ flex: 1 }}>
+                  <label>Nombre del token</label>
+                  <input
+                    placeholder="Ej. Power BI - Ventas Entrenadores"
+                    value={biTokenNombre}
+                    onChange={(e) => setBiTokenNombre(e.target.value)}
+                  />
+                </div>
+                <button type="submit" className="btn-primary" style={{ width: 'auto' }} disabled={creandoBiToken || !biTokenNombre.trim()}>
+                  Generar token
+                </button>
+              </form>
+
+              {biTokenNuevo && (
+                <div className="panel" style={{ marginTop: 16, maxWidth: 640, borderColor: 'var(--brand-blue-dark)' }}>
+                  <p style={{ fontSize: 13, fontWeight: 700, marginTop: 0 }}>
+                    ⚠️ Cópialo ahora — no se vuelve a mostrar (ni Gerencia lo puede ver de nuevo después de esto).
+                  </p>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <code style={{ flex: 1, wordBreak: 'break-all', fontSize: 12, background: 'var(--surface-hover)', padding: '6px 10px', borderRadius: 6 }}>
+                      {biTokenNuevo.token}
+                    </code>
+                    <button type="button" className="icon-btn" title="Copiar" onClick={() => copiarAlPortapapeles(biTokenNuevo.token)}>
+                      <Copy size={16} />
+                    </button>
+                  </div>
+                  <button type="button" className="btn-secondary" style={{ width: 'auto', marginTop: 10 }} onClick={() => setBiTokenNuevo(null)}>
+                    Ya lo copié
+                  </button>
+                </div>
+              )}
+
+              <h4 style={{ marginTop: 24 }}>Tokens existentes</h4>
+              <table className="data-table" style={{ maxWidth: 640 }}>
+                <thead>
+                  <tr><th>Nombre</th><th>Creado</th><th>Último uso</th><th></th></tr>
+                </thead>
+                <tbody>
+                  {biTokens.map((t) => (
+                    <tr key={t.id}>
+                      <td>{t.nombre}</td>
+                      <td>{t.created_at?.slice(0, 10)}</td>
+                      <td>{t.ultimo_uso_at ? t.ultimo_uso_at.slice(0, 16).replace('T', ' ') : 'Nunca'}</td>
+                      <td>
+                        <button type="button" className="btn-link danger" onClick={() => handleRevocarBiToken(t.id)}>
+                          <Trash2 size={14} style={{ marginRight: 4, verticalAlign: 'text-bottom' }} />Revocar
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {biTokens.length === 0 && (
+                    <tr><td colSpan={4} className="empty-row">Todavía no generaste ningún token.</td></tr>
+                  )}
+                </tbody>
+              </table>
+
+              <h4 style={{ marginTop: 24 }}>Cómo conectarlo en Power BI Desktop</h4>
+              <ol style={{ paddingLeft: 20, fontSize: 13, lineHeight: 1.8, maxWidth: 640 }}>
+                <li><strong>Obtener datos → Web</strong>.</li>
+                <li>Elige <strong>Avanzado</strong> e ingresa esta URL (trae ventas de Entrenadores y Supervisores, todo el historial):
+                  <div style={{ marginTop: 4 }}>
+                    <code style={{ display: 'block', wordBreak: 'break-all', fontSize: 12, background: 'var(--surface-hover)', padding: '6px 10px', borderRadius: 6 }}>
+                      {window.location.origin}/api/bi/{empresa?.ruc || ''}/ventas-staff
+                    </code>
+                  </div>
+                </li>
+                <li>En la sección de <strong>encabezados de solicitud HTTP</strong>, agrega uno con nombre <code>Authorization</code> y
+                  valor <code>Bearer &lt;tu token&gt;</code> (con el token que copiaste arriba, pegado justo después de "Bearer ").
+                </li>
+                <li>Power BI te va a traer una tabla con: empleado, categoría, sede, fecha, tipo de comprobante, serie, número, cliente y total.</li>
+                <li>Para que se actualice solo (sin que nadie lo suba a mano), publica el reporte a Power BI Service y configura
+                  un <strong>refresco programado</strong> — como la conexión usa este token en vez de tu usuario de Power BI, no hace
+                  falta puerta de enlace (gateway) ni volver a iniciar sesión cada vez.
+                </li>
+              </ol>
+              <p style={{ fontSize: 12, color: 'var(--ink-muted)', maxWidth: 640 }}>
+                Si algún día necesitas cortar el acceso (se filtró el token, cambia de proveedor, etc.), revócalo arriba —
+                el reporte de Power BI deja de poder actualizarse de inmediato, sin afectar nada más del sistema.
+              </p>
             </>
           )}
           {seccion === 'empresa' && empresa && (

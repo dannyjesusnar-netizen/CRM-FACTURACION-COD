@@ -54,6 +54,8 @@ const pagoPublicoRoutes = require('./routes/pagoPublico');
 const metasVentaRoutes = require('./routes/metasVenta');
 const tableroRoutes = require('./routes/tablero');
 const planillaRoutes = require('./routes/planilla');
+const biTokenRoutes = require('./routes/biTokens');
+const biRoutes = require('./routes/bi');
 const { procesarCobrosVencidos } = require('./utils/facturacionPlataforma');
 const { sincronizarPendientesDeTodasLasEmpresas } = require('./utils/sincronizarSunat');
 const backup = require('./utils/backup');
@@ -125,6 +127,10 @@ app.use('/api/qr-unico', qrUnicoRoutes);
 app.use('/api/metas-venta', metasVentaRoutes);
 app.use('/api/tablero', tableroRoutes);
 app.use('/api/planilla', planillaRoutes);
+app.use('/api/bi-tokens', biTokenRoutes);
+// Sin sesión de usuario (Bearer propio, ver middleware/biAuth.js) — para
+// que una herramienta externa (Power BI programado) se conecte sola.
+app.use('/api/bi/:ruc', biRoutes);
 // Pública (sin sesión) — la escanea el cliente del comercio desde el QR
 // impreso, ver routes/pagoPublico.js.
 app.use('/api/pago-publico', pagoPublicoRoutes);
