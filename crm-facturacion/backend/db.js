@@ -543,6 +543,21 @@ CREATE TABLE IF NOT EXISTS mensajes_soporte (
   created_at TEXT DEFAULT (datetime('now'))
 );
 
+-- Tokens de acceso de solo lectura para herramientas externas de BI (ej.
+-- Power BI programado, sin sesión de usuario) — ver middleware/biAuth.js y
+-- routes/bi.js. Nunca se guarda el token en claro, solo su hash SHA-256; el
+-- valor real solo se muestra una vez, al crearlo (routes/biTokens.js).
+-- Deliberadamente NO dan acceso a nada del resto de la API, solo a los
+-- endpoints /api/bi/*.
+CREATE TABLE IF NOT EXISTS bi_tokens (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  nombre TEXT NOT NULL,
+  token_hash TEXT NOT NULL UNIQUE,
+  created_by INTEGER REFERENCES users(id),
+  created_at TEXT DEFAULT (datetime('now')),
+  ultimo_uso_at TEXT
+);
+
 -- Registro de pagos recibidos por Yape/Plin (pantalla "QR Único") —
 -- control manual con foto de respaldo del comprobante. monto_detectado es
 -- lo que el OCR leyó de la foto (puede ser NULL si no detectó nada); monto
