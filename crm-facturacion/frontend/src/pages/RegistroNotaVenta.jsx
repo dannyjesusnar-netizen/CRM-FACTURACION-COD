@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import api from '../api';
 import { hoyPeru } from '../utils/fechas';
 import { useToast } from '../context/ToastContext';
+import { useAuth } from '../context/AuthContext';
 import ProductSearchBar from '../components/ProductSearchBar';
 import ClientPicker from '../components/ClientPicker';
 import MetodoPagoQr from '../components/MetodoPagoQr';
@@ -18,6 +19,10 @@ function round2(n) {
 export default function RegistroNotaVenta() {
   const navigate = useNavigate();
   const toast = useToast();
+  const { user } = useAuth();
+  // Ver "Errores y fixes" en RegistroVenta.jsx: el stock exacto es dato de
+  // Inventario, el backend ya no lo manda a quien no tiene ese módulo.
+  const verInventario = user?.permisos?.inventario !== false;
 
   const [serie, setSerie] = useState('');
   const [numero, setNumero] = useState('');
@@ -200,7 +205,7 @@ export default function RegistroNotaVenta() {
               <thead>
                 <tr>
                   <th className="col-desc">Descripción</th>
-                  <th className="num">Stock</th>
+                  {verInventario && <th className="num">Stock</th>}
                   <th>Cantidad</th>
                   <th>Uni. Med.</th>
                   <th className="num">P.U.</th>
@@ -213,7 +218,7 @@ export default function RegistroNotaVenta() {
                 {computed.rows.map((it, idx) => (
                   <tr key={idx}>
                     <td className="col-desc">{it.descripcion}</td>
-                    <td className="num">{it.stock ?? '—'}</td>
+                    {verInventario && <td className="num">{it.stock ?? '—'}</td>}
                     <td>
                       <input type="number" min="1" step="1" value={it.cantidad}
                         onChange={(e) => updateItem(idx, { cantidad: e.target.value })} />
@@ -232,7 +237,7 @@ export default function RegistroNotaVenta() {
                   </tr>
                 ))}
                 {computed.rows.length === 0 && (
-                  <tr><td colSpan={8} className="venta-table-empty">Busca un producto arriba para agregarlo.</td></tr>
+                  <tr><td colSpan={verInventario ? 8 : 7} className="venta-table-empty">Busca un producto arriba para agregarlo.</td></tr>
                 )}
               </tbody>
             </table>

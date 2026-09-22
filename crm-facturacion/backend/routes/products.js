@@ -2,20 +2,36 @@ const express = require('express');
 const db = require('../db');
 const { requireAuth, resolveSucursal } = require('../middleware/auth');
 const { getStockSucursal, setStockSucursal, round2 } = require('../utils/stock');
-const { requirePermiso, requireAccion } = require('../utils/permisos');
+const { requireAccion, tienePermiso } = require('../utils/permisos');
 const { ejecutarTodoONada } = require('../utils/cargaMasiva');
 const { coincideProducto } = require('../utils/textMatch');
 
 const router = express.Router();
 router.use(requireAuth);
-router.use(requirePermiso('inventario'));
 router.use(resolveSucursal);
+// Sin el candado de módulo a nivel de router (antes bloqueaba /products
+// entero a quien no tuviera Inventario habilitado — incluidos vendedores
+// que solo necesitan buscar productos para vender). Cada endpoint que
+// modifica algo sigue protegido con su propio requireAccion('inventario',
+// 'productos') más abajo; los de solo lectura quedan abiertos a cualquier
+// usuario autenticado, pero los datos sensibles de inventario (stock exacto,
+// costo de compra, proveedor) se ocultan para quien no tenga acceso al
+// módulo de Inventario — ver conStockDeSede.
 
 // El stock que se muestra siempre es el de la sede activa (no el agregado de
 // toda la empresa) — coherente con la separación real por sede: lo que ve el
-// usuario es lo que hay físicamente en su sede.
-function conStockDeSede(row, sucursalId) {
-  if (!row || row.tipo !== 'producto' || row.stock === null) return row;
+// usuario es lo que hay físicamente en su sede. mostrarStock=false quita,
+// además del stock, el costo de compra y el proveedor — no solo cuánto
+// queda, sino de dónde sale y a qué precio son datos de Inventario, no de
+// Ventas; quien no tiene ese acceso puede seguir buscando y vendiendo el
+// producto igual, solo sin ver esos tres datos.
+function conStockDeSede(row, sucursalId, mostrarStock) {
+  if (!row) return row;
+  if (!mostrarStock) {
+    const { stock, precio_compra, proveedor_nombre, canal_origen, ...visible } = row;
+    return visible;
+  }
+  if (row.tipo !== 'producto' || row.stock === null) return row;
   return { ...row, stock_total: row.stock, stock: getStockSucursal(row.id, sucursalId) };
 }
 
@@ -65,7 +81,8 @@ router.get('/', (req, res) => {
   if (q) {
     rows = rows.filter((r) => coincideProducto(q, r.nombre, `${r.codigo || ''} ${r.codigo_barras || ''}`));
   }
-  res.json(rows.map((r) => conStockDeSede(r, req.sucursalId)));
+  const mostrarStock = tienePermiso(req.user, 'inventario');
+  res.json(rows.map((r) => conStockDeSede(r, req.sucursalId, mostrarStock)));
 });
 
 router.get('/categorias', (req, res) => {
@@ -78,7 +95,7 @@ router.get('/categorias', (req, res) => {
 router.get('/:id', (req, res) => {
   const row = db.prepare('SELECT * FROM products WHERE id = ?').get(req.params.id);
   if (!row) return res.status(404).json({ error: 'Producto no encontrado.' });
-  res.json(conStockDeSede(row, req.sucursalId));
+  res.json(conStockDeSede(row, req.sucursalId, tienePermiso(req.user, 'inventario')));
 });
 
 // La unidad "ZZ" (Servicio) determina si el producto es un servicio (sin stock);
@@ -151,7 +168,9 @@ router.post('/', requireAccion('inventario', 'productos'), (req, res) => {
       setStockSucursal(newId, req.sucursalId, Number(stock || 0));
     }
     const row = db.prepare('SELECT * FROM products WHERE id = ?').get(newId);
-    res.status(201).json(conStockDeSede(row, req.sucursalId));
+    // Ya pasó por requireAccion('inventario', 'productos') arriba: quien
+    // llega hasta acá siempre tiene permiso de ver el stock que acaba de fijar.
+    res.status(201).json(conStockDeSede(row, req.sucursalId, true));
   } catch (err) {
     if (String(err.message).includes('UNIQUE')) {
       return res.status(409).json({ error: 'Ya existe un producto con ese codigo.' });
@@ -410,7 +429,7 @@ router.put('/:id', requireAccion('inventario', 'productos'), (req, res) => {
     setStockSucursal(req.params.id, req.sucursalId, Number(stock));
   }
   const row = db.prepare('SELECT * FROM products WHERE id = ?').get(req.params.id);
-  res.json(conStockDeSede(row, req.sucursalId));
+  res.json(conStockDeSede(row, req.sucursalId, true));
 });
 
 router.delete('/:id', requireAccion('inventario', 'productos'), (req, res) => {
