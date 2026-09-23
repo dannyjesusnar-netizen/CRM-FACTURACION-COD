@@ -1249,7 +1249,7 @@ export default function Configuracion() {
 
   function descargarPlantillaCargaMasivaOperativos() {
     const header = CARGA_MASIVA_OPERATIVOS_COLUMNAS;
-    const ejemplo = ['87654321', 'Lucía', 'Fernández', 'trainer', sucursales[0]?.nombre || '', 'manana'];
+    const ejemplo = ['87654321', 'Lucía', 'Fernández', 'Trainer', sucursales[0]?.nombre || '', 'Mañana'];
     const csv = [header, ejemplo].map((r) => r.join(',')).join('\n');
     const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -1260,7 +1260,7 @@ export default function Configuracion() {
   }
 
   function descargarPlantillaCargaMasivaOperativosExcel() {
-    const ejemplo = ['87654321', 'Lucía', 'Fernández', 'trainer', sucursales[0]?.nombre || '', 'manana'];
+    const ejemplo = ['87654321', 'Lucía', 'Fernández', 'Trainer', sucursales[0]?.nombre || '', 'Mañana'];
     descargarComoExcel('plantilla_carga_masiva_operativos.xlsx', CARGA_MASIVA_OPERATIVOS_COLUMNAS, [ejemplo]);
   }
 
@@ -2913,9 +2913,11 @@ export default function Configuracion() {
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h2>Carga masiva de Entrenadores/Supervisores operativos</h2>
             <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -6 }}>
-              Sube un CSV o Excel (.xlsx) con columnas: dni, nombres, apellidos, categoria_staff, sede, turno. "categoria_staff" es
-              trainer o supervisor. Si el DNI ya existe como registro operativo, lo actualiza; si no, lo crea.
-              Ninguno de estos registros tiene usuario ni contraseña — no pueden iniciar sesión.
+              Sube un CSV o Excel (.xlsx) con columnas: dni, nombres, apellidos, categoria_staff, sede, turno.
+              "categoria_staff" es Trainer o Supervisor; "turno" es Mañana o Tarde — no importa si los escribes
+              con mayúscula, minúscula o con o sin tilde. Si el DNI ya existe como registro operativo, lo
+              actualiza; si no, lo crea. Ninguno de estos registros tiene usuario ni contraseña — no pueden
+              iniciar sesión.
             </p>
             <div style={{ display: 'flex', gap: 12, marginBottom: 10 }}>
               <button type="button" className="btn-link" onClick={descargarPlantillaCargaMasivaOperativos}>

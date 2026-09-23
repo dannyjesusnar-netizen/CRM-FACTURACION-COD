@@ -16,18 +16,29 @@ const ROLES = ['gerencia', 'vendedor'];
 const CATEGORIAS_STAFF = ['vendedor', 'trainer', 'supervisor'];
 const TURNOS = ['manana', 'tarde'];
 
+// Para que la carga masiva acepte "Mañana", "MAÑANA", "Trainer", etc. — no
+// solo el valor interno exacto en minúsculas y sin tilde ("manana",
+// "trainer") — se normaliza antes de comparar: minúsculas + tildes fuera
+// (NFD separa la tilde como marca combinante aparte y se elimina).
+const MARCAS_DIACRITICAS = new RegExp('[\\u0300-\\u036f]', 'g');
+function normalizarTexto(valor) {
+  return (valor || '').toString().trim().toLowerCase().normalize('NFD').replace(MARCAS_DIACRITICAS, '');
+}
+
 function categoriaStaffOrError(categoriaStaff) {
   if (categoriaStaff === undefined) return { value: undefined };
   if (!categoriaStaff) return { value: 'vendedor' };
-  if (!CATEGORIAS_STAFF.includes(categoriaStaff)) return { error: 'categoria_staff inválida.' };
-  return { value: categoriaStaff };
+  const normalizado = normalizarTexto(categoriaStaff);
+  if (!CATEGORIAS_STAFF.includes(normalizado)) return { error: 'categoria_staff inválida.' };
+  return { value: normalizado };
 }
 
 function turnoOrError(turno) {
   if (turno === undefined) return { value: undefined };
   if (!turno) return { value: null };
-  if (!TURNOS.includes(turno)) return { error: 'turno inválido. Use manana o tarde.' };
-  return { value: turno };
+  const normalizado = normalizarTexto(turno);
+  if (!TURNOS.includes(normalizado)) return { error: 'turno inválido. Use manana o tarde.' };
+  return { value: normalizado };
 }
 
 function sinPassword(user) {
@@ -439,7 +450,7 @@ router.post('/operativos/carga-masiva', (req, res) => {
       errores.push({ dni, error: 'El DNI debe tener 8 dígitos, o 9 si es Carnet de Extranjería.' });
       continue;
     }
-    const categoriaStaff = (r.categoria_staff || '').toString().trim();
+    const categoriaStaff = normalizarTexto(r.categoria_staff);
     if (!CATEGORIAS_OPERATIVO.includes(categoriaStaff)) {
       errores.push({ dni, error: 'categoria_staff inválida. Use trainer o supervisor.' });
       continue;
