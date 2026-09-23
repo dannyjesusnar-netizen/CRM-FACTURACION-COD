@@ -1145,6 +1145,17 @@ export default function Configuracion() {
     }
   }
 
+  async function handleEliminarOperativo(o) {
+    if (!window.confirm(`¿Eliminar a ${o.full_name} por completo? Esta acción no se puede deshacer.`)) return;
+    try {
+      await api.delete(`/users/operativos/${o.id}`);
+      toast.success('Registro eliminado.');
+      loadOperativos();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'No se pudo eliminar el registro.');
+    }
+  }
+
   function openCargaMasivaOperativos() {
     setCargaOperativosFileName('');
     setCargaOperativosRows([]);
@@ -2109,6 +2120,7 @@ export default function Configuracion() {
                         <button className={'btn-link' + (o.activo ? ' danger' : '')} onClick={() => handleToggleEstadoOperativo(o)}>
                           {o.activo ? 'Desactivar' : 'Activar'}
                         </button>
+                        <button className="btn-link danger" onClick={() => handleEliminarOperativo(o)}>Eliminar</button>
                       </td>
                     </tr>
                   ))}
