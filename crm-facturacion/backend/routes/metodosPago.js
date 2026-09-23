@@ -1,6 +1,9 @@
 const express = require('express');
 const db = require('../db');
-const { requireAuth, requireGerencia } = require('../middleware/auth');
+const { requireAuth } = require('../middleware/auth');
+const { requireAccionConfiguracion } = require('../utils/permisos');
+
+const requireMetodosPago = requireAccionConfiguracion('metodos_pago');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -37,7 +40,7 @@ function validarQrYLink(qr_data_url, link_pago) {
   return null;
 }
 
-router.post('/', requireGerencia, (req, res) => {
+router.post('/', requireMetodosPago, (req, res) => {
   const { nombre, tipo, color, icono, qr_data_url, link_pago } = req.body || {};
   if (!nombre) return res.status(400).json({ error: 'nombre es requerido.' });
   if (tipo && !TIPOS_VALIDOS.includes(tipo)) {
@@ -62,7 +65,7 @@ router.post('/', requireGerencia, (req, res) => {
   }
 });
 
-router.put('/:id', requireGerencia, (req, res) => {
+router.put('/:id', requireMetodosPago, (req, res) => {
   const existing = db.prepare('SELECT * FROM metodos_pago WHERE id = ?').get(req.params.id);
   if (!existing) return res.status(404).json({ error: 'Método de pago no encontrado.' });
   const { nombre, tipo, color, icono, qr_data_url, link_pago } = req.body || {};
@@ -88,14 +91,14 @@ router.put('/:id', requireGerencia, (req, res) => {
 });
 
 // PUT /api/metodos-pago/:id/estado { activo: true|false }
-router.put('/:id/estado', requireGerencia, (req, res) => {
+router.put('/:id/estado', requireMetodosPago, (req, res) => {
   const existing = db.prepare('SELECT * FROM metodos_pago WHERE id = ?').get(req.params.id);
   if (!existing) return res.status(404).json({ error: 'Método de pago no encontrado.' });
   db.prepare('UPDATE metodos_pago SET activo = ? WHERE id = ?').run(req.body?.activo ? 1 : 0, req.params.id);
   res.json(db.prepare('SELECT * FROM metodos_pago WHERE id = ?').get(req.params.id));
 });
 
-router.delete('/:id', requireGerencia, (req, res) => {
+router.delete('/:id', requireMetodosPago, (req, res) => {
   const existing = db.prepare('SELECT * FROM metodos_pago WHERE id = ?').get(req.params.id);
   if (!existing) return res.status(404).json({ error: 'Método de pago no encontrado.' });
   const usado = [

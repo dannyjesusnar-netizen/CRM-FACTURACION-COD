@@ -57,7 +57,7 @@ const SUBNAV_ITEMS = [
   { to: '/clientes', label: 'Personas', Icon: Users, active: true, modulo: 'clientes' },
   { to: '/planilla', label: 'Planillas', Icon: ClipboardList, active: true, modulo: 'caja' },
   { to: '/reportes', label: 'Reportes', Icon: FileText, active: true, modulo: 'reportes' },
-  { to: '/configuracion', label: 'Configuración', Icon: Settings, active: true },
+  { to: '/configuracion', label: 'Configuración', Icon: Settings, active: true, modulo: 'configuracion' },
 ];
 
 export default function Layout() {

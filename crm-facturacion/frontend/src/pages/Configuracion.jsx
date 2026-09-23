@@ -28,6 +28,17 @@ const MESES = [
 
 const CATEGORIA_STAFF_LABEL = { vendedor: 'Vendedor', trainer: 'Trainer', supervisor: 'Supervisor' };
 
+// Pestañas de Configuración que un rol personalizado puede tener habilitadas
+// (ver utils/permisos.js ACCIONES_POR_MODULO.configuracion en el backend) —
+// en el mismo orden en que aparecen en el sidebar, para elegir cuál mostrar
+// por defecto. "tipos_inventario" no está acá porque no es una `seccion` de
+// esta pantalla (lleva a /productos/tipos-inventario, otra página) — sigue
+// controlando solo si el link del sidebar se muestra o no.
+const SECCIONES_CONFIG_ORDEN = [
+  'empresa', 'instalar_app', 'comprobantes', 'sucursales', 'series', 'empleados',
+  'metas', 'descuentos', 'metodos_pago', 'importador', 'exportador', 'power_bi',
+];
+
 function emptyUserForm() {
   return { username: '', password: PASSWORD_PREDETERMINADA, nombres: '', apellidos: '', email: '', telefono: '', dni: '', role: 'vendedor', sucursal_id: '', custom_role_id: '', categoria_staff: 'vendedor', turno: '' };
 }
@@ -295,7 +306,14 @@ export default function Configuracion() {
   const { user, refreshEmpresa, sucursal: sucursalActiva, setSucursal: setSucursalActiva } = useAuth();
   const navigate = useNavigate();
   const toast = useToast();
-  const [seccion, setSeccion] = useState('empresa');
+  // Gerencia siempre arranca en "Empresa"; un rol personalizado arranca en la
+  // primera pestaña de Configuración que su rol sí tenga habilitada (puede
+  // que "Empresa" no sea una de ellas) — ver SECCIONES_CONFIG_ORDEN arriba.
+  const [seccion, setSeccion] = useState(() => {
+    if (!user || user.role === 'gerencia') return 'empresa';
+    const primera = SECCIONES_CONFIG_ORDEN.find((k) => user.configuracion_acciones?.[k]);
+    return primera || 'empresa';
+  });
 
   // --- Candado de contraseña para Sucursales / Series y Sucursal ---
   // Ya están detrás de requireGerencia, pero tocar la serie o el correlativo
@@ -983,15 +1001,22 @@ export default function Configuracion() {
     }
   }
 
-  if (!user || user.role !== 'gerencia') {
+  // Gerencia entra siempre; cualquier otro rol solo si Configuración → Roles
+  // le habilitó el módulo "Configuración" (ver utils/permisos.js) — qué
+  // pestañas ve exactamente dentro depende de puedeVerSeccionConfig, más
+  // abajo, calculado con las acciones que vinieron en el login
+  // (user.configuracion_acciones).
+  if (!user || (user.role !== 'gerencia' && !user.permisos?.configuracion)) {
     return (
       <div className="panel">
         <h3>Acceso restringido</h3>
-        <p className="empty-row">Solo un usuario de Gerencia puede acceder a Configuración.</p>
+        <p className="empty-row">No tienes permiso para acceder a Configuración.</p>
         <button className="btn-secondary" onClick={() => navigate('/menu')}>Volver al menú</button>
       </div>
     );
   }
+
+  const puedeVerSeccionConfig = (key) => user.role === 'gerencia' || !!user.configuracion_acciones?.[key];
 
   async function handleGuardarEmpresa(e) {
     e.preventDefault();
@@ -1495,45 +1520,71 @@ export default function Configuracion() {
 
       <div className="reports-shell">
         <div className="reports-sidebar">
-          <div className={'reports-sidebar-item' + (seccion === 'empresa' ? ' active' : '')} onClick={() => setSeccion('empresa')} role="button" tabIndex={0}>
-            <Building2 size={16} /><span>Empresa</span>
-          </div>
-          <div className={'reports-sidebar-item' + (seccion === 'instalar_app' ? ' active' : '')} onClick={() => setSeccion('instalar_app')} role="button" tabIndex={0}>
-            <Download size={16} /><span>Instalar App</span>
-          </div>
-          <div className={'reports-sidebar-item' + (seccion === 'comprobantes' ? ' active' : '')} onClick={() => setSeccion('comprobantes')} role="button" tabIndex={0}>
-            <FileText size={16} /><span>Comprobantes</span>
-          </div>
-          <div className={'reports-sidebar-item' + (seccion === 'sucursales' ? ' active' : '')} onClick={() => irASeccionProtegida('sucursales')} role="button" tabIndex={0}>
-            <Store size={16} /><span>Sucursales</span>
-          </div>
-          <div className={'reports-sidebar-item' + (seccion === 'series' ? ' active' : '')} onClick={() => irASeccionProtegida('series')} role="button" tabIndex={0}>
-            <Hash size={16} /><span>Series y Sucursal</span>
-          </div>
-          <div className={'reports-sidebar-item' + (seccion === 'empleados' ? ' active' : '')} onClick={() => setSeccion('empleados')} role="button" tabIndex={0}>
-            <UsersIcon size={16} /><span>Empleados</span>
-          </div>
-          <div className={'reports-sidebar-item' + (seccion === 'metas' ? ' active' : '')} onClick={() => setSeccion('metas')} role="button" tabIndex={0}>
-            <Wallet size={16} /><span>Metas de venta</span>
-          </div>
-          <div className={'reports-sidebar-item' + (seccion === 'descuentos' ? ' active' : '')} onClick={() => setSeccion('descuentos')} role="button" tabIndex={0}>
-            <Percent size={16} /><span>Descuentos</span>
-          </div>
-          <div className={'reports-sidebar-item' + (seccion === 'roles' ? ' active' : '')} onClick={() => setSeccion('roles')} role="button" tabIndex={0}>
-            <ShieldCheck size={16} /><span>Roles de usuario</span>
-          </div>
-          <div className={'reports-sidebar-item' + (seccion === 'metodos_pago' ? ' active' : '')} onClick={() => setSeccion('metodos_pago')} role="button" tabIndex={0}>
-            <Wallet size={16} /><span>Métodos de pago</span>
-          </div>
-          <div className="reports-sidebar-item" onClick={() => navigate('/productos/tipos-inventario')} role="button" tabIndex={0}>
-            <Boxes size={16} /><span>Tipos de Inventario</span>
-          </div>
-          <div className={'reports-sidebar-item' + (seccion === 'importador' ? ' active' : '')} onClick={() => setSeccion('importador')} role="button" tabIndex={0}>
-            <Upload size={16} /><span>Importador de Datos Masivos</span>
-          </div>
-          <div className={'reports-sidebar-item' + (seccion === 'exportador' ? ' active' : '')} onClick={() => setSeccion('exportador')} role="button" tabIndex={0}>
-            <Download size={16} /><span>Exportador de Datos Masivos</span>
-          </div>
+          {puedeVerSeccionConfig('empresa') && (
+            <div className={'reports-sidebar-item' + (seccion === 'empresa' ? ' active' : '')} onClick={() => setSeccion('empresa')} role="button" tabIndex={0}>
+              <Building2 size={16} /><span>Empresa</span>
+            </div>
+          )}
+          {puedeVerSeccionConfig('instalar_app') && (
+            <div className={'reports-sidebar-item' + (seccion === 'instalar_app' ? ' active' : '')} onClick={() => setSeccion('instalar_app')} role="button" tabIndex={0}>
+              <Download size={16} /><span>Instalar App</span>
+            </div>
+          )}
+          {puedeVerSeccionConfig('comprobantes') && (
+            <div className={'reports-sidebar-item' + (seccion === 'comprobantes' ? ' active' : '')} onClick={() => setSeccion('comprobantes')} role="button" tabIndex={0}>
+              <FileText size={16} /><span>Comprobantes</span>
+            </div>
+          )}
+          {puedeVerSeccionConfig('sucursales') && (
+            <div className={'reports-sidebar-item' + (seccion === 'sucursales' ? ' active' : '')} onClick={() => irASeccionProtegida('sucursales')} role="button" tabIndex={0}>
+              <Store size={16} /><span>Sucursales</span>
+            </div>
+          )}
+          {puedeVerSeccionConfig('series') && (
+            <div className={'reports-sidebar-item' + (seccion === 'series' ? ' active' : '')} onClick={() => irASeccionProtegida('series')} role="button" tabIndex={0}>
+              <Hash size={16} /><span>Series y Sucursal</span>
+            </div>
+          )}
+          {puedeVerSeccionConfig('empleados') && (
+            <div className={'reports-sidebar-item' + (seccion === 'empleados' ? ' active' : '')} onClick={() => setSeccion('empleados')} role="button" tabIndex={0}>
+              <UsersIcon size={16} /><span>Empleados</span>
+            </div>
+          )}
+          {puedeVerSeccionConfig('metas') && (
+            <div className={'reports-sidebar-item' + (seccion === 'metas' ? ' active' : '')} onClick={() => setSeccion('metas')} role="button" tabIndex={0}>
+              <Wallet size={16} /><span>Metas de venta</span>
+            </div>
+          )}
+          {puedeVerSeccionConfig('descuentos') && (
+            <div className={'reports-sidebar-item' + (seccion === 'descuentos' ? ' active' : '')} onClick={() => setSeccion('descuentos')} role="button" tabIndex={0}>
+              <Percent size={16} /><span>Descuentos</span>
+            </div>
+          )}
+          {user?.role === 'gerencia' && (
+            <div className={'reports-sidebar-item' + (seccion === 'roles' ? ' active' : '')} onClick={() => setSeccion('roles')} role="button" tabIndex={0}>
+              <ShieldCheck size={16} /><span>Roles de usuario</span>
+            </div>
+          )}
+          {puedeVerSeccionConfig('metodos_pago') && (
+            <div className={'reports-sidebar-item' + (seccion === 'metodos_pago' ? ' active' : '')} onClick={() => setSeccion('metodos_pago')} role="button" tabIndex={0}>
+              <Wallet size={16} /><span>Métodos de pago</span>
+            </div>
+          )}
+          {puedeVerSeccionConfig('tipos_inventario') && (
+            <div className="reports-sidebar-item" onClick={() => navigate('/productos/tipos-inventario')} role="button" tabIndex={0}>
+              <Boxes size={16} /><span>Tipos de Inventario</span>
+            </div>
+          )}
+          {puedeVerSeccionConfig('importador') && (
+            <div className={'reports-sidebar-item' + (seccion === 'importador' ? ' active' : '')} onClick={() => setSeccion('importador')} role="button" tabIndex={0}>
+              <Upload size={16} /><span>Importador de Datos Masivos</span>
+            </div>
+          )}
+          {puedeVerSeccionConfig('exportador') && (
+            <div className={'reports-sidebar-item' + (seccion === 'exportador' ? ' active' : '')} onClick={() => setSeccion('exportador')} role="button" tabIndex={0}>
+              <Download size={16} /><span>Exportador de Datos Masivos</span>
+            </div>
+          )}
           {user?.role === 'gerencia' && (
             <div className={'reports-sidebar-item' + (seccion === 'respaldos' ? ' active' : '')} onClick={() => setSeccion('respaldos')} role="button" tabIndex={0}>
               <DatabaseBackup size={16} /><span>Respaldos</span>
@@ -1544,7 +1595,7 @@ export default function Configuracion() {
               <AlertTriangle size={16} /><span>Zona de peligro</span>
             </div>
           )}
-          {user?.role === 'gerencia' && (
+          {puedeVerSeccionConfig('power_bi') && (
             <div className={'reports-sidebar-item' + (seccion === 'power_bi' ? ' active' : '')} onClick={() => setSeccion('power_bi')} role="button" tabIndex={0}>
               <Plug size={16} /><span>Power BI</span>
             </div>

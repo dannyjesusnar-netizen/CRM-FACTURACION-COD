@@ -2,6 +2,7 @@ const express = require('express');
 const db = require('../db');
 const tenantRegistry = require('../tenantRegistry');
 const { requireAuth, requireGerencia } = require('../middleware/auth');
+const { requireAccionConfiguracion } = require('../utils/permisos');
 const { buildInvoicePdf } = require('../utils/pdf');
 const backup = require('../utils/backup');
 const backblaze = require('../utils/backblaze');
@@ -19,7 +20,14 @@ router.get('/', (req, res) => {
 const LOGO_MAX_BYTES = 1.5 * 1024 * 1024; // ~1.5MB en base64
 const TAMANOS_PDF = ['A4', 'ticket_80mm'];
 
-router.put('/', requireGerencia, (req, res) => {
+// Este mismo endpoint guarda tanto los campos de "Empresa" (razón social,
+// RUC, IGV) como los de "Diseño de comprobantes" (color, logo en PDF) — se
+// exige la acción 'empresa' para las dos pestañas (no 'comprobantes') para
+// no dejar que un rol que solo tenga habilitado el diseño de comprobantes
+// pueda de paso cambiar el RUC u otros datos legales de la empresa.
+const requireEmpresa = requireAccionConfiguracion('empresa');
+
+router.put('/', requireEmpresa, (req, res) => {
   const {
     razon_social, ruc, nombre_comercial, direccion_fiscal, telefono, email,
     actividad_ciiu, actividad_mcc, departamento, provincia, distrito, logo_data_url,
@@ -83,7 +91,7 @@ router.put('/', requireGerencia, (req, res) => {
 // PUT /api/empresa/direccion { direccion_fiscal } -> edición rápida de la
 // dirección principal, sin tener que reenviar todo el formulario de Datos
 // de la empresa (razón social, RUC, etc.).
-router.put('/direccion', requireGerencia, (req, res) => {
+router.put('/direccion', requireEmpresa, (req, res) => {
   const { direccion_fiscal } = req.body || {};
   if (!direccion_fiscal || !direccion_fiscal.trim()) {
     return res.status(400).json({ error: 'La dirección es requerida.' });
@@ -96,7 +104,7 @@ router.put('/direccion', requireGerencia, (req, res) => {
 
 // PUT /api/empresa/igv-rate { igv_rate_pct } -> tasa de IGV en porcentaje
 // (ej. 18 para 18%), se guarda internamente como fracción (0.18).
-router.put('/igv-rate', requireGerencia, (req, res) => {
+router.put('/igv-rate', requireEmpresa, (req, res) => {
   const pct = Number(req.body?.igv_rate_pct);
   if (!Number.isFinite(pct) || pct < 0 || pct > 30) {
     return res.status(400).json({ error: 'La tasa de IGV debe ser un porcentaje entre 0 y 30.' });
@@ -110,7 +118,7 @@ router.put('/igv-rate', requireGerencia, (req, res) => {
 
 // GET /api/empresa/comprobante-preview -> PDF de ejemplo con los datos/ajustes actuales,
 // para previsualizar cómo se ve un comprobante real sin necesidad de emitir uno.
-router.get('/comprobante-preview', requireGerencia, async (req, res) => {
+router.get('/comprobante-preview', requireEmpresa, async (req, res) => {
   const primeraSucursal = db.prepare('SELECT nombre, direccion FROM sucursales ORDER BY es_principal DESC, id ASC LIMIT 1').get();
   const sampleInvoice = {
     tipo_comprobante: 'factura',

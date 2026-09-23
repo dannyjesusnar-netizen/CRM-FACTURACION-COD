@@ -1,10 +1,11 @@
 const express = require('express');
 const db = require('../db');
-const { requireAuth, requireGerencia } = require('../middleware/auth');
+const { requireAuth } = require('../middleware/auth');
+const { requireAccionConfiguracion } = require('../utils/permisos');
 
 const router = express.Router();
 router.use(requireAuth);
-router.use(requireGerencia);
+router.use(requireAccionConfiguracion('metas'));
 
 const CATEGORIAS = ['vendedor', 'trainer', 'supervisor'];
 
