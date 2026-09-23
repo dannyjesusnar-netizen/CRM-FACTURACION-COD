@@ -13,6 +13,7 @@ const MODULOS = [
   { key: 'clientes', label: 'Clientes' },
   { key: 'caja', label: 'Caja y Bancos' },
   { key: 'reportes', label: 'Reportes' },
+  { key: 'configuracion', label: 'Configuración' },
 ];
 
 // Acciones específicas dentro de cada módulo. Cuando un rol tiene el módulo
@@ -72,11 +73,39 @@ const ACCIONES_POR_MODULO = {
     { key: 'producto', label: 'Reporte por producto', grupo: 'Reportes' },
     { key: 'financieros', label: 'Reportes financieros', grupo: 'Reportes' },
   ],
+  // "Roles de usuario", "Respaldos" y "Zona de peligro" NO están acá a
+  // propósito — quedan siempre reservadas a Gerencia (ver requireGerencia en
+  // routes/roles.js y routes/empresa.js), nunca delegables a un rol
+  // personalizado: la primera podría dejar que un rol se dé más permisos a
+  // sí mismo, las otras dos pueden borrar datos reales de la empresa.
+  configuracion: [
+    { key: 'empresa', label: 'Empresa (datos, IGV, vista previa de comprobantes)', grupo: 'General' },
+    { key: 'instalar_app', label: 'Instalar App', grupo: 'General' },
+    { key: 'comprobantes', label: 'Diseño de comprobantes', grupo: 'General' },
+    { key: 'sucursales', label: 'Sucursales', grupo: 'Sedes y numeración' },
+    { key: 'series', label: 'Series y Sucursal', grupo: 'Sedes y numeración' },
+    { key: 'empleados', label: 'Empleados', grupo: 'Personal' },
+    { key: 'metas', label: 'Metas de venta', grupo: 'Personal' },
+    { key: 'descuentos', label: 'Descuentos', grupo: 'Ventas' },
+    { key: 'metodos_pago', label: 'Métodos de pago', grupo: 'Ventas' },
+    { key: 'tipos_inventario', label: 'Tipos de Inventario', grupo: 'Inventario' },
+    { key: 'importador', label: 'Importador de Datos Masivos', grupo: 'Datos' },
+    { key: 'exportador', label: 'Exportador de Datos Masivos', grupo: 'Datos' },
+    { key: 'power_bi', label: 'Power BI', grupo: 'Integraciones' },
+  ],
 };
 
 // gerencia = acceso total siempre. Sin rol asignado = compatibilidad (acceso
 // total, como antes de que existiera este sistema). Con rol asignado, cada
 // módulo depende de su toggle en role_permisos.
+//
+// "configuracion" es la única excepción a la compatibilidad "sin rol
+// asignado = acceso total": un empleado sin rol personalizado NUNCA hereda
+// Configuración solo por no tener uno asignado (mismo criterio que
+// puedeVerTableroVentas) — hay que dárselo explícitamente creando un rol y
+// prendiéndole el módulo. Si no fuera así, cualquier empleado normal (la
+// mayoría no tiene rol personalizado) vería Configuración completa de
+// golpe apenas se habilitó esta función.
 function permisosDeUsuario(user) {
   const mapa = {};
   if (!user) {
@@ -85,6 +114,7 @@ function permisosDeUsuario(user) {
   }
   if (user.role === 'gerencia' || !user.custom_role_id) {
     MODULOS.forEach((m) => { mapa[m.key] = true; });
+    mapa.configuracion = tienePermisoConfiguracion(user);
     return mapa;
   }
   const filas = db.prepare('SELECT modulo, habilitado FROM role_permisos WHERE role_id = ?').all(user.custom_role_id);
@@ -119,6 +149,40 @@ function tieneAccion(user, modulo, accion) {
   ).get(userRow.custom_role_id, modulo, accion);
   if (!fila) return true;
   return !!fila.habilitado;
+}
+
+// El módulo "configuracion" (pestañas de Configuración habilitadas por rol,
+// ver Configuración → Roles) es, junto con el Tablero de Ventas, el único
+// que no sigue la compatibilidad "sin rol personalizado = acceso total" del
+// resto de tienePermiso/tieneAccion — un empleado sin rol asignado no debe
+// heredar Configuración solo por no tener uno; hay que dárselo explícito.
+function tienePermisoConfiguracion(user) {
+  if (!user) return false;
+  if (user.role === 'gerencia') return true;
+  const userRow = db.prepare('SELECT custom_role_id FROM users WHERE id = ?').get(user.id);
+  if (!userRow || !userRow.custom_role_id) return false;
+  const perm = db.prepare('SELECT habilitado FROM role_permisos WHERE role_id = ? AND modulo = ?').get(userRow.custom_role_id, 'configuracion');
+  return !!(perm && perm.habilitado);
+}
+
+function tieneAccionConfiguracion(user, accion) {
+  if (!user) return false;
+  if (user.role === 'gerencia') return true;
+  if (!tienePermisoConfiguracion(user)) return false;
+  const userRow = db.prepare('SELECT custom_role_id FROM users WHERE id = ?').get(user.id);
+  const fila = db.prepare(
+    'SELECT habilitado FROM role_acciones WHERE role_id = ? AND modulo = ? AND accion = ?'
+  ).get(userRow.custom_role_id, 'configuracion', accion);
+  if (!fila) return true;
+  return !!fila.habilitado;
+}
+
+function requireAccionConfiguracion(accion) {
+  return (req, res, next) => {
+    if (!req.user) return res.status(401).json({ error: 'No autenticado.' });
+    if (tieneAccionConfiguracion(req.user, accion)) return next();
+    return res.status(403).json({ error: 'No tienes permiso para esta acción.' });
+  };
 }
 
 // Reatribuir una venta a otro Trainer/Supervisor desde Facturas (distinto de
@@ -194,6 +258,20 @@ function requireAccion(modulo, accion) {
   };
 }
 
+// Mapa { [accionKey]: boolean } de todas las acciones de un módulo para un
+// usuario — usado para mandarle al frontend, en el login, qué opciones de
+// Configuración le corresponde ver a su rol (ver routes/auth.js emitirToken).
+// "configuracion" usa tieneAccionConfiguracion (sin la compatibilidad
+// "sin rol = acceso total"); cualquier otro módulo usa tieneAccion normal.
+function accionesDeModulo(user, modulo) {
+  const mapa = {};
+  const chequear = modulo === 'configuracion'
+    ? (a) => tieneAccionConfiguracion(user, a)
+    : (a) => tieneAccion(user, modulo, a);
+  (ACCIONES_POR_MODULO[modulo] || []).forEach((a) => { mapa[a.key] = chequear(a.key); });
+  return mapa;
+}
+
 module.exports = {
   MODULOS,
   ACCIONES_POR_MODULO,
@@ -203,6 +281,10 @@ module.exports = {
   requireAlgunPermiso,
   tieneAccion,
   requireAccion,
+  accionesDeModulo,
+  tienePermisoConfiguracion,
+  tieneAccionConfiguracion,
+  requireAccionConfiguracion,
   esGerenciaOSupervisor,
   requireGerenciaOSupervisor,
   puedeVerTableroVentas,

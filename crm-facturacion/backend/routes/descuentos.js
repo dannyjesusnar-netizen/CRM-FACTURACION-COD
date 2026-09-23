@@ -1,7 +1,10 @@
 const express = require('express');
 const db = require('../db');
-const { requireAuth, requireGerencia, resolveSucursal } = require('../middleware/auth');
+const { requireAuth, resolveSucursal } = require('../middleware/auth');
+const { requireAccionConfiguracion } = require('../utils/permisos');
 const { hoyPeru } = require('../utils/fechas');
+
+const requireDescuentos = requireAccionConfiguracion('descuentos');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -21,7 +24,7 @@ function validar(body) {
 }
 
 // GET /api/descuentos — lista completa para Configuración → Descuentos (Gerencia).
-router.get('/', requireGerencia, (req, res) => {
+router.get('/', requireDescuentos, (req, res) => {
   const descuentos = db.prepare(
     `SELECT d.*, s.nombre AS sede_nombre FROM descuentos d
      LEFT JOIN sucursales s ON s.id = d.sucursal_id
@@ -45,7 +48,7 @@ router.get('/activos', (req, res) => {
 });
 
 // POST /api/descuentos { nombre, porcentaje, sucursal_id?, fecha_inicio, fecha_fin }
-router.post('/', requireGerencia, (req, res) => {
+router.post('/', requireDescuentos, (req, res) => {
   const error = validar(req.body);
   if (error) return res.status(400).json({ error });
   const { nombre, porcentaje, sucursal_id, fecha_inicio, fecha_fin } = req.body;
@@ -56,7 +59,7 @@ router.post('/', requireGerencia, (req, res) => {
 });
 
 // PUT /api/descuentos/:id
-router.put('/:id', requireGerencia, (req, res) => {
+router.put('/:id', requireDescuentos, (req, res) => {
   const existente = db.prepare('SELECT id FROM descuentos WHERE id = ?').get(req.params.id);
   if (!existente) return res.status(404).json({ error: 'Descuento no encontrado.' });
   const error = validar(req.body);
@@ -69,7 +72,7 @@ router.put('/:id', requireGerencia, (req, res) => {
 });
 
 // PUT /api/descuentos/:id/estado { activo: true|false }
-router.put('/:id/estado', requireGerencia, (req, res) => {
+router.put('/:id/estado', requireDescuentos, (req, res) => {
   const existente = db.prepare('SELECT id FROM descuentos WHERE id = ?').get(req.params.id);
   if (!existente) return res.status(404).json({ error: 'Descuento no encontrado.' });
   db.prepare('UPDATE descuentos SET activo = ? WHERE id = ?').run(req.body?.activo ? 1 : 0, req.params.id);

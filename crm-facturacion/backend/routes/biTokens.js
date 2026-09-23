@@ -1,15 +1,16 @@
 // Administración de tokens de BI (ver middleware/biAuth.js, routes/bi.js) —
-// esto sí requiere sesión normal de Gerencia, a diferencia de /api/bi/* que
-// se autentica con el token generado acá.
+// esto sí requiere sesión normal (con el permiso de Configuración → Power
+// BI), a diferencia de /api/bi/* que se autentica con el token generado acá.
 const crypto = require('crypto');
 const express = require('express');
 const db = require('../db');
-const { requireAuth, requireGerencia } = require('../middleware/auth');
+const { requireAuth } = require('../middleware/auth');
+const { requireAccionConfiguracion } = require('../utils/permisos');
 const { hashToken } = require('../middleware/biAuth');
 
 const router = express.Router();
 router.use(requireAuth);
-router.use(requireGerencia);
+router.use(requireAccionConfiguracion('power_bi'));
 
 router.get('/', (req, res) => {
   res.json(db.prepare(

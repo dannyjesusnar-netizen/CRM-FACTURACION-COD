@@ -2,12 +2,13 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const db = require('../db');
-const { requireAuth, requireGerencia } = require('../middleware/auth');
+const { requireAuth } = require('../middleware/auth');
+const { requireAccionConfiguracion } = require('../utils/permisos');
 const { passwordError } = require('../utils/password');
 
 const router = express.Router();
 router.use(requireAuth);
-router.use(requireGerencia);
+router.use(requireAccionConfiguracion('empleados'));
 
 const ROLES = ['gerencia', 'vendedor'];
 // categoria_staff agrupa al empleado en el Tablero de Ventas (Ranking

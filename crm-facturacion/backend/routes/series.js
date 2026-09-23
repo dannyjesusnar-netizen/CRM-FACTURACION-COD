@@ -1,11 +1,12 @@
 const express = require('express');
 const db = require('../db');
-const { requireAuth, requireGerencia } = require('../middleware/auth');
+const { requireAuth } = require('../middleware/auth');
+const { requireAccionConfiguracion } = require('../utils/permisos');
 const { TABLA_POR_TIPO, listSeries, siguienteNumero } = require('../utils/series');
 
 const router = express.Router();
 router.use(requireAuth);
-router.use(requireGerencia);
+router.use(requireAccionConfiguracion('series'));
 
 function sucursalExiste(sucursalId) {
   return !!db.prepare('SELECT 1 FROM sucursales WHERE id = ?').get(sucursalId);

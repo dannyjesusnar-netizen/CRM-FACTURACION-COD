@@ -8,7 +8,7 @@ const { resolveTenantDb } = require('../utils/tenant');
 const { consultarRuc } = require('../utils/rucLookup');
 const { JWT_SECRET, requireAuth } = require('../middleware/auth');
 const { passwordError } = require('../utils/password');
-const { permisosDeUsuario, esGerenciaOSupervisor, puedeVerTableroVentas } = require('../utils/permisos');
+const { permisosDeUsuario, esGerenciaOSupervisor, puedeVerTableroVentas, accionesDeModulo } = require('../utils/permisos');
 
 const router = express.Router();
 
@@ -63,6 +63,12 @@ function emitirToken(res, user, ruc) {
       // Aprobar/rechazar traslados pendientes (ver routes/traslados.js) — un
       // vendedor de sede solo puede crearlos, no aprobarlos.
       puede_aprobar_traslados: esGerenciaOSupervisor(user),
+      // Qué pestañas de Configuración le corresponde ver a este rol (ver
+      // Configuración → Roles → módulo "Configuración"). Gerencia ve todas
+      // sin pasar por esto (Configuracion.jsx ya lo trata aparte); "Roles de
+      // usuario", "Respaldos" y "Zona de peligro" no están acá — quedan
+      // siempre reservadas a Gerencia, nunca delegables.
+      configuracion_acciones: accionesDeModulo(user, 'configuracion'),
     }
   });
 }

@@ -1,8 +1,11 @@
 const express = require('express');
 const db = require('../db');
-const { requireAuth, requireGerencia } = require('../middleware/auth');
+const { requireAuth } = require('../middleware/auth');
+const { requireAccionConfiguracion } = require('../utils/permisos');
 const { sembrarSeriesParaSucursal } = require('../utils/series');
 const tenantRegistry = require('../tenantRegistry');
+
+const requireSucursales = requireAccionConfiguracion('sucursales');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -37,14 +40,14 @@ router.get('/limite', (req, res) => {
 // GET /api/sucursales/solicitudes -> historial de solicitudes de sede de
 // esta empresa (pendientes, aprobadas, rechazadas), para que Gerencia vea
 // en qué quedó cada una.
-router.get('/solicitudes', requireGerencia, (req, res) => {
+router.get('/solicitudes', requireSucursales, (req, res) => {
   res.json(db.prepare('SELECT * FROM solicitudes_sede ORDER BY created_at DESC').all());
 });
 
 // POST /api/sucursales/solicitudes { nombre, direccion, motivo } -> se usa
 // en vez de POST / cuando ya se agotaron las sedes libres; no crea la sede,
 // solo la deja pedida para que panel-central la apruebe o rechace.
-router.post('/solicitudes', requireGerencia, (req, res) => {
+router.post('/solicitudes', requireSucursales, (req, res) => {
   const { nombre, direccion, motivo } = req.body || {};
   if (!nombre) return res.status(400).json({ error: 'nombre es requerido.' });
   const info = db.prepare(
@@ -53,7 +56,7 @@ router.post('/solicitudes', requireGerencia, (req, res) => {
   res.status(201).json(db.prepare('SELECT * FROM solicitudes_sede WHERE id = ?').get(info.lastInsertRowid));
 });
 
-router.post('/', requireGerencia, (req, res) => {
+router.post('/', requireSucursales, (req, res) => {
   const { nombre, direccion } = req.body || {};
   if (!nombre) return res.status(400).json({ error: 'nombre es requerido.' });
   const libres = sedesLibres(req.user.ruc);
@@ -76,7 +79,7 @@ router.post('/', requireGerencia, (req, res) => {
   }
 });
 
-router.put('/:id', requireGerencia, (req, res) => {
+router.put('/:id', requireSucursales, (req, res) => {
   const existing = db.prepare('SELECT * FROM sucursales WHERE id = ?').get(req.params.id);
   if (!existing) return res.status(404).json({ error: 'Sucursal no encontrada.' });
   const { nombre, direccion } = req.body || {};
@@ -90,7 +93,7 @@ router.put('/:id', requireGerencia, (req, res) => {
 });
 
 // PUT /api/sucursales/:id/estado { activo: true|false }
-router.put('/:id/estado', requireGerencia, (req, res) => {
+router.put('/:id/estado', requireSucursales, (req, res) => {
   const existing = db.prepare('SELECT * FROM sucursales WHERE id = ?').get(req.params.id);
   if (!existing) return res.status(404).json({ error: 'Sucursal no encontrada.' });
   if (existing.es_principal && req.body?.activo === false) {
