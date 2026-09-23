@@ -552,7 +552,8 @@ html.dark .menu-page {
   -webkit-background-clip: text; background-clip: text; color: transparent;
 }
 .menu-grid {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 18px; max-width: 1100px; margin: 0 auto;
+  display: grid; grid-template-columns: repeat(auto-fit, 170px); gap: 18px; max-width: 1100px; margin: 0 auto;
+  justify-content: center;
 }
 .menu-tile {
   background: linear-gradient(165deg, #ffffff 0%, #f7f9fc 100%);
