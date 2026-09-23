@@ -381,6 +381,8 @@ export default function Configuracion() {
   const [usuarios, setUsuarios] = useState([]);
   const [q, setQ] = useState('');
   const [estadoUsuarios, setEstadoUsuarios] = useState('activo');
+  const [categoriaFiltroUsuarios, setCategoriaFiltroUsuarios] = useState('');
+  const [sedeFiltroUsuarios, setSedeFiltroUsuarios] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyUserForm());
@@ -535,14 +537,18 @@ export default function Configuracion() {
     if (sucursalSeleccionadaId && user?.role === 'gerencia') loadSeries(sucursalSeleccionadaId);
   }, [sucursalSeleccionadaId, user]);
 
-  // estadoOverride permite recargar con el valor nuevo del filtro justo al
-  // cambiarlo (el estado de React no se actualiza a tiempo dentro del mismo
-  // onChange) sin esperar a un segundo render.
-  function loadUsuarios(estadoOverride) {
-    const estado = estadoOverride !== undefined ? estadoOverride : estadoUsuarios;
+  // No se manda el filtro de Estado al backend: siempre se trae el set
+  // completo (activos + inactivos) que cumpla categoría/sede, para poder
+  // mostrar el conteo de ambos sin depender de qué estado esté filtrado en
+  // pantalla — el filtro de Estado se aplica del lado del cliente (ver
+  // usuariosFiltrados), igual que en Entrenadores y Supervisores.
+  function loadUsuarios(overrides) {
+    const categoria = overrides?.categoria !== undefined ? overrides.categoria : categoriaFiltroUsuarios;
+    const sede = overrides?.sede !== undefined ? overrides.sede : sedeFiltroUsuarios;
     const params = {};
     if (q) params.q = q;
-    if (estado !== 'todos') params.estado = estado;
+    if (categoria) params.categoria_staff = categoria;
+    if (sede) params.sucursal_id = sede;
     api.get('/users', { params }).then((res) => setUsuarios(res.data));
   }
 
@@ -1093,7 +1099,7 @@ export default function Configuracion() {
 
   async function exportarEmpleadosCsv(formato) {
     const header = ['Nombres', 'Apellidos', 'Rol', 'Sede', 'DNI', 'Correo', 'Teléfono', 'Estado'];
-    const rows = usuarios.map((u) => [
+    const rows = usuariosFiltrados.map((u) => [
       u.nombres || '', u.apellidos || '',
       u.role === 'gerencia' ? 'Gerencia' : (u.rol_personalizado_nombre || 'Sin rol asignado'),
       u.sucursal_nombre || 'Todas las sedes',
@@ -1430,6 +1436,16 @@ export default function Configuracion() {
     estadoFiltroOperativos === 'todos'
     || (estadoFiltroOperativos === 'activo' && o.activo)
     || (estadoFiltroOperativos === 'inactivo' && !o.activo)
+  ));
+
+  // Mismo criterio que operativos: el conteo refleja categoría/sede sin
+  // importar el Estado elegido; usuariosFiltrados es lo que se pinta.
+  const usuariosActivosCount = usuarios.filter((u) => u.activo).length;
+  const usuariosInactivosCount = usuarios.length - usuariosActivosCount;
+  const usuariosFiltrados = usuarios.filter((u) => (
+    estadoUsuarios === 'todos'
+    || (estadoUsuarios === 'activo' && u.activo)
+    || (estadoUsuarios === 'inactivo' && !u.activo)
   ));
 
   return (
@@ -2042,8 +2058,32 @@ export default function Configuracion() {
                   <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar.." />
                 </div>
                 <div className="filter-field">
+                  <label>Categoría</label>
+                  <select
+                    value={categoriaFiltroUsuarios}
+                    onChange={(e) => { setCategoriaFiltroUsuarios(e.target.value); loadUsuarios({ categoria: e.target.value }); }}
+                  >
+                    <option value="">Todos</option>
+                    <option value="vendedor">Vendedor</option>
+                    <option value="trainer">Trainer</option>
+                    <option value="supervisor">Supervisor</option>
+                  </select>
+                </div>
+                <div className="filter-field">
+                  <label>Sede</label>
+                  <select
+                    value={sedeFiltroUsuarios}
+                    onChange={(e) => { setSedeFiltroUsuarios(e.target.value); loadUsuarios({ sede: e.target.value }); }}
+                  >
+                    <option value="">Todas las sedes</option>
+                    {sucursales.filter((s) => s.activo).map((s) => (
+                      <option key={s.id} value={s.id}>{s.nombre}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="filter-field">
                   <label>Estado</label>
-                  <select value={estadoUsuarios} onChange={(e) => { setEstadoUsuarios(e.target.value); loadUsuarios(e.target.value); }}>
+                  <select value={estadoUsuarios} onChange={(e) => setEstadoUsuarios(e.target.value)}>
                     <option value="activo">Activos</option>
                     <option value="inactivo">Inactivos</option>
                     <option value="todos">Todos</option>
@@ -2054,6 +2094,11 @@ export default function Configuracion() {
                 </div>
               </form>
 
+              <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -8 }}>
+                {usuariosActivosCount} activo{usuariosActivosCount === 1 ? '' : 's'} · {usuariosInactivosCount} inactivo{usuariosInactivosCount === 1 ? '' : 's'}
+                {(categoriaFiltroUsuarios || sedeFiltroUsuarios) ? ' (con los filtros de categoría/sede aplicados)' : ''}
+              </p>
+
               <table className="data-table">
                 <thead>
                   <tr>
@@ -2061,7 +2106,7 @@ export default function Configuracion() {
                   </tr>
                 </thead>
                 <tbody>
-                  {usuarios.map((u) => (
+                  {usuariosFiltrados.map((u) => (
                     <tr key={u.id}>
                       <td>{u.nombres || u.full_name}</td>
                       <td>{u.apellidos || ''}</td>
@@ -2088,8 +2133,8 @@ export default function Configuracion() {
                       </td>
                     </tr>
                   ))}
-                  {usuarios.length === 0 && (
-                    <tr><td colSpan={9} className="empty-row">No hay empleados registrados.</td></tr>
+                  {usuariosFiltrados.length === 0 && (
+                    <tr><td colSpan={9} className="empty-row">No hay empleados que coincidan con los filtros.</td></tr>
                   )}
                 </tbody>
               </table>

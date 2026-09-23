@@ -35,12 +35,12 @@ function sinPassword(user) {
   return rest;
 }
 
-// GET /api/users?q=&estado=
+// GET /api/users?q=&estado=&categoria_staff=&sucursal_id=
 // Solo empleados con acceso real al sistema (puede_iniciar_sesion = 1) — los
 // registros operativos (Trainer/Supervisor sin usuario, ver /operativos) se
 // listan aparte para no mezclarlos con la gente que sí inicia sesión.
 router.get('/', (req, res) => {
-  const { q, estado } = req.query;
+  const { q, estado, categoria_staff: categoriaStaff, sucursal_id: sucursalId } = req.query;
   let sql = `SELECT u.*, s.nombre AS sucursal_nombre, r.nombre AS rol_personalizado_nombre
              FROM users u
              LEFT JOIN sucursales s ON s.id = u.sucursal_id
@@ -53,6 +53,14 @@ router.get('/', (req, res) => {
   }
   if (estado === 'activo') { sql += ' AND u.activo = 1'; }
   if (estado === 'inactivo') { sql += ' AND u.activo = 0'; }
+  if (CATEGORIAS_STAFF.includes(categoriaStaff)) {
+    sql += ' AND u.categoria_staff = ?';
+    params.push(categoriaStaff);
+  }
+  if (sucursalId) {
+    sql += ' AND u.sucursal_id = ?';
+    params.push(Number(sucursalId));
+  }
   sql += ' ORDER BY u.nombres ASC, u.full_name ASC';
   const rows = db.prepare(sql).all(...params);
   res.json(rows.map(sinPassword));
