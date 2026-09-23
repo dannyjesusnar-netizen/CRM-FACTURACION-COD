@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import api from '../api';
 import { hoyPeru } from '../utils/fechas';
 import { useToast } from '../context/ToastContext';
+import { useAuth } from '../context/AuthContext';
 import ProductSearchBar from '../components/ProductSearchBar';
 import ClientPicker from '../components/ClientPicker';
 import MetodoPagoQr from '../components/MetodoPagoQr';
@@ -21,6 +22,13 @@ export default function RegistroVenta() {
   const { tipo } = useParams(); // 'factura' | 'boleta' | 'cotizacion'
   const navigate = useNavigate();
   const toast = useToast();
+  const { user } = useAuth();
+  // Stock exacto y costo/ganancia son datos de Inventario, no de Ventas —
+  // el backend ya no los manda en la búsqueda de productos a quien no tiene
+  // ese módulo habilitado (ver routes/products.js:conStockDeSede), así que
+  // acá solo se ocultan las columnas para no mostrar "S/ 0.00" ni una
+  // "Ganancia" inflada calculada sobre un costo que en realidad no se sabe.
+  const verInventario = user?.permisos?.inventario !== false;
 
   const [serie, setSerie] = useState('');
   const [numero, setNumero] = useState('');
@@ -405,12 +413,12 @@ export default function RegistroVenta() {
               <thead>
                 <tr>
                   <th className="col-desc">Descripción</th>
-                  <th className="num">Stock</th>
+                  {verInventario && <th className="num">Stock</th>}
                   <th>Cantidad</th>
                   <th>Uni. Med.</th>
                   <th className="num">P.U.</th>
                   <th className="num">Desc %</th>
-                  <th className="num">Compra</th>
+                  {verInventario && <th className="num">Compra</th>}
                   <th className="num">IGV</th>
                   <th className="num">Importe</th>
                   <th></th>
@@ -425,7 +433,7 @@ export default function RegistroVenta() {
                         <div style={{ fontSize: 11, color: 'var(--good)' }}>🏷 {it.promocion_nombre}</div>
                       )}
                     </td>
-                    <td className="num">{it.stock ?? '—'}</td>
+                    {verInventario && <td className="num">{it.stock ?? '—'}</td>}
                     <td>
                       <input type="number" min="1" step="1" value={it.cantidad}
                         onChange={(e) => updateItem(idx, { cantidad: e.target.value })} />
@@ -438,14 +446,14 @@ export default function RegistroVenta() {
                     <td className="num">
                       <input type="number" readOnly title="El % de descuento no se puede editar a mano — solo viene de una Oferta o Combo de Promociones." value={it.descuento_pct} style={{ width: 56 }} />
                     </td>
-                    <td className="num">S/ {Number(it.costo || 0).toFixed(2)}</td>
+                    {verInventario && <td className="num">S/ {Number(it.costo || 0).toFixed(2)}</td>}
                     <td className="num">S/ {it.igv.toFixed(2)}</td>
                     <td className="num">S/ {it.importe.toFixed(2)}</td>
                     <td><button type="button" className="btn-link danger" onClick={() => removeItem(idx)}>x</button></td>
                   </tr>
                 ))}
                 {computed.rows.length === 0 && (
-                  <tr><td colSpan={10} className="venta-table-empty">Busca un producto arriba para agregarlo.</td></tr>
+                  <tr><td colSpan={verInventario ? 10 : 8} className="venta-table-empty">Busca un producto arriba para agregarlo.</td></tr>
                 )}
               </tbody>
             </table>
@@ -476,10 +484,12 @@ export default function RegistroVenta() {
                   <input readOnly value={`${descuentoGlobal}%`} />
                 </div>
               )}
-              <div className="venta-totals-row">
-                <span>Ganancia:</span>
-                <input readOnly value={computed.ganancia.toFixed(2)} />
-              </div>
+              {verInventario && (
+                <div className="venta-totals-row">
+                  <span>Ganancia:</span>
+                  <input readOnly value={computed.ganancia.toFixed(2)} />
+                </div>
+              )}
               <div className="venta-totals-row final">
                 <span>Importe Total:</span>
                 <input readOnly value={computed.total.toFixed(2)} />

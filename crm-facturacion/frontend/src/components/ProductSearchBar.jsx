@@ -57,7 +57,9 @@ export default function ProductSearchBar({ onSelect, placeholder }) {
             <div key={p.id} className="product-search-item" onClick={() => pick(p)}>
               <span className="psi-nombre">{p.nombre}</span>
               <span className="psi-meta">
-                {p.codigo}{p.stock !== null ? ` · Stock: ${p.stock}` : ' · Servicio'} · S/ {Number(p.precio_unitario).toFixed(2)}
+                {p.codigo}
+                {p.tipo === 'servicio' ? ' · Servicio' : p.stock !== undefined ? ` · Stock: ${p.stock}` : ''}
+                {' '}· S/ {Number(p.precio_unitario).toFixed(2)}
               </span>
             </div>
           ))}
