@@ -378,6 +378,26 @@ router.post('/operativos', (req, res) => {
   res.status(201).json(sinPassword(row));
 });
 
+// DELETE /api/users/operativos/:id — a diferencia de Activar/Desactivar (que
+// solo cambia `activo`), esto borra el registro operativo por completo. Solo
+// se permite si nunca se le atribuyó una venta o nota de venta en el Tablero
+// de Ventas (invoices.atribuido_a / notas_venta.atribuido_a hacen JOIN
+// directo contra su id — ver routes/tablero.js — borrarlo dejaría esas
+// ventas fuera del ranking/reportes sin avisar). Si tiene historial, se
+// bloquea y hay que desactivarlo en su lugar.
+router.delete('/operativos/:id', (req, res) => {
+  const operativo = db.prepare('SELECT * FROM users WHERE id = ? AND puede_iniciar_sesion = 0').get(req.params.id);
+  if (!operativo) return res.status(404).json({ error: 'Registro operativo no encontrado.' });
+  const tieneVentas = db.prepare('SELECT 1 FROM invoices WHERE atribuido_a = ? LIMIT 1').get(req.params.id)
+    || db.prepare('SELECT 1 FROM notas_venta WHERE atribuido_a = ? LIMIT 1').get(req.params.id);
+  if (tieneVentas) {
+    return res.status(409).json({ error: 'Este registro tiene ventas atribuidas en el Tablero de Ventas — no se puede eliminar. Desactívalo en su lugar.' });
+  }
+  db.prepare('DELETE FROM metas_venta_usuario WHERE user_id = ?').run(req.params.id);
+  db.prepare('DELETE FROM users WHERE id = ?').run(req.params.id);
+  res.json({ ok: true });
+});
+
 // POST /api/users/operativos/carga-masiva { rows: [{ dni, nombres, apellidos,
 // categoria_staff, sede, turno }] } — crea o actualiza registros operativos
 // por DNI. Si el DNI ya pertenece a un empleado CON acceso al sistema, la
