@@ -297,6 +297,42 @@ export default function Configuracion() {
   const toast = useToast();
   const [seccion, setSeccion] = useState('empresa');
 
+  // --- Candado de contraseña para Sucursales / Series y Sucursal ---
+  // Ya están detrás de requireGerencia, pero tocar la serie o el correlativo
+  // equivocado puede romper la numeración SUNAT de un comprobante real — se
+  // pide reconfirmar la contraseña propia antes de entrar. Una vez
+  // desbloqueado no se vuelve a pedir mientras la pantalla siga abierta.
+  const [seriesSucursalesDesbloqueado, setSeriesSucursalesDesbloqueado] = useState(false);
+  const [mostrarPasswordGate, setMostrarPasswordGate] = useState(false);
+  const [passwordGateDestino, setPasswordGateDestino] = useState(null);
+  const [passwordGateInput, setPasswordGateInput] = useState('');
+  const [passwordGateError, setPasswordGateError] = useState('');
+  const [verificandoPasswordGate, setVerificandoPasswordGate] = useState(false);
+
+  function irASeccionProtegida(destino) {
+    if (seriesSucursalesDesbloqueado) { setSeccion(destino); return; }
+    setPasswordGateDestino(destino);
+    setPasswordGateInput('');
+    setPasswordGateError('');
+    setMostrarPasswordGate(true);
+  }
+
+  async function handleSubmitPasswordGate(e) {
+    e.preventDefault();
+    setPasswordGateError('');
+    setVerificandoPasswordGate(true);
+    try {
+      await api.post('/auth/verificar-password', { password: passwordGateInput });
+      setSeriesSucursalesDesbloqueado(true);
+      setMostrarPasswordGate(false);
+      setSeccion(passwordGateDestino);
+    } catch (err) {
+      setPasswordGateError(err.response?.data?.error || 'No se pudo verificar la contraseña.');
+    } finally {
+      setVerificandoPasswordGate(false);
+    }
+  }
+
   // --- Instalar App (PWA) ---
   // pwaReady: el navegador ya disparó "beforeinstallprompt" (Chrome/Edge en
   // Windows y Android) — se puede abrir el diálogo nativo directo. Si no,
@@ -1468,10 +1504,10 @@ export default function Configuracion() {
           <div className={'reports-sidebar-item' + (seccion === 'comprobantes' ? ' active' : '')} onClick={() => setSeccion('comprobantes')} role="button" tabIndex={0}>
             <FileText size={16} /><span>Comprobantes</span>
           </div>
-          <div className={'reports-sidebar-item' + (seccion === 'sucursales' ? ' active' : '')} onClick={() => setSeccion('sucursales')} role="button" tabIndex={0}>
+          <div className={'reports-sidebar-item' + (seccion === 'sucursales' ? ' active' : '')} onClick={() => irASeccionProtegida('sucursales')} role="button" tabIndex={0}>
             <Store size={16} /><span>Sucursales</span>
           </div>
-          <div className={'reports-sidebar-item' + (seccion === 'series' ? ' active' : '')} onClick={() => setSeccion('series')} role="button" tabIndex={0}>
+          <div className={'reports-sidebar-item' + (seccion === 'series' ? ' active' : '')} onClick={() => irASeccionProtegida('series')} role="button" tabIndex={0}>
             <Hash size={16} /><span>Series y Sucursal</span>
           </div>
           <div className={'reports-sidebar-item' + (seccion === 'empleados' ? ' active' : '')} onClick={() => setSeccion('empleados')} role="button" tabIndex={0}>
@@ -2706,6 +2742,35 @@ export default function Configuracion() {
           )}
         </div>
       </div>
+
+      {mostrarPasswordGate && (
+        <div className="modal-overlay" onClick={() => setMostrarPasswordGate(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h2>Confirma tu contraseña</h2>
+            <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -6 }}>
+              {passwordGateDestino === 'series' ? 'Series y Sucursal' : 'Sucursales'} afecta la numeración de
+              tus comprobantes ante SUNAT — por seguridad, vuelve a escribir tu contraseña para entrar.
+            </p>
+            <form onSubmit={handleSubmitPasswordGate}>
+              <label>Contraseña</label>
+              <input
+                required
+                type="password"
+                autoFocus
+                value={passwordGateInput}
+                onChange={(e) => setPasswordGateInput(e.target.value)}
+              />
+              {passwordGateError && <div className="form-error">{passwordGateError}</div>}
+              <div className="modal-actions">
+                <button type="button" className="btn-secondary" onClick={() => setMostrarPasswordGate(false)}>Cancelar</button>
+                <button type="submit" className="btn-primary" disabled={verificandoPasswordGate}>
+                  {verificandoPasswordGate ? 'Verificando...' : 'Entrar'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {showForm && (
         <div className="modal-overlay" onClick={() => setShowForm(false)}>

@@ -294,4 +294,31 @@ router.put('/password', requireAuth, (req, res) => {
   res.json({ ok: true });
 });
 
+// Reconfirmar la propia contraseña sin cerrar sesión — usado como candado
+// extra al entrar a pantallas sensibles (ej. Series y Sucursales, ver
+// Configuracion.jsx) que ya están detrás de requireGerencia pero se
+// quiere proteger con una segunda verificación explícita. Mismo límite de
+// intentos que /login: ya autenticado, pero alguien con una sesión robada
+// no debería poder probar la contraseña real sin freno.
+const verificarPasswordLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  message: { error: 'Demasiados intentos. Espera unos minutos y vuelve a intentar.' },
+});
+
+router.post('/verificar-password', requireAuth, verificarPasswordLimiter, (req, res) => {
+  const { password } = req.body || {};
+  if (!password) {
+    return res.status(400).json({ error: 'La contraseña es requerida.' });
+  }
+  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
+  if (!user || !bcrypt.compareSync(password, user.password_hash)) {
+    return res.status(401).json({ error: 'Contraseña incorrecta.' });
+  }
+  res.json({ ok: true });
+});
+
 module.exports = router;
