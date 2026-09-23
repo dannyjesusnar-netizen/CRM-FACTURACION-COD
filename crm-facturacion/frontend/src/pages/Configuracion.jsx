@@ -201,13 +201,12 @@ function idRolPorNombre(roles, nombre) {
   return r ? String(r.id) : '';
 }
 
-// Deriva cuál de los 3 niveles representa el form actual (para que el
-// select siempre muestre una opción válida, incluso para empleados
-// existentes creados antes de este cambio).
-function nivelDesdeForm(f, roles) {
-  if (f.role === 'gerencia') return 'administrador';
-  if (f.custom_role_id && String(f.custom_role_id) === idRolPorNombre(roles, 'Supervisor')) return 'supervisor';
-  return 'cajero';
+// Valor que debe mostrar el select "Rol *": 'gerencia' (Administrador, sin
+// rol personalizado) o el id del rol personalizado asignado — cualquiera de
+// los que existan en Configuración → Roles, no solo Supervisor/Cajero.
+function valorRolDesdeForm(f) {
+  if (f.role === 'gerencia') return 'gerencia';
+  return f.custom_role_id ? String(f.custom_role_id) : '';
 }
 
 function emptySucursalForm() {
@@ -1013,13 +1012,11 @@ export default function Configuracion() {
     setShowForm(true);
   }
 
-  function handleNivelChange(valor) {
-    if (valor === 'administrador') {
+  function handleRolChange(valor) {
+    if (valor === 'gerencia') {
       setForm((f) => ({ ...f, role: 'gerencia', custom_role_id: '' }));
-    } else if (valor === 'supervisor') {
-      setForm((f) => ({ ...f, role: 'vendedor', custom_role_id: idRolPorNombre(roles, 'Supervisor') }));
     } else {
-      setForm((f) => ({ ...f, role: 'vendedor', custom_role_id: idRolPorNombre(roles, 'Cajero') }));
+      setForm((f) => ({ ...f, role: 'vendedor', custom_role_id: valor }));
     }
   }
 
@@ -2638,10 +2635,11 @@ export default function Configuracion() {
                 El correo es solo para tenerlo como contacto — no enviamos ningún email automático (esta instancia no tiene un proveedor de correo configurado). El empleado inicia sesión con RUC + DNI + contraseña.
               </p>
               <label>Rol *</label>
-              <select required value={nivelDesdeForm(form, roles)} onChange={(e) => handleNivelChange(e.target.value)}>
-                <option value="administrador">Administrador (acceso total)</option>
-                <option value="supervisor">Supervisor</option>
-                <option value="cajero">Cajero</option>
+              <select required value={valorRolDesdeForm(form)} onChange={(e) => handleRolChange(e.target.value)}>
+                <option value="gerencia">Administrador (acceso total)</option>
+                {roles.filter((r) => r.activo || String(r.id) === String(form.custom_role_id)).map((r) => (
+                  <option key={r.id} value={r.id}>{r.nombre}{!r.activo ? ' (desactivado)' : ''}</option>
+                ))}
               </select>
               <label>Sede</label>
               <select value={form.sucursal_id} onChange={(e) => setForm({ ...form, sucursal_id: e.target.value })}>
