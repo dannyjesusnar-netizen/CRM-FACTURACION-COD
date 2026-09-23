@@ -327,9 +327,9 @@ function passwordHashAleatorio() {
   return bcrypt.hashSync(crypto.randomBytes(24).toString('hex'), 10);
 }
 
-// GET /api/users/operativos?q=&estado=
+// GET /api/users/operativos?q=&estado=&categoria_staff=&sucursal_id=
 router.get('/operativos', (req, res) => {
-  const { q, estado } = req.query;
+  const { q, estado, categoria_staff: categoriaStaff, sucursal_id: sucursalId } = req.query;
   let sql = `SELECT u.*, s.nombre AS sucursal_nombre
              FROM users u
              LEFT JOIN sucursales s ON s.id = u.sucursal_id
@@ -341,6 +341,14 @@ router.get('/operativos', (req, res) => {
   }
   if (estado === 'activo') { sql += ' AND u.activo = 1'; }
   if (estado === 'inactivo') { sql += ' AND u.activo = 0'; }
+  if (CATEGORIAS_OPERATIVO.includes(categoriaStaff)) {
+    sql += ' AND u.categoria_staff = ?';
+    params.push(categoriaStaff);
+  }
+  if (sucursalId) {
+    sql += ' AND u.sucursal_id = ?';
+    params.push(Number(sucursalId));
+  }
   sql += ' ORDER BY u.nombres ASC, u.full_name ASC';
   const rows = db.prepare(sql).all(...params);
   res.json(rows.map(sinPassword));

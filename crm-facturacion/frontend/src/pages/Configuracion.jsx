@@ -397,6 +397,9 @@ export default function Configuracion() {
   // inician sesión ni facturan, así que no llevan usuario/contraseña.
   const [operativos, setOperativos] = useState([]);
   const [qOperativos, setQOperativos] = useState('');
+  const [categoriaFiltroOperativos, setCategoriaFiltroOperativos] = useState('');
+  const [sedeFiltroOperativos, setSedeFiltroOperativos] = useState('');
+  const [estadoFiltroOperativos, setEstadoFiltroOperativos] = useState('todos');
   const [showOperativoForm, setShowOperativoForm] = useState(false);
   const [editingOperativoId, setEditingOperativoId] = useState(null);
   const [operativoForm, setOperativoForm] = useState(emptyOperativoForm());
@@ -543,9 +546,18 @@ export default function Configuracion() {
     api.get('/users', { params }).then((res) => setUsuarios(res.data));
   }
 
-  function loadOperativos() {
+  // No se manda el filtro de Estado al backend (a diferencia de Empleados):
+  // acá siempre se trae el set completo (activos + inactivos) para poder
+  // mostrar el conteo de ambos sin depender de qué estado esté filtrado en
+  // pantalla; el filtro de Estado se aplica del lado del cliente sobre ese
+  // mismo set (ver operativosFiltrados).
+  function loadOperativos(overrides) {
+    const categoria = overrides?.categoria !== undefined ? overrides.categoria : categoriaFiltroOperativos;
+    const sede = overrides?.sede !== undefined ? overrides.sede : sedeFiltroOperativos;
     const params = {};
     if (qOperativos) params.q = qOperativos;
+    if (categoria) params.categoria_staff = categoria;
+    if (sede) params.sucursal_id = sede;
     api.get('/users/operativos', { params }).then((res) => setOperativos(res.data));
   }
 
@@ -1408,6 +1420,18 @@ export default function Configuracion() {
     }
   }
 
+  // Conteo de activos/inactivos sobre el set ya filtrado por búsqueda,
+  // categoría y sede (pero no por estado) — así el conteo no cambia según
+  // qué estado esté seleccionado en el filtro. operativosFiltrados es lo que
+  // realmente se pinta en la tabla, aplicando el filtro de Estado en cliente.
+  const operativosActivosCount = operativos.filter((o) => o.activo).length;
+  const operativosInactivosCount = operativos.length - operativosActivosCount;
+  const operativosFiltrados = operativos.filter((o) => (
+    estadoFiltroOperativos === 'todos'
+    || (estadoFiltroOperativos === 'activo' && o.activo)
+    || (estadoFiltroOperativos === 'inactivo' && !o.activo)
+  ));
+
   return (
     <div>
       <h1 className="page-title" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -2087,10 +2111,46 @@ export default function Configuracion() {
                   <label>Buscar por nombre, apellido o DNI</label>
                   <input value={qOperativos} onChange={(e) => setQOperativos(e.target.value)} placeholder="Buscar.." />
                 </div>
+                <div className="filter-field">
+                  <label>Categoría</label>
+                  <select
+                    value={categoriaFiltroOperativos}
+                    onChange={(e) => { setCategoriaFiltroOperativos(e.target.value); loadOperativos({ categoria: e.target.value }); }}
+                  >
+                    <option value="">Todos</option>
+                    <option value="trainer">Trainer</option>
+                    <option value="supervisor">Supervisor</option>
+                  </select>
+                </div>
+                <div className="filter-field">
+                  <label>Sede</label>
+                  <select
+                    value={sedeFiltroOperativos}
+                    onChange={(e) => { setSedeFiltroOperativos(e.target.value); loadOperativos({ sede: e.target.value }); }}
+                  >
+                    <option value="">Todas las sedes</option>
+                    {sucursales.filter((s) => s.activo).map((s) => (
+                      <option key={s.id} value={s.id}>{s.nombre}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="filter-field">
+                  <label>Estado</label>
+                  <select value={estadoFiltroOperativos} onChange={(e) => setEstadoFiltroOperativos(e.target.value)}>
+                    <option value="todos">Todos</option>
+                    <option value="activo">Activos</option>
+                    <option value="inactivo">Inactivos</option>
+                  </select>
+                </div>
                 <div className="filter-actions">
                   <button type="submit" className="btn-secondary">Buscar</button>
                 </div>
               </form>
+
+              <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -8 }}>
+                {operativosActivosCount} activo{operativosActivosCount === 1 ? '' : 's'} · {operativosInactivosCount} inactivo{operativosInactivosCount === 1 ? '' : 's'}
+                {(categoriaFiltroOperativos || sedeFiltroOperativos) ? ' (con los filtros de categoría/sede aplicados)' : ''}
+              </p>
 
               <table className="data-table">
                 <thead>
@@ -2099,7 +2159,7 @@ export default function Configuracion() {
                   </tr>
                 </thead>
                 <tbody>
-                  {operativos.map((o) => (
+                  {operativosFiltrados.map((o) => (
                     <tr key={o.id}>
                       <td>{o.nombres || o.full_name}</td>
                       <td>{o.apellidos || ''}</td>
@@ -2121,8 +2181,8 @@ export default function Configuracion() {
                       </td>
                     </tr>
                   ))}
-                  {operativos.length === 0 && (
-                    <tr><td colSpan={8} className="empty-row">No hay entrenadores ni supervisores operativos registrados.</td></tr>
+                  {operativosFiltrados.length === 0 && (
+                    <tr><td colSpan={8} className="empty-row">No hay entrenadores ni supervisores operativos que coincidan con los filtros.</td></tr>
                   )}
                 </tbody>
               </table>
