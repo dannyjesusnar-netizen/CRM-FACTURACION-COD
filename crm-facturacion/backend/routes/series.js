@@ -64,6 +64,29 @@ router.put('/', (req, res) => {
       return res.status(400).json({ error: `La serie "${s.serie}" ya la usa otra sede — cada sede necesita una serie distinta.` });
     }
   }
+  // Tampoco puede haber dos TIPOS de documento de esta misma sede compartiendo
+  // serie (ej. Nota de Crédito con la misma serie que Boleta) — cada tipo
+  // lleva su propio correlativo por dentro (ver utils/series.js), así que
+  // compartir la serie produce un mismo "serie-número" para dos comprobantes
+  // distintos. Se arma el estado final de todas las series de esta sede (las
+  // que no vienen en este PUT quedan como están en la base) y se revisa que
+  // ninguna serie se repita entre tipos distintos.
+  const estadoFinal = new Map(listSeries(sucursalId).map((s) => [s.tipo_documento, s.serie]));
+  for (const s of seriesNormalizadas) {
+    estadoFinal.set(s.tipo_documento, s.serie);
+  }
+  const tiposPorSerie = new Map();
+  for (const [tipo, serie] of estadoFinal) {
+    if (!tiposPorSerie.has(serie)) tiposPorSerie.set(serie, []);
+    tiposPorSerie.get(serie).push(tipo);
+  }
+  for (const [serie, tipos] of tiposPorSerie) {
+    if (tipos.length > 1) {
+      return res.status(400).json({
+        error: `La serie "${serie}" no puede repetirse entre tipos de documento distintos (${tipos.join(', ')}) — cada uno necesita la suya.`,
+      });
+    }
+  }
   const update = db.prepare('UPDATE series_config SET serie = ?, siguiente_numero = ? WHERE tipo_documento = ? AND sucursal_id = ?');
   const updateAll = db.transaction(() => {
     for (const s of seriesNormalizadas) {
