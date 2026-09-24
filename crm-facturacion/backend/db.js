@@ -906,6 +906,16 @@ CREATE TABLE IF NOT EXISTS metas_venta_usuario (
   if (!stockMovementColumns.includes('canal')) {
     db.exec("ALTER TABLE stock_movements ADD COLUMN canal TEXT DEFAULT 'Compras'");
   }
+  // RUC/razón social del proveedor que entregó la mercadería de un ingreso
+  // manual (Registrar Movimiento) — opcional, texto plano (no FK a
+  // suppliers): esta pantalla es para altas rápidas, no exige tener el
+  // proveedor dado de alta en Compras -> Proveedores.
+  if (!stockMovementColumns.includes('proveedor_ruc')) {
+    db.exec('ALTER TABLE stock_movements ADD COLUMN proveedor_ruc TEXT');
+  }
+  if (!stockMovementColumns.includes('proveedor_nombre')) {
+    db.exec('ALTER TABLE stock_movements ADD COLUMN proveedor_nombre TEXT');
+  }
   db.exec(`
 CREATE TABLE IF NOT EXISTS movimiento_canales (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

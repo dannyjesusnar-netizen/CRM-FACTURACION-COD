@@ -21,6 +21,9 @@ export default function RegistrarMovimiento() {
   const [motivo, setMotivo] = useState('');
   const [codigoLote, setCodigoLote] = useState('');
   const [fechaVencimiento, setFechaVencimiento] = useState('');
+  const [proveedorRuc, setProveedorRuc] = useState('');
+  const [proveedorNombre, setProveedorNombre] = useState('');
+  const [buscandoProveedor, setBuscandoProveedor] = useState(false);
 
   const [filas, setFilas] = useState([]);
   const [enviando, setEnviando] = useState(false);
@@ -34,6 +37,26 @@ export default function RegistrarMovimiento() {
     });
   }, []);
 
+  // Autocompletar el nombre del proveedor apenas se completa un RUC válido
+  // (11 dígitos) — primero busca en Proveedores (Compras), si no consulta
+  // SUNAT. Si no encuentra nada, no bloquea: la persona escribe el nombre
+  // a mano.
+  useEffect(() => {
+    const ruc = proveedorRuc.trim();
+    if (ruc.length !== 11) return;
+    let cancelado = false;
+    setBuscandoProveedor(true);
+    api.get('/movements/consultar-proveedor', { params: { ruc } })
+      .then((res) => {
+        if (cancelado || !res.data.encontrado) return;
+        setProveedorNombre((actual) => (proveedorRuc.trim() === ruc ? res.data.nombre : actual));
+      })
+      .catch(() => {})
+      .finally(() => { if (!cancelado) setBuscandoProveedor(false); });
+    return () => { cancelado = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [proveedorRuc]);
+
   const esIngreso = Number(cantidad) > 0;
   const productosDisponibles = products.filter((p) => p.tipo === 'producto');
   const productoSeleccionado = productosDisponibles.find((p) => String(p.id) === String(productId));
@@ -44,11 +67,17 @@ export default function RegistrarMovimiento() {
     setMotivo('');
     setCodigoLote('');
     setFechaVencimiento('');
+    setProveedorRuc('');
+    setProveedorNombre('');
   }
 
   function agregarFila() {
     if (!productId) { toast.error('Selecciona un producto.'); return; }
     if (!cantidad || Number(cantidad) === 0) { toast.error('Ingresa una cantidad distinta de cero.'); return; }
+    if (proveedorRuc.trim() && proveedorRuc.trim().length !== 11) {
+      toast.error('El RUC del proveedor debe tener 11 dígitos.');
+      return;
+    }
     const producto = productosDisponibles.find((p) => String(p.id) === String(productId));
     setFilas((prev) => [...prev, {
       id: nuevaFilaId(),
@@ -60,6 +89,8 @@ export default function RegistrarMovimiento() {
       motivo: motivo.trim(),
       codigo_lote: Number(cantidad) > 0 ? codigoLote.trim() : '',
       fecha_vencimiento: Number(cantidad) > 0 ? fechaVencimiento : '',
+      proveedor_ruc: proveedorRuc.trim(),
+      proveedor_nombre: proveedorNombre.trim(),
     }]);
     toast.success('Fila agregada. Selecciona el siguiente producto.');
     limpiarFormulario();
@@ -87,6 +118,8 @@ export default function RegistrarMovimiento() {
           canal: f.canal,
           codigo_lote: f.cantidad > 0 ? f.codigo_lote : undefined,
           fecha_vencimiento: f.cantidad > 0 ? (f.fecha_vencimiento || undefined) : undefined,
+          proveedor_ruc: f.proveedor_ruc || undefined,
+          proveedor_nombre: f.proveedor_nombre || undefined,
         });
         creados += 1;
       } catch (err) {
@@ -147,6 +180,24 @@ export default function RegistrarMovimiento() {
         <label style={{ marginTop: 10 }}>Motivo (opcional)</label>
         <input value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Ej: Conteo físico, mercadería dañada..." />
 
+        <label style={{ marginTop: 10 }}>RUC del proveedor (opcional)</label>
+        <input
+          value={proveedorRuc}
+          onChange={(e) => setProveedorRuc(e.target.value.replace(/\D/g, '').slice(0, 11))}
+          placeholder="Ej: 20123456789"
+          inputMode="numeric"
+        />
+        {proveedorRuc.trim().length === 11 && (
+          <>
+            <label style={{ marginTop: 10 }}>Empresa</label>
+            <input
+              value={proveedorNombre}
+              onChange={(e) => setProveedorNombre(e.target.value)}
+              placeholder={buscandoProveedor ? 'Buscando...' : 'No se encontró — escribe el nombre'}
+            />
+          </>
+        )}
+
         {esIngreso && (
           <>
             <label style={{ marginTop: 10 }}>N.º de lote (opcional)</label>
@@ -177,7 +228,7 @@ export default function RegistrarMovimiento() {
           <table className="data-table compact">
             <thead>
               <tr>
-                <th>Producto</th><th>Cantidad</th><th>Canal</th><th>Motivo</th><th></th>
+                <th>Producto</th><th>Cantidad</th><th>Canal</th><th>Proveedor</th><th>Motivo</th><th></th>
               </tr>
             </thead>
             <tbody>
@@ -190,6 +241,7 @@ export default function RegistrarMovimiento() {
                       {canales.map((c) => <option key={c.id} value={c.nombre}>{c.nombre}</option>)}
                     </select>
                   </td>
+                  <td>{f.proveedor_nombre || '—'}</td>
                   <td>
                     <input value={f.motivo} onChange={(e) => actualizarFila(f.id, 'motivo', e.target.value)} style={{ minWidth: 140 }} />
                   </td>
@@ -201,7 +253,7 @@ export default function RegistrarMovimiento() {
                 </tr>
               ))}
               {filas.length === 0 && (
-                <tr><td colSpan={5} className="empty-row">Todavía no agregaste ningún movimiento.</td></tr>
+                <tr><td colSpan={6} className="empty-row">Todavía no agregaste ningún movimiento.</td></tr>
               )}
             </tbody>
           </table>

@@ -9,6 +9,7 @@ const { analizarGuia } = require('../utils/ocrGuia');
 const { parseGuiaXml, parseGuiaPdf } = require('../utils/guiaParser');
 const { buscarProductoPorAlias, guardarAlias } = require('../utils/productoAlias');
 const { ejecutarTodoONada } = require('../utils/cargaMasiva');
+const { consultarRuc } = require('../utils/rucLookup');
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -52,11 +53,31 @@ router.delete('/canales/:id', requireGerenciaOSupervisorCanales, (req, res) => {
   res.json({ ok: true });
 });
 
+// GET /api/movements/consultar-proveedor?ruc=XXXXXXXXXXX -> autocompletar el
+// nombre del proveedor al registrar un movimiento manual (Registrar
+// Movimiento). Primero busca si ese RUC ya está registrado en Proveedores
+// (Compras); si no, consulta SUNAT vía rucLookup (mismo proveedor externo
+// que ya usa Clientes). Nunca falla la petición por un problema del
+// proveedor externo -- responde 200 con encontrado:false para que el
+// frontend simplemente deje el nombre en blanco para completarlo a mano.
+router.get('/consultar-proveedor', async (req, res) => {
+  const ruc = (req.query.ruc || '').trim();
+  if (!/^\d{11}$/.test(ruc)) return res.json({ encontrado: false });
+  const proveedor = db.prepare('SELECT nombre FROM suppliers WHERE ruc = ?').get(ruc);
+  if (proveedor) return res.json({ encontrado: true, nombre: proveedor.nombre, fuente: 'proveedores' });
+  const info = await consultarRuc(ruc);
+  if (info.verificado && info.existe) {
+    return res.json({ encontrado: true, nombre: info.razonSocial, fuente: 'sunat' });
+  }
+  return res.json({ encontrado: false });
+});
+
 // cliente_proveedor: nombre del proveedor o cliente del documento que originó
-// el movimiento, resuelto a partir de la referencia (no es un campo propio
-// del movimiento). Solo se resuelve para movimientos ligados a una Compra o
-// a un comprobante de Ventas; el resto queda en blanco.
-const CLIENTE_PROVEEDOR_SUBQUERY = `(
+// el movimiento. Para un ingreso manual (Registrar Movimiento) es el
+// proveedor_nombre guardado directo en el movimiento; para el resto se
+// resuelve a partir de la referencia (movimientos ligados a una Compra o a
+// un comprobante de Ventas). El resto queda en blanco.
+const CLIENTE_PROVEEDOR_SUBQUERY = `m.proveedor_nombre, (
   SELECT s.nombre FROM purchases pu JOIN suppliers s ON s.id = pu.supplier_id
   WHERE 'COMPRA-' || printf('%05d', pu.numero) = m.referencia LIMIT 1
 ), (
@@ -130,11 +151,16 @@ router.get('/resumen-por-producto', (req, res) => {
 // Si es un ingreso (cantidad > 0) y viene codigo_lote, se crea el lote junto con el
 // movimiento en la misma transacción (mismo patrón que POST /api/lotes).
 router.post('/', requireAccion('inventario', 'ajustes'), (req, res) => {
-  const { product_id, cantidad, motivo, codigo_lote, fecha_vencimiento, canal } = req.body || {};
+  const { product_id, cantidad, motivo, codigo_lote, fecha_vencimiento, canal, proveedor_ruc, proveedor_nombre } = req.body || {};
   if (!product_id || !cantidad) {
     return res.status(400).json({ error: 'product_id y cantidad son requeridos.' });
   }
   const canalFinal = (canal || '').toString().trim() || 'Compras';
+  const proveedorRuc = (proveedor_ruc || '').toString().trim();
+  if (proveedorRuc && !/^\d{11}$/.test(proveedorRuc)) {
+    return res.status(400).json({ error: 'El RUC del proveedor debe tener 11 dígitos.' });
+  }
+  const proveedorNombre = (proveedor_nombre || '').toString().trim() || null;
   const product = db.prepare('SELECT * FROM products WHERE id = ?').get(product_id);
   if (!product) return res.status(404).json({ error: 'Producto no encontrado.' });
   if (product.tipo === 'servicio' || product.stock === null) {
@@ -161,14 +187,14 @@ router.post('/', requireAccion('inventario', 'ajustes'), (req, res) => {
          VALUES (?, ?, 'lote', ?, ?, ?, ?)`
       ).run(product_id, codigoLote, fecha_vencimiento || null, cant, cant, req.user?.id || null);
       db.prepare(
-        `INSERT INTO stock_movements (product_id, lote_id, tipo, cantidad, stock_resultante, motivo, referencia, canal, created_by, sucursal_id)
-         VALUES (?, ?, 'ingreso_lote', ?, ?, ?, ?, ?, ?, ?)`
-      ).run(product_id, loteInfo.lastInsertRowid, cant, updated.stock, motivo || null, codigoLote, canalFinal, req.user?.id || null, req.sucursalId);
+        `INSERT INTO stock_movements (product_id, lote_id, tipo, cantidad, stock_resultante, motivo, referencia, canal, proveedor_ruc, proveedor_nombre, created_by, sucursal_id)
+         VALUES (?, ?, 'ingreso_lote', ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).run(product_id, loteInfo.lastInsertRowid, cant, updated.stock, motivo || null, codigoLote, canalFinal, proveedorRuc || null, proveedorNombre, req.user?.id || null, req.sucursalId);
     } else {
       db.prepare(
-        `INSERT INTO stock_movements (product_id, tipo, cantidad, stock_resultante, motivo, canal, created_by, sucursal_id)
-         VALUES (?, 'ajuste', ?, ?, ?, ?, ?, ?)`
-      ).run(product_id, cant, updated.stock, motivo || null, canalFinal, req.user?.id || null, req.sucursalId);
+        `INSERT INTO stock_movements (product_id, tipo, cantidad, stock_resultante, motivo, canal, proveedor_ruc, proveedor_nombre, created_by, sucursal_id)
+         VALUES (?, 'ajuste', ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).run(product_id, cant, updated.stock, motivo || null, canalFinal, proveedorRuc || null, proveedorNombre, req.user?.id || null, req.sucursalId);
     }
     return updated.stock;
   });
