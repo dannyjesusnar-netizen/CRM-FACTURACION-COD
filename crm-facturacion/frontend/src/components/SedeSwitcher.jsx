@@ -3,9 +3,10 @@ import { Building2, ChevronDown, Check } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
 
-// Botón rápido en la barra superior para que Gerencia cambie de sede sin
-// salir de la app (sin pasar por /seleccionar-sede). Solo tiene sentido si
-// hay más de una sede activa — si solo hay una, no se renderiza nada.
+// Botón rápido en la barra superior para que Gerencia o un Supervisor
+// cambien de sede sin salir de la app (sin pasar por /seleccionar-sede).
+// Solo tiene sentido si hay más de una sede activa — si solo hay una, no se
+// renderiza nada.
 export default function SedeSwitcher() {
   const { user, sucursal, setSucursal } = useAuth();
   const [sucursales, setSucursales] = useState([]);
@@ -13,9 +14,9 @@ export default function SedeSwitcher() {
   const boxRef = useRef(null);
 
   useEffect(() => {
-    if (user?.role !== 'gerencia') return;
+    if (!user?.puede_cambiar_sede) return;
     api.get('/sucursales').then((res) => setSucursales(res.data)).catch(() => {});
-  }, [user?.role]);
+  }, [user?.puede_cambiar_sede]);
 
   useEffect(() => {
     function onClickOutside(e) {
@@ -25,7 +26,7 @@ export default function SedeSwitcher() {
     return () => document.removeEventListener('mousedown', onClickOutside);
   }, []);
 
-  if (user?.role !== 'gerencia' || sucursales.length <= 1) return null;
+  if (!user?.puede_cambiar_sede || sucursales.length <= 1) return null;
 
   function elegir(s) {
     setOpen(false);
