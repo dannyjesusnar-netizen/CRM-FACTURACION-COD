@@ -292,10 +292,15 @@ router.post('/importar', requireAccion('inventario', 'importacion'), (req, res) 
 // Todo o nada (ver utils/cargaMasiva.js): si CUALQUIER fila tiene un error,
 // no se guarda NADA.
 router.post('/importar-lotes', requireAccion('inventario', 'ajustes'), (req, res) => {
-  const { rows, afectar_stock: afectarStock = true } = req.body || {};
+  const { rows, afectar_stock: afectarStock = true, proveedor_ruc, proveedor_nombre } = req.body || {};
   if (!Array.isArray(rows) || rows.length === 0) {
     return res.status(400).json({ error: 'rows es requerido y debe tener al menos una fila.' });
   }
+  const proveedorRuc = (proveedor_ruc || '').toString().trim();
+  if (proveedorRuc && !/^\d{11}$/.test(proveedorRuc)) {
+    return res.status(400).json({ error: 'El RUC del proveedor debe tener 11 dígitos.' });
+  }
+  const proveedorNombre = (proveedor_nombre || '').toString().trim() || null;
 
   const resultado = ejecutarTodoONada(() => {
     const aplicados = [];
@@ -346,15 +351,15 @@ router.post('/importar-lotes', requireAccion('inventario', 'ajustes'), (req, res
         ).run(prod.id, codigoLote, fechaVencimiento || null, cant, cant, req.user?.id || null);
         if (afectarStock) {
           db.prepare(
-            `INSERT INTO stock_movements (product_id, lote_id, tipo, cantidad, stock_resultante, motivo, referencia, canal, created_by, sucursal_id)
-             VALUES (?, ?, 'ingreso_lote', ?, ?, ?, ?, ?, ?, ?)`
-          ).run(prod.id, loteInfo.lastInsertRowid, cant, nuevoStock, motivo || null, codigoLote, canalFila, req.user?.id || null, req.sucursalId);
+            `INSERT INTO stock_movements (product_id, lote_id, tipo, cantidad, stock_resultante, motivo, referencia, canal, proveedor_ruc, proveedor_nombre, created_by, sucursal_id)
+             VALUES (?, ?, 'ingreso_lote', ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          ).run(prod.id, loteInfo.lastInsertRowid, cant, nuevoStock, motivo || null, codigoLote, canalFila, proveedorRuc || null, proveedorNombre, req.user?.id || null, req.sucursalId);
         }
       } else {
         db.prepare(
-          `INSERT INTO stock_movements (product_id, tipo, cantidad, stock_resultante, motivo, referencia, canal, created_by, sucursal_id)
-           VALUES (?, 'ajuste', ?, ?, ?, 'IMPORT-LOTES', ?, ?, ?)`
-        ).run(prod.id, cant, nuevoStock, motivo || null, canalFila, req.user?.id || null, req.sucursalId);
+          `INSERT INTO stock_movements (product_id, tipo, cantidad, stock_resultante, motivo, referencia, canal, proveedor_ruc, proveedor_nombre, created_by, sucursal_id)
+           VALUES (?, 'ajuste', ?, ?, ?, 'IMPORT-LOTES', ?, ?, ?, ?, ?)`
+        ).run(prod.id, cant, nuevoStock, motivo || null, canalFila, proveedorRuc || null, proveedorNombre, req.user?.id || null, req.sucursalId);
       }
 
       aplicados.push({ codigo, producto: prod.nombre, cantidad: cant, codigo_lote: codigoLote || null, stock_nuevo: nuevoStock });
@@ -429,6 +434,34 @@ function matchPorDescripcion(descripcion, productos) {
   return mejorProductoParaDescripcion(descripcion, productos);
 }
 
+// Encabezado de una guía de remisión SUNAT: el RUC del remitente casi
+// siempre aparece con la etiqueta "RUC" delante (mismo patrón que ya usa
+// utils/guiaParser.js para el PDF) — se usa el primero que aparece en el
+// texto leído por OCR, que en la práctica es el del remitente (el
+// destinatario suele aparecer más abajo, después de los datos del traslado).
+const RUC_EN_TEXTO = /RUC\s*(?:N[°ºo.]?)?\s*:?\s*(\d{11})/i;
+
+// Identifica el proveedor de una guía a partir de su RUC: primero busca si
+// ya está registrado en Proveedores; si no, consulta SUNAT (mismo proveedor
+// externo que ya usa Clientes/Registrar Movimiento) y, si consigue un
+// nombre (de SUNAT o el que ya traía la propia guía), lo da de alta ahí
+// mismo — así la carga por guía deja el proveedor identificado y registrado
+// sin que el usuario tenga que ir a crearlo a mano. Nunca falla la petición
+// por esto: si no hay RUC o no se pudo conseguir ningún nombre, devuelve
+// null y el resto del análisis sigue igual.
+async function identificarOCrearProveedor(ruc, razonSocialSugerida) {
+  if (!ruc || !/^\d{11}$/.test(ruc)) return null;
+  const existente = db.prepare('SELECT id, nombre FROM suppliers WHERE ruc = ?').get(ruc);
+  if (existente) return { id: existente.id, nombre: existente.nombre, creado: false };
+
+  const info = await consultarRuc(ruc);
+  const nombre = (info.verificado && info.existe ? info.razonSocial : null) || razonSocialSugerida || null;
+  if (!nombre) return { id: null, nombre: null, creado: false };
+
+  const insert = db.prepare('INSERT INTO suppliers (ruc, nombre) VALUES (?, ?)').run(ruc, nombre);
+  return { id: insert.lastInsertRowid, nombre, creado: true };
+}
+
 // POST /api/movements/analizar-guia { foto_data_url } -> lee una foto de la
 // guía de remisión COMPLETA del proveedor e intenta separar sus líneas de
 // producto (cantidad + descripción), sugiriendo a qué producto del catálogo
@@ -454,10 +487,22 @@ router.post('/analizar-guia', requireAccion('inventario', 'ajustes'), async (req
         producto_nombre: match ? match.nombre : null,
       };
     });
+    // El RUC leído por OCR es best-effort (puede no aparecer, o el OCR puede
+    // leerlo mal) — si no se consigue uno válido, simplemente no hay
+    // proveedor identificado y el resto de la guía se carga igual.
+    const rucMatch = resultado.texto.match(RUC_EN_TEXTO);
+    const proveedor = rucMatch ? await identificarOCrearProveedor(rucMatch[1], null) : null;
     // Se devuelve también el texto crudo del OCR: si no detectó ninguna fila
     // (o las detectó mal), el frontend lo muestra para poder ver qué leyó
     // realmente el sistema en esa foto y agregar las filas a mano.
-    res.json({ filas, texto: resultado.texto });
+    res.json({
+      filas,
+      texto: resultado.texto,
+      ruc: rucMatch ? rucMatch[1] : null,
+      razon_social: proveedor?.nombre || null,
+      proveedor_id: proveedor?.id || null,
+      proveedor_creado: proveedor?.creado || false,
+    });
   } catch (err) {
     res.status(500).json({ error: 'No se pudo analizar la foto de la guía.' });
   }
@@ -509,22 +554,21 @@ router.post('/analizar-guia-archivo', requireAccion('inventario', 'ajustes'), up
     };
   });
 
-  // La guía trae el RUC/razón social del REMITENTE — si ya existe un
-  // proveedor registrado con ese RUC se devuelve su id, para poder
+  // La guía trae el RUC/razón social del REMITENTE — se identifica el
+  // proveedor (o se da de alta, ver identificarOCrearProveedor) para poder
   // asignárselo automáticamente a los productos nuevos que se creen desde
-  // esta guía (igual que ya hace "Registrar Compra" con parse-guia). Si no
-  // existe, no se crea uno acá: el usuario lo asigna después desde Productos
-  // o Proveedores, para no meter un flujo de alta de proveedor en esta
-  // pantalla.
-  const proveedor = resultado.ruc ? db.prepare('SELECT id FROM suppliers WHERE ruc = ?').get(resultado.ruc) : null;
+  // esta guía (igual que ya hace "Registrar Compra" con parse-guia) y a los
+  // movimientos que se carguen al confirmar.
+  const proveedor = await identificarOCrearProveedor(resultado.ruc, resultado.razon_social);
 
   res.json({
     filas,
     fuente: resultado.fuente,
     advertencia: resultado.advertencia || null,
     ruc: resultado.ruc || null,
-    razon_social: resultado.razon_social || null,
-    proveedor_id: proveedor ? proveedor.id : null,
+    razon_social: proveedor?.nombre || resultado.razon_social || null,
+    proveedor_id: proveedor?.id || null,
+    proveedor_creado: proveedor?.creado || false,
     guia: resultado.guia_serie && resultado.guia_numero ? `${resultado.guia_serie}-${resultado.guia_numero}` : null,
   });
 });
