@@ -40,11 +40,13 @@ export default function Menu() {
   const { user } = useAuth();
 
   const modulosVisibles = ACTIVE_MODULES.filter((m) => user?.permisos?.[m.modulo] !== false);
+  const primerNombre = user?.full_name?.trim().split(/\s+/)[0];
 
   return (
     <div className="menu-page">
       <FloatingShapes shapes={MENU_SHAPES} />
       <FloatingIcons icons={MENU_ICONS} />
+      {primerNombre && <p className="menu-welcome">Bienvenido/a, {primerNombre}</p>}
       <h1 className="menu-title">MENÚ PRINCIPAL</h1>
 
       <div className="menu-grid">
