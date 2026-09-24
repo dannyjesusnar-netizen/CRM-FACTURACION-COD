@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const db = require('../db');
 const { resolveTenantDb } = require('../utils/tenant');
+const { esGerenciaOSupervisor } = require('../utils/permisos');
 
 const DEV_JWT_SECRET = 'crm-facturacion-dev-secret-change-me';
 const JWT_SECRET = process.env.JWT_SECRET || DEV_JWT_SECRET;
@@ -47,17 +48,24 @@ function requireGerencia(req, res, next) {
 
 // Resuelve la sede activa de la petición en req.sucursalId. Un vendedor con
 // sede fija (users.sucursal_id) siempre opera en esa sede, sin importar lo
-// que mande el header (no puede "elegir" otra vía spoofing). Gerencia (u
-// otro usuario sin sede fija) usa la sede que eligió en el selector, enviada
-// en el header X-Sucursal-Id.
+// que mande el header (no puede "elegir" otra vía spoofing). Gerencia y
+// Supervisor (esGerenciaOSupervisor) sí pueden moverse de sede aunque tengan
+// una asignada de base -- usan la que eligieron en el selector (header
+// X-Sucursal-Id), con su sede asignada como valor por defecto si todavía no
+// eligieron ninguna.
 function resolveSucursal(req, res, next) {
   const userRow = db.prepare('SELECT sucursal_id FROM users WHERE id = ?').get(req.user.id);
-  if (userRow && userRow.sucursal_id) {
+  const puedeElegirSede = req.user.role === 'gerencia' || esGerenciaOSupervisor(req.user);
+  if (userRow && userRow.sucursal_id && !puedeElegirSede) {
     req.sucursalId = userRow.sucursal_id;
     return next();
   }
   const headerId = req.headers['x-sucursal-id'];
   if (!headerId) {
+    if (userRow && userRow.sucursal_id) {
+      req.sucursalId = userRow.sucursal_id;
+      return next();
+    }
     return res.status(400).json({ error: 'Falta seleccionar una sede.' });
   }
   const sucursal = db.prepare('SELECT id FROM sucursales WHERE id = ? AND activo = 1').get(Number(headerId));

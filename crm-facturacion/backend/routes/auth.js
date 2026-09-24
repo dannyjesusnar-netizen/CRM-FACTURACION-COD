@@ -82,6 +82,10 @@ function emitirToken(res, user, ruc) {
       // requireGerenciaOSupervisorCanales, sin pasar por el módulo
       // "Configuración" de Roles.
       puede_administrar_canales: esGerenciaOSupervisor(user),
+      // Cambiar de sede desde el selector rápido de la barra superior (ver
+      // middleware/auth.js: resolveSucursal, que deja de fijar la sede
+      // asignada como única opción cuando esGerenciaOSupervisor es true).
+      puede_cambiar_sede: esGerenciaOSupervisor(user),
       // Qué pestañas de Configuración le corresponde ver a este rol (ver
       // Configuración → Roles → módulo "Configuración"). Gerencia ve todas
       // sin pasar por esto (Configuracion.jsx ya lo trata aparte); "Roles de
