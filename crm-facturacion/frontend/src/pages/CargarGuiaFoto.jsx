@@ -96,6 +96,17 @@ export default function CargarGuiaFoto() {
       const detectadas = filasDesdeRespuesta(res.data.filas);
       setFilas(detectadas);
       setTextoDetectado(res.data.texto || '');
+      if (res.data.razon_social || res.data.ruc) {
+        setProveedorDetectado({
+          id: res.data.proveedor_id || null, razon_social: res.data.razon_social, ruc: res.data.ruc,
+          creado: res.data.proveedor_creado || false,
+        });
+        // Si el proveedor se acaba de crear (ver identificarOCrearProveedor en
+        // el backend), la lista de Proveedores en memoria quedó desactualizada
+        // — se refresca para que el selector del modal "Crear producto" lo
+        // encuentre.
+        if (res.data.proveedor_id) api.get('/suppliers').then((r) => setSuppliers(r.data));
+      }
       if (detectadas.length === 0) {
         setMostrarTexto(true);
         toast.info('No se pudo separar ninguna línea de producto en la foto — revisa el texto leído abajo y agrega las filas a mano.');
@@ -129,7 +140,11 @@ export default function CargarGuiaFoto() {
       const detectadas = filasDesdeRespuesta(res.data.filas);
       setFilas(detectadas);
       if (res.data.razon_social || res.data.ruc) {
-        setProveedorDetectado({ id: res.data.proveedor_id || null, razon_social: res.data.razon_social, ruc: res.data.ruc });
+        setProveedorDetectado({
+          id: res.data.proveedor_id || null, razon_social: res.data.razon_social, ruc: res.data.ruc,
+          creado: res.data.proveedor_creado || false,
+        });
+        if (res.data.proveedor_id) api.get('/suppliers').then((r) => setSuppliers(r.data));
       }
       if (detectadas.length === 0) {
         toast.info('El archivo se leyó pero no se encontraron líneas de producto — agrega las filas a mano.');
@@ -184,7 +199,11 @@ export default function CargarGuiaFoto() {
           descripcion_detectada: f.descripcion_detectada || undefined,
         };
       });
-      const res = await api.post('/movements/importar-lotes', { rows });
+      const res = await api.post('/movements/importar-lotes', {
+        rows,
+        proveedor_ruc: proveedorDetectado?.ruc || undefined,
+        proveedor_nombre: proveedorDetectado?.razon_social || undefined,
+      });
       const codigosAplicados = new Set((res.data.aplicados || []).map((a) => a.codigo));
       const idsAplicados = new Set(
         listas
@@ -290,8 +309,11 @@ export default function CargarGuiaFoto() {
             Proveedor detectado en la guía: <strong>{proveedorDetectado.razon_social || proveedorDetectado.ruc}</strong>
             {proveedorDetectado.ruc ? ` (RUC ${proveedorDetectado.ruc})` : ''}
             {proveedorDetectado.id
-              ? ' — ya está registrado; los productos que crees desde esta guía quedarán con este proveedor asignado.'
-              : ' — no está registrado en Proveedores; los productos nuevos se crearán sin proveedor asignado.'}
+              ? (proveedorDetectado.creado
+                ? ' — no estaba registrado, se agregó automáticamente a Proveedores.'
+                : ' — ya está registrado.')
+              : ' — no se pudo identificar la empresa; los productos nuevos se crearán sin proveedor asignado.'}
+            {proveedorDetectado.id && ' Los movimientos y los productos nuevos que crees desde esta guía quedarán con este proveedor.'}
           </p>
         )}
 
@@ -430,9 +452,8 @@ export default function CargarGuiaFoto() {
               </div>
               {proveedorDetectado && !proveedorDetectado.id && (
                 <p style={{ fontSize: 11, color: 'var(--ink-muted)', marginTop: 8 }}>
-                  El proveedor de esta guía ({proveedorDetectado.razon_social || proveedorDetectado.ruc}) no está registrado en
-                  Proveedores todavía — puedes registrarlo desde Compras y luego editarlo aquí, o crear el producto sin
-                  proveedor por ahora.
+                  No se pudo identificar la empresa de esta guía ({proveedorDetectado.razon_social || proveedorDetectado.ruc}) —
+                  puedes registrarla desde Compras y luego editarla aquí, o crear el producto sin proveedor por ahora.
                 </p>
               )}
               <p style={{ fontSize: 11, color: 'var(--ink-muted)', marginTop: 8 }}>
