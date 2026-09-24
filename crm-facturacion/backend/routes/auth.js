@@ -51,50 +51,56 @@ function cargoDeUsuario(user) {
   return 'Colaborador';
 }
 
+// Arma el objeto "user" completo (permisos, cargo, todos los "puede_...")
+// que recibe el frontend y cachea en localStorage (crm_user) — tanto al
+// hacer login (emitirToken) como al refrescarlo en caliente desde GET /me
+// (ver más abajo), para que un cambio de rol/permisos en Configuración →
+// Roles se refleje sin tener que cerrar sesión y volver a entrar.
+function construirUsuarioCliente(user) {
+  const sucursalFija = user.sucursal_id
+    ? db.prepare('SELECT id, nombre FROM sucursales WHERE id = ?').get(user.sucursal_id)
+    : null;
+  return {
+    id: user.id, username: user.username, full_name: user.full_name, role: user.role, dni: user.dni,
+    sucursal_id: sucursalFija?.id || null, sucursal_nombre: sucursalFija?.nombre || null,
+    custom_role_id: user.custom_role_id || null,
+    cargo: cargoDeUsuario(user),
+    permisos: permisosDeUsuario(user),
+    // Ver el Tablero de Ventas: config-driven, ver Configuración → Roles →
+    // Inicio → "Tablero de Ventas" (puedeVerTableroVentas). Reatribuir una
+    // venta a otro Trainer/Supervisor desde Facturas es un permiso aparte,
+    // que sigue reservado a Gerencia/Supervisor sin pasar por ese toggle.
+    puede_ver_tablero: puedeVerTableroVentas(user),
+    puede_reatribuir_venta: esGerenciaOSupervisor(user),
+    // Aprobar/rechazar traslados pendientes (ver routes/traslados.js) — un
+    // vendedor de sede solo puede crearlos, no aprobarlos.
+    puede_aprobar_traslados: esGerenciaOSupervisor(user),
+    // Crear/eliminar Canales de movimiento (Configuración → Canales de
+    // movimiento) — mismo criterio que routes/movements.js:
+    // requireGerenciaOSupervisorCanales, sin pasar por el módulo
+    // "Configuración" de Roles.
+    puede_administrar_canales: esGerenciaOSupervisor(user),
+    // Cambiar de sede desde el selector rápido de la barra superior (ver
+    // middleware/auth.js: resolveSucursal). Gerencia/Supervisor lo tienen
+    // automático; cualquier otro rol lo gana desde Configuración → Roles →
+    // Inicio → "Cambiar de sede" (ver utils/permisos.js: puedeCambiarSede).
+    puede_cambiar_sede: puedeCambiarSede(user),
+    // Qué pestañas de Configuración le corresponde ver a este rol (ver
+    // Configuración → Roles → módulo "Configuración"). Gerencia ve todas
+    // sin pasar por esto (Configuracion.jsx ya lo trata aparte); "Roles de
+    // usuario", "Respaldos" y "Zona de peligro" no están acá — quedan
+    // siempre reservadas a Gerencia, nunca delegables.
+    configuracion_acciones: accionesDeModulo(user, 'configuracion'),
+  };
+}
+
 function emitirToken(res, user, ruc) {
   const token = jwt.sign(
     { id: user.id, username: user.username, full_name: user.full_name, role: user.role, ruc },
     JWT_SECRET,
     { expiresIn: '12h' }
   );
-  const sucursalFija = user.sucursal_id
-    ? db.prepare('SELECT id, nombre FROM sucursales WHERE id = ?').get(user.sucursal_id)
-    : null;
-  res.json({
-    token,
-    user: {
-      id: user.id, username: user.username, full_name: user.full_name, role: user.role, dni: user.dni,
-      sucursal_id: sucursalFija?.id || null, sucursal_nombre: sucursalFija?.nombre || null,
-      custom_role_id: user.custom_role_id || null,
-      cargo: cargoDeUsuario(user),
-      permisos: permisosDeUsuario(user),
-      // Ver el Tablero de Ventas: config-driven, ver Configuración → Roles →
-      // Inicio → "Tablero de Ventas" (puedeVerTableroVentas). Reatribuir una
-      // venta a otro Trainer/Supervisor desde Facturas es un permiso aparte,
-      // que sigue reservado a Gerencia/Supervisor sin pasar por ese toggle.
-      puede_ver_tablero: puedeVerTableroVentas(user),
-      puede_reatribuir_venta: esGerenciaOSupervisor(user),
-      // Aprobar/rechazar traslados pendientes (ver routes/traslados.js) — un
-      // vendedor de sede solo puede crearlos, no aprobarlos.
-      puede_aprobar_traslados: esGerenciaOSupervisor(user),
-      // Crear/eliminar Canales de movimiento (Configuración → Canales de
-      // movimiento) — mismo criterio que routes/movements.js:
-      // requireGerenciaOSupervisorCanales, sin pasar por el módulo
-      // "Configuración" de Roles.
-      puede_administrar_canales: esGerenciaOSupervisor(user),
-      // Cambiar de sede desde el selector rápido de la barra superior (ver
-      // middleware/auth.js: resolveSucursal). Gerencia/Supervisor lo tienen
-      // automático; cualquier otro rol lo gana desde Configuración → Roles →
-      // Inicio → "Cambiar de sede" (ver utils/permisos.js: puedeCambiarSede).
-      puede_cambiar_sede: puedeCambiarSede(user),
-      // Qué pestañas de Configuración le corresponde ver a este rol (ver
-      // Configuración → Roles → módulo "Configuración"). Gerencia ve todas
-      // sin pasar por esto (Configuracion.jsx ya lo trata aparte); "Roles de
-      // usuario", "Respaldos" y "Zona de peligro" no están acá — quedan
-      // siempre reservadas a Gerencia, nunca delegables.
-      configuracion_acciones: accionesDeModulo(user, 'configuracion'),
-    }
-  });
+  res.json({ token, user: construirUsuarioCliente(user) });
 }
 
 router.post('/login', loginLimiter, (req, res) => {
@@ -303,8 +309,16 @@ router.post('/register', registerLimiter, async (req, res) => {
   }
 });
 
+// GET /api/auth/me -> el mismo objeto "user" completo (permisos, cargo,
+// etc.) que devuelve el login, pero recalculado al vuelo contra la fila
+// actual del usuario — así el frontend puede refrescar su sesión cacheada
+// (ver AuthContext.jsx: refreshUser, llamado una vez al cargar la app en
+// Layout.jsx) y recoger un cambio de rol/permisos sin tener que cerrar
+// sesión y volver a entrar.
 router.get('/me', requireAuth, (req, res) => {
-  res.json({ user: req.user });
+  const userRow = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
+  if (!userRow) return res.status(401).json({ error: 'Usuario no encontrado.' });
+  res.json({ user: construirUsuarioCliente(userRow) });
 });
 
 router.put('/password', requireAuth, (req, res) => {
