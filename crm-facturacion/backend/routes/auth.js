@@ -63,6 +63,11 @@ function emitirToken(res, user, ruc) {
       // Aprobar/rechazar traslados pendientes (ver routes/traslados.js) — un
       // vendedor de sede solo puede crearlos, no aprobarlos.
       puede_aprobar_traslados: esGerenciaOSupervisor(user),
+      // Crear/eliminar Canales de movimiento (Configuración → Canales de
+      // movimiento) — mismo criterio que routes/movements.js:
+      // requireGerenciaOSupervisorCanales, sin pasar por el módulo
+      // "Configuración" de Roles.
+      puede_administrar_canales: esGerenciaOSupervisor(user),
       // Qué pestañas de Configuración le corresponde ver a este rol (ver
       // Configuración → Roles → módulo "Configuración"). Gerencia ve todas
       // sin pasar por esto (Configuracion.jsx ya lo trata aparte); "Roles de
