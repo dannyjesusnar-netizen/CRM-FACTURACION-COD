@@ -8,7 +8,7 @@ const { resolveTenantDb } = require('../utils/tenant');
 const { consultarRuc } = require('../utils/rucLookup');
 const { JWT_SECRET, requireAuth } = require('../middleware/auth');
 const { passwordError } = require('../utils/password');
-const { permisosDeUsuario, esGerenciaOSupervisor, puedeVerTableroVentas, accionesDeModulo } = require('../utils/permisos');
+const { permisosDeUsuario, esGerenciaOSupervisor, puedeVerTableroVentas, puedeCambiarSede, accionesDeModulo } = require('../utils/permisos');
 
 const router = express.Router();
 
@@ -83,9 +83,10 @@ function emitirToken(res, user, ruc) {
       // "Configuración" de Roles.
       puede_administrar_canales: esGerenciaOSupervisor(user),
       // Cambiar de sede desde el selector rápido de la barra superior (ver
-      // middleware/auth.js: resolveSucursal, que deja de fijar la sede
-      // asignada como única opción cuando esGerenciaOSupervisor es true).
-      puede_cambiar_sede: esGerenciaOSupervisor(user),
+      // middleware/auth.js: resolveSucursal). Gerencia/Supervisor lo tienen
+      // automático; cualquier otro rol lo gana desde Configuración → Roles →
+      // Inicio → "Cambiar de sede" (ver utils/permisos.js: puedeCambiarSede).
+      puede_cambiar_sede: puedeCambiarSede(user),
       // Qué pestañas de Configuración le corresponde ver a este rol (ver
       // Configuración → Roles → módulo "Configuración"). Gerencia ve todas
       // sin pasar por esto (Configuracion.jsx ya lo trata aparte); "Roles de

@@ -29,6 +29,7 @@ const ACCIONES_POR_MODULO = {
   // Ver puedeVerTableroVentas() más abajo y su uso en routes/roles.js.
   dashboard: [
     { key: 'tablero_ventas', label: 'Tablero de Ventas (rankings, metas y totales entre sedes)', grupo: 'Inicio', default: false },
+    { key: 'cambiar_sede', label: 'Cambiar de sede (selector rápido de la barra superior)', grupo: 'Sedes', default: false },
   ],
   ventas: [
     { key: 'factura', label: 'Facturas', grupo: 'Comprobantes' },
@@ -228,6 +229,26 @@ function requireTableroVentas(req, res, next) {
   return res.status(403).json({ error: 'No tienes permiso para ver el Tablero de Ventas.' });
 }
 
+// Cambiar de sede desde el selector rápido de la barra superior (ver
+// middleware/auth.js: resolveSucursal). Gerencia y el rol "Supervisor"
+// siguen teniéndolo automático (esGerenciaOSupervisor, como antes de que
+// existiera este toggle); cualquier OTRO rol lo gana explícitamente desde
+// Configuración → Roles → Inicio → "Cambiar de sede", mismo criterio de
+// "sin rol = sin acceso, sin fila guardada = sin acceso" que el Tablero de
+// Ventas — no es algo que un empleado deba heredar solo por tener "Inicio"
+// prendido.
+function puedeCambiarSede(user) {
+  if (!user) return false;
+  if (esGerenciaOSupervisor(user)) return true;
+  const userRow = db.prepare('SELECT custom_role_id FROM users WHERE id = ?').get(user.id);
+  if (!userRow || !userRow.custom_role_id) return false;
+  if (!tienePermiso(user, 'dashboard')) return false;
+  const fila = db.prepare(
+    'SELECT habilitado FROM role_acciones WHERE role_id = ? AND modulo = ? AND accion = ?'
+  ).get(userRow.custom_role_id, 'dashboard', 'cambiar_sede');
+  return !!(fila && fila.habilitado);
+}
+
 function requirePermiso(modulo) {
   return (req, res, next) => {
     if (!req.user) return res.status(401).json({ error: 'No autenticado.' });
@@ -289,4 +310,5 @@ module.exports = {
   requireGerenciaOSupervisor,
   puedeVerTableroVentas,
   requireTableroVentas,
+  puedeCambiarSede,
 };
