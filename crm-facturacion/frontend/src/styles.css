@@ -119,10 +119,25 @@ body {
 .icon-btn:focus-visible { outline: 2px solid rgba(255, 255, 255, 0.6); outline-offset: 2px; }
 
 .user-menu { display: flex; align-items: center; gap: 6px; cursor: pointer; font-weight: 600; font-size: 13px; position: relative;
-  padding: 7px 12px; border-radius: 999px; transition: background 0.18s var(--ease-out); }
+  padding: 5px 10px 5px 5px; border-radius: 999px; transition: background 0.18s var(--ease-out); }
 .user-menu:hover { background: rgba(255, 255, 255, 0.14); }
-.caret-icon { transition: transform 0.2s var(--ease-out); opacity: 0.85; }
+.caret-icon { transition: transform 0.2s var(--ease-out); opacity: 0.85; color: #fff; }
 .caret-icon.open { transform: rotate(180deg); }
+
+.user-chip { display: flex; align-items: center; gap: 9px; }
+.user-avatar {
+  flex-shrink: 0; width: 34px; height: 34px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(155deg, #e0f2fe, #ffffff 65%);
+  color: var(--brand-blue-dark); font-weight: 800; font-size: 13px; letter-spacing: -0.02em;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.18), inset 0 0 0 2px rgba(255, 255, 255, 0.5);
+}
+.user-chip-info { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; line-height: 1.1; }
+.user-chip-name { font-size: 13px; font-weight: 700; color: #fff; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.user-chip-cargo {
+  font-size: 10px; font-weight: 700; letter-spacing: 0.3px; text-transform: uppercase;
+  color: #eff8ff; background: rgba(255, 255, 255, 0.22); border-radius: 999px; padding: 1px 8px;
+}
 
 .user-dropdown {
   position: absolute; top: 46px; right: 0; background: var(--surface); color: var(--ink);
@@ -238,7 +253,7 @@ html.dark .sidenav-item:hover:not(.disabled) { background: rgba(47, 157, 255, 0.
   .topbar-company { display: none; }
   .brand-suffix { display: none; }
   .sede-switcher-btn span { max-width: 88px; }
-  .user-menu .user-name { display: none; }
+  .user-chip-info { display: none; }
   .user-dropdown { right: -8px; min-width: 220px; }
 
   .app-body { flex-direction: column; }

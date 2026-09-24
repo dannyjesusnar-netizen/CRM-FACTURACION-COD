@@ -14,6 +14,15 @@ import {
 } from 'lucide-react';
 import { canInstallPwa, isIosDevice, isRunningStandalone, promptPwaInstall, subscribePwaInstall } from '../utils/pwaInstall';
 
+// Iniciales para la burbuja de usuario de la barra superior (ej. "Danny
+// Narvaez" -> "DN"): primera letra del primer y del último nombre/apellido.
+function iniciales(nombreCompleto) {
+  const partes = (nombreCompleto || '').trim().split(/\s+/).filter(Boolean);
+  if (partes.length === 0) return '?';
+  if (partes.length === 1) return partes[0].slice(0, 2).toUpperCase();
+  return (partes[0][0] + partes[partes.length - 1][0]).toUpperCase();
+}
+
 // Fondo decorativo compartido por toda la app (misma línea gráfica del
 // login/menú): formas simples + iconos de negocio, flotando muy tenue
 // detrás del contenido de cada pantalla.
@@ -125,7 +134,13 @@ export default function Layout() {
             {isDark ? <Sun size={17} /> : <Moon size={17} />}
           </button>
           <div className="user-menu" ref={menuRef} onClick={() => setMenuOpen((v) => !v)}>
-            <span className="user-name">{(user?.role || 'GERENCIA').toUpperCase()}</span>
+            <div className="user-chip">
+              <div className="user-avatar">{iniciales(user?.full_name)}</div>
+              <div className="user-chip-info">
+                <span className="user-chip-name">{user?.full_name || (user?.role || 'GERENCIA').toUpperCase()}</span>
+                {user?.cargo && <span className="user-chip-cargo">{user.cargo}</span>}
+              </div>
+            </div>
             <ChevronDown size={14} className={'caret-icon' + (menuOpen ? ' open' : '')} />
             <div className={'user-dropdown' + (menuOpen ? ' open' : '')}>
               <div className="user-dropdown-item" onClick={() => toast.info('Soporte: escríbenos y te ayudamos (próximamente).')}>

@@ -38,6 +38,19 @@ const registerLimiter = rateLimit({
   message: { error: 'Demasiados intentos de registro. Espera un momento y vuelve a intentar.' },
 });
 
+// Nombre del cargo a mostrar junto al usuario (burbuja de la barra superior):
+// el nombre del rol personalizado asignado (ver Configuración -> Roles), o
+// "Gerencia" para la cuenta dueña de la empresa, o "Colaborador" como
+// respaldo genérico para una cuenta antigua sin rol personalizado asignado.
+function cargoDeUsuario(user) {
+  if (user.role === 'gerencia') return 'Gerencia';
+  if (user.custom_role_id) {
+    const rol = db.prepare('SELECT nombre FROM roles WHERE id = ?').get(user.custom_role_id);
+    if (rol) return rol.nombre;
+  }
+  return 'Colaborador';
+}
+
 function emitirToken(res, user, ruc) {
   const token = jwt.sign(
     { id: user.id, username: user.username, full_name: user.full_name, role: user.role, ruc },
@@ -53,6 +66,7 @@ function emitirToken(res, user, ruc) {
       id: user.id, username: user.username, full_name: user.full_name, role: user.role, dni: user.dni,
       sucursal_id: sucursalFija?.id || null, sucursal_nombre: sucursalFija?.nombre || null,
       custom_role_id: user.custom_role_id || null,
+      cargo: cargoDeUsuario(user),
       permisos: permisosDeUsuario(user),
       // Ver el Tablero de Ventas: config-driven, ver Configuración → Roles →
       // Inicio → "Tablero de Ventas" (puedeVerTableroVentas). Reatribuir una
