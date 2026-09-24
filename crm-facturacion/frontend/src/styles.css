@@ -546,6 +546,9 @@ html.dark .menu-page {
     radial-gradient(380px 300px at 10% 92%, rgba(129, 140, 248, 0.1), transparent 70%),
     var(--page-bg);
 }
+.menu-welcome {
+  font-size: 15px; font-weight: 600; margin: 0 0 4px; color: var(--ink-secondary);
+}
 .menu-title {
   font-size: 25px; font-weight: 900; margin: 6px 0 34px; letter-spacing: 2px;
   background: linear-gradient(95deg, var(--brand-blue-darker), var(--brand-blue) 60%, var(--brand-blue-dark));
