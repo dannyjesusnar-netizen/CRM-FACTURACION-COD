@@ -63,8 +63,25 @@ export function AuthProvider({ children }) {
     setUser(null);
   }
 
+  // Re-lee el usuario (permisos, cargo, todos los "puede_...") desde el
+  // servidor y actualiza la sesión cacheada -- sin esto, un cambio de rol o
+  // de permisos en Configuración → Roles solo se veía reflejado si la
+  // persona cerraba sesión y volvía a entrar. No toca la sede activa (ver
+  // sucursal más arriba): la elección de sede de la persona no debe
+  // resetearse cada vez que se refresca el usuario.
+  async function refreshUser() {
+    try {
+      const res = await api.get('/auth/me');
+      localStorage.setItem('crm_user', JSON.stringify(res.data.user));
+      setUser(res.data.user);
+      return res.data.user;
+    } catch {
+      return null;
+    }
+  }
+
   return (
-    <AuthContext.Provider value={{ user, login, logout, sucursal, setSucursal, limpiarSucursal, empresa, setEmpresa, refreshEmpresa }}>
+    <AuthContext.Provider value={{ user, login, logout, refreshUser, sucursal, setSucursal, limpiarSucursal, empresa, setEmpresa, refreshEmpresa }}>
       {children}
     </AuthContext.Provider>
   );

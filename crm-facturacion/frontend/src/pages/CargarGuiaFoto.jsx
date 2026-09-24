@@ -61,12 +61,35 @@ export default function CargarGuiaFoto() {
   });
   const [guardandoProducto, setGuardandoProducto] = useState(false);
   const [proveedorDetectado, setProveedorDetectado] = useState(null);
+  const [proveedorRuc, setProveedorRuc] = useState('');
+  const [proveedorNombre, setProveedorNombre] = useState('');
+  const [buscandoProveedor, setBuscandoProveedor] = useState(false);
   const [suppliers, setSuppliers] = useState([]);
   const [categorias, setCategorias] = useState([]);
 
   useEffect(() => { api.get('/products').then((res) => setProducts(res.data)); }, []);
   useEffect(() => { api.get('/suppliers').then((res) => setSuppliers(res.data)); }, []);
   useEffect(() => { api.get('/products/categorias').then((res) => setCategorias(res.data)); }, []);
+
+  // Autocompletar el nombre del proveedor apenas el RUC (detectado en la
+  // guía, o escrito a mano) tiene 11 dígitos — primero busca en Proveedores,
+  // si no consulta SUNAT (mismo endpoint que ya usa Registrar Movimiento).
+  // Si no encuentra nada, no bloquea: la persona escribe el nombre a mano.
+  useEffect(() => {
+    const ruc = proveedorRuc.trim();
+    if (ruc.length !== 11) return;
+    let cancelado = false;
+    setBuscandoProveedor(true);
+    api.get('/movements/consultar-proveedor', { params: { ruc } })
+      .then((res) => {
+        if (cancelado || !res.data.encontrado) return;
+        setProveedorNombre((actual) => (proveedorRuc.trim() === ruc ? res.data.nombre : actual));
+      })
+      .catch(() => {})
+      .finally(() => { if (!cancelado) setBuscandoProveedor(false); });
+    return () => { cancelado = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [proveedorRuc]);
 
   const productosDisponibles = products.filter((p) => p.tipo === 'producto');
 
@@ -92,10 +115,14 @@ export default function CargarGuiaFoto() {
       setFilas([]);
       setTextoDetectado('');
       setProveedorDetectado(null);
+      setProveedorRuc('');
+      setProveedorNombre('');
       const res = await api.post('/movements/analizar-guia', { foto_data_url: comprimida });
       const detectadas = filasDesdeRespuesta(res.data.filas);
       setFilas(detectadas);
       setTextoDetectado(res.data.texto || '');
+      setProveedorRuc(res.data.ruc || '');
+      setProveedorNombre(res.data.razon_social || '');
       if (res.data.razon_social || res.data.ruc) {
         setProveedorDetectado({
           id: res.data.proveedor_id || null, razon_social: res.data.razon_social, ruc: res.data.ruc,
@@ -133,12 +160,16 @@ export default function CargarGuiaFoto() {
     setTextoDetectado('');
     setFotoGuia('');
     setProveedorDetectado(null);
+    setProveedorRuc('');
+    setProveedorNombre('');
     const formData = new FormData();
     formData.append('file', file);
     try {
       const res = await api.post('/movements/analizar-guia-archivo', formData);
       const detectadas = filasDesdeRespuesta(res.data.filas);
       setFilas(detectadas);
+      setProveedorRuc(res.data.ruc || '');
+      setProveedorNombre(res.data.razon_social || '');
       if (res.data.razon_social || res.data.ruc) {
         setProveedorDetectado({
           id: res.data.proveedor_id || null, razon_social: res.data.razon_social, ruc: res.data.ruc,
@@ -186,6 +217,10 @@ export default function CargarGuiaFoto() {
       toast.error('Selecciona el producto de al menos una fila (o créalo) antes de cargar.');
       return;
     }
+    if (proveedorRuc.trim() && proveedorRuc.trim().length !== 11) {
+      toast.error('El RUC del proveedor debe tener 11 dígitos.');
+      return;
+    }
     setGuardando(true);
     try {
       const rows = listas.map((f) => {
@@ -201,8 +236,8 @@ export default function CargarGuiaFoto() {
       });
       const res = await api.post('/movements/importar-lotes', {
         rows,
-        proveedor_ruc: proveedorDetectado?.ruc || undefined,
-        proveedor_nombre: proveedorDetectado?.razon_social || undefined,
+        proveedor_ruc: proveedorRuc.trim() || undefined,
+        proveedor_nombre: proveedorNombre.trim() || undefined,
       });
       const codigosAplicados = new Set((res.data.aplicados || []).map((a) => a.codigo));
       const idsAplicados = new Set(
@@ -304,20 +339,35 @@ export default function CargarGuiaFoto() {
         </div>
         {analizando && <p style={{ fontSize: 12, color: 'var(--ink-muted)' }}>Analizando la guía… esto puede tardar unos segundos.</p>}
 
-        {proveedorDetectado && (
-          <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: 8 }}>
-            Proveedor detectado en la guía: <strong>{proveedorDetectado.razon_social || proveedorDetectado.ruc}</strong>
-            {proveedorDetectado.ruc ? ` (RUC ${proveedorDetectado.ruc})` : ''}
-            {proveedorDetectado.id
-              ? (proveedorDetectado.creado
-                ? ' — no estaba registrado, se agregó automáticamente a Proveedores.'
-                : ' — ya está registrado.')
-              : ' — no se pudo identificar la empresa; los productos nuevos se crearán sin proveedor asignado.'}
-            {proveedorDetectado.id && ' Los movimientos y los productos nuevos que crees desde esta guía quedarán con este proveedor.'}
+        <label style={{ marginTop: 10 }}>RUC del proveedor (opcional)</label>
+        <input
+          value={proveedorRuc}
+          onChange={(e) => setProveedorRuc(e.target.value.replace(/\D/g, '').slice(0, 11))}
+          placeholder="Se completa solo si se detecta en la guía, o escríbelo"
+          inputMode="numeric"
+        />
+        {proveedorRuc.trim().length === 11 && (
+          <>
+            <label style={{ marginTop: 10 }}>Empresa</label>
+            <input
+              value={proveedorNombre}
+              onChange={(e) => setProveedorNombre(e.target.value)}
+              placeholder={buscandoProveedor ? 'Buscando...' : 'No se encontró — escribe el nombre'}
+            />
+          </>
+        )}
+        {proveedorDetectado?.creado && proveedorRuc.trim() === proveedorDetectado.ruc && (
+          <p style={{ fontSize: 11, color: 'var(--ink-muted)', marginTop: 4 }}>
+            Este RUC no estaba registrado — se agregó automáticamente a Proveedores.
+          </p>
+        )}
+        {proveedorRuc.trim().length === 11 && proveedorNombre.trim() && (
+          <p style={{ fontSize: 11, color: 'var(--ink-muted)', marginTop: 4 }}>
+            Los movimientos y los productos nuevos que crees desde esta guía quedarán con este proveedor.
           </p>
         )}
 
-        <label style={{ marginTop: 10 }}>Motivo / proveedor (opcional, se aplica a todas las filas)</label>
+        <label style={{ marginTop: 10 }}>Motivo (opcional, se aplica a todas las filas)</label>
         <input value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Ej: Guía Distribuidora XYZ N.º 000456" />
 
         {textoDetectado && (

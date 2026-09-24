@@ -70,7 +70,7 @@ const SUBNAV_ITEMS = [
 ];
 
 export default function Layout() {
-  const { user, logout, sucursal, empresa } = useAuth();
+  const { user, logout, sucursal, empresa, refreshUser } = useAuth();
   const toast = useToast();
   const { isDark, toggleTheme } = useTheme();
   const navigate = useNavigate();
@@ -87,6 +87,12 @@ export default function Layout() {
     document.addEventListener('mousedown', onClickOutside);
     return () => document.removeEventListener('mousedown', onClickOutside);
   }, []);
+
+  // Refresca la sesión (permisos, cargo, "puede_cambiar_sede", etc.) una vez
+  // al entrar a la app -- así un cambio de rol o de permisos recién hecho en
+  // Configuración → Roles se ve reflejado con solo recargar la página, sin
+  // tener que cerrar sesión y volver a entrar.
+  useEffect(() => { refreshUser(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => subscribePwaInstall(() => setPwaReady(canInstallPwa())), []);
 

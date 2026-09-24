@@ -291,16 +291,24 @@ router.post('/importar', requireAccion('inventario', 'importacion'), (req, res) 
 //
 // Todo o nada (ver utils/cargaMasiva.js): si CUALQUIER fila tiene un error,
 // no se guarda NADA.
-router.post('/importar-lotes', requireAccion('inventario', 'ajustes'), (req, res) => {
+router.post('/importar-lotes', requireAccion('inventario', 'ajustes'), async (req, res) => {
   const { rows, afectar_stock: afectarStock = true, proveedor_ruc, proveedor_nombre } = req.body || {};
   if (!Array.isArray(rows) || rows.length === 0) {
     return res.status(400).json({ error: 'rows es requerido y debe tener al menos una fila.' });
   }
-  const proveedorRuc = (proveedor_ruc || '').toString().trim();
-  if (proveedorRuc && !/^\d{11}$/.test(proveedorRuc)) {
+  const proveedorRucInput = (proveedor_ruc || '').toString().trim();
+  if (proveedorRucInput && !/^\d{11}$/.test(proveedorRucInput)) {
     return res.status(400).json({ error: 'El RUC del proveedor debe tener 11 dígitos.' });
   }
-  const proveedorNombre = (proveedor_nombre || '').toString().trim() || null;
+  const proveedorNombreInput = (proveedor_nombre || '').toString().trim() || null;
+  // El RUC pudo haber llegado editado a mano (ver CargarGuiaFoto.jsx) después
+  // de la detección automática al analizar la guía -- se vuelve a identificar
+  // (y registrar en Proveedores si hace falta) acá mismo, con el valor final
+  // que confirmó el usuario, antes de entrar a la transacción (identificarOC
+  // rearProveedor es async, y db.transaction de better-sqlite3 no lo es).
+  const proveedor = proveedorRucInput ? await identificarOCrearProveedor(proveedorRucInput, proveedorNombreInput) : null;
+  const proveedorRuc = proveedor ? proveedorRucInput : null;
+  const proveedorNombre = proveedor?.nombre || proveedorNombreInput;
 
   const resultado = ejecutarTodoONada(() => {
     const aplicados = [];
