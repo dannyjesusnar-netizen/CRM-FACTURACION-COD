@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Building2, Users as UsersIcon, Store, ShieldCheck, FileText, Wallet, Hash, Percent,
   Upload, Download, Boxes, PackagePlus, RefreshCw, UserPlus, Tags, AlertTriangle, DatabaseBackup,
-  Cloud, CloudOff, Plug, Copy, Trash2,
+  Cloud, CloudOff, Plug, Copy, Trash2, ArrowLeftRight,
 } from 'lucide-react';
 import api from '../api';
 import { hoyPeru } from '../utils/fechas';
@@ -530,6 +530,12 @@ export default function Configuracion() {
   const [metodoForm, setMetodoForm] = useState(emptyMetodoForm());
   const [errorMetodo, setErrorMetodo] = useState('');
 
+  // --- Canales de movimiento (Compras/Canje/Premio/Regalo, etc.) ---
+  const [canalesMovimiento, setCanalesMovimiento] = useState([]);
+  const [nuevoCanalNombre, setNuevoCanalNombre] = useState('');
+  const [errorCanalMovimiento, setErrorCanalMovimiento] = useState('');
+  const [guardandoCanalMovimiento, setGuardandoCanalMovimiento] = useState(false);
+
   // --- Series y Sucursal ---
   const [series, setSeries] = useState([]);
   const [errorSeries, setErrorSeries] = useState('');
@@ -553,13 +559,23 @@ export default function Configuracion() {
     // estrictamente de Gerencia en el backend (requireGerencia) — ni
     // Supervisor tiene acceso — así que pedirlos para cualquier otro rol
     // solo generaría 403 sin datos que mostrar.
-    if (user?.role === 'gerencia') {
+    // Empleados y Sucursales ya no son estrictamente de Gerencia en el
+    // backend (ver routes/users.js y routes/sucursales.js: requireAccionConfiguracion) —
+    // un rol personalizado con esa acción habilitada en Configuración → Roles
+    // también puede pedir estos datos. "Roles de usuario" y "Respaldos" sí
+    // siguen exigiendo Gerencia sin excepción.
+    if (user?.role === 'gerencia' || user?.configuracion_acciones?.empleados) {
       loadUsuarios();
       loadOperativos();
+    }
+    if (user?.role === 'gerencia' || user?.configuracion_acciones?.sucursales) {
       loadSolicitudesSede();
+    }
+    if (user?.role === 'gerencia') {
       loadRoles();
       loadRespaldos();
     }
+    loadCanalesMovimiento();
   }, []);
 
   useEffect(() => {
@@ -804,6 +820,38 @@ export default function Configuracion() {
 
   function loadMetodosPago() {
     api.get('/metodos-pago', { params: { todos: 1 } }).then((res) => setMetodosPago(res.data));
+  }
+
+  function loadCanalesMovimiento() {
+    api.get('/movements/canales').then((res) => setCanalesMovimiento(res.data));
+  }
+
+  async function handleCrearCanalMovimiento(e) {
+    e.preventDefault();
+    setErrorCanalMovimiento('');
+    if (!nuevoCanalNombre.trim()) { setErrorCanalMovimiento('El nombre es requerido.'); return; }
+    setGuardandoCanalMovimiento(true);
+    try {
+      await api.post('/movements/canales', { nombre: nuevoCanalNombre.trim() });
+      setNuevoCanalNombre('');
+      toast.success('Canal creado.');
+      loadCanalesMovimiento();
+    } catch (err) {
+      setErrorCanalMovimiento(err.response?.data?.error || 'No se pudo crear el canal.');
+    } finally {
+      setGuardandoCanalMovimiento(false);
+    }
+  }
+
+  async function handleEliminarCanalMovimiento(c) {
+    if (!window.confirm(`¿Eliminar el canal "${c.nombre}"? Los movimientos ya registrados con este canal conservan el nombre tal cual quedó guardado — solo deja de aparecer como opción para movimientos nuevos.`)) return;
+    try {
+      await api.delete(`/movements/canales/${c.id}`);
+      toast.success('Canal eliminado.');
+      loadCanalesMovimiento();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'No se pudo eliminar el canal.');
+    }
   }
 
   function loadRespaldos() {
@@ -1568,6 +1616,11 @@ export default function Configuracion() {
           {puedeVerSeccionConfig('metodos_pago') && (
             <div className={'reports-sidebar-item' + (seccion === 'metodos_pago' ? ' active' : '')} onClick={() => setSeccion('metodos_pago')} role="button" tabIndex={0}>
               <Wallet size={16} /><span>Métodos de pago</span>
+            </div>
+          )}
+          {user?.puede_administrar_canales && (
+            <div className={'reports-sidebar-item' + (seccion === 'canales_movimiento' ? ' active' : '')} onClick={() => setSeccion('canales_movimiento')} role="button" tabIndex={0}>
+              <ArrowLeftRight size={16} /><span>Canales de movimiento</span>
             </div>
           )}
           {puedeVerSeccionConfig('tipos_inventario') && (
@@ -2611,6 +2664,46 @@ export default function Configuracion() {
                   <p className="empty-row">No hay métodos de pago creados todavía.</p>
                 )}
               </div>
+            </>
+          )}
+
+          {seccion === 'canales_movimiento' && (
+            <>
+              <h3 style={{ marginTop: 0 }}>Canales de movimiento</h3>
+              <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -8 }}>
+                El "Canal" que se elige al registrar un movimiento de inventario (Compras, Canje, Premio, Regalo, etc.) —
+                úsalo para poder filtrar después en Movimientos cuánto salió o entró por cada motivo. Eliminar un canal no
+                afecta los movimientos ya registrados con él, solo deja de aparecer como opción para movimientos nuevos.
+              </p>
+              <form onSubmit={handleCrearCanalMovimiento} style={{ display: 'flex', gap: 10, alignItems: 'flex-end', maxWidth: 460 }}>
+                <div style={{ flex: 1 }}>
+                  <label>Nombre del canal</label>
+                  <input value={nuevoCanalNombre} onChange={(e) => setNuevoCanalNombre(e.target.value)} placeholder="Ej: Merma" />
+                </div>
+                <button type="submit" className="btn-primary" style={{ width: 'auto' }} disabled={guardandoCanalMovimiento}>
+                  {guardandoCanalMovimiento ? 'Creando...' : '+ Agregar canal'}
+                </button>
+              </form>
+              {errorCanalMovimiento && <div className="form-error" style={{ maxWidth: 460 }}>{errorCanalMovimiento}</div>}
+
+              <table className="data-table" style={{ marginTop: 16, maxWidth: 460 }}>
+                <thead>
+                  <tr><th>Nombre</th><th></th></tr>
+                </thead>
+                <tbody>
+                  {canalesMovimiento.map((c) => (
+                    <tr key={c.id}>
+                      <td>{c.nombre}</td>
+                      <td className="row-actions">
+                        <button className="btn-link danger" onClick={() => handleEliminarCanalMovimiento(c)}>Eliminar</button>
+                      </td>
+                    </tr>
+                  ))}
+                  {canalesMovimiento.length === 0 && (
+                    <tr><td colSpan={2} className="empty-row">No hay canales creados todavía.</td></tr>
+                  )}
+                </tbody>
+              </table>
             </>
           )}
 
