@@ -50,8 +50,16 @@ function distanciaLevenshtein(a, b) {
 // "pata", "bata", "rata", "gata" o "data" — palabras completamente
 // distintas, no errores de tipeo — e inunda la búsqueda de resultados sin
 // relación. Para esas, solo vale la coincidencia por substring de arriba.
+//
+// "token.includes(p)" (la palabra del PRODUCTO es substring de lo que
+// escribió el usuario) solo cuenta si esa palabra tiene 3 letras o más:
+// sin este piso, una palabra suelta de una letra en el nombre (la "L" de
+// talla en "Guante...L Work Out", o la de "L-Carnitine") hace que
+// CUALQUIER búsqueda que contenga esa letra en algún lado (ej. "BLOW",
+// que contiene una "l") matchee por pura coincidencia, sin relación real
+// con lo buscado.
 function palabraCoincide(token, palabras) {
-  if (palabras.some((p) => p.includes(token) || token.includes(p))) return true;
+  if (palabras.some((p) => p.includes(token) || (p.length >= 3 && token.includes(p)))) return true;
   if (token.length <= 4) return false;
   const maxDistancia = token.length <= 8 ? 1 : 2;
   return palabras.some((p) => distanciaLevenshtein(token, p) <= maxDistancia);
