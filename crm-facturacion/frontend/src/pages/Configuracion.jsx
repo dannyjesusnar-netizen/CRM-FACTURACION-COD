@@ -110,9 +110,9 @@ const IMPORTADORES_MASIVOS = [
     titulo: 'Productos nuevos',
     Icon: PackagePlus,
     endpoint: '/products/carga-masiva',
-    columnas: ['codigo', 'nombre', 'categoria', 'marca', 'linea', 'unidad', 'precio_unitario', 'precio_compra', 'stock'],
-    filaEjemplo: ['PROD002', 'Proteína Whey 1kg', 'Suplementos', 'Optimum Nutrition', 'fit', 'NIU', '120', '80', '30'],
-    descripcion: 'Crea productos nuevos por código. Si el código ya existe, actualiza sus datos (mismo criterio de siempre). "linea" es opcional ("organic" o "fit"; vacío = sin línea).',
+    columnas: ['codigo', 'nombre', 'categoria', 'marca', 'linea', 'proveedor', 'unidad', 'precio_unitario', 'precio_compra', 'stock'],
+    filaEjemplo: ['PROD002', 'Proteína Whey 1kg', 'Suplementos', 'Optimum Nutrition', 'fit', 'Distribuidora XYZ', 'NIU', '120', '80', '30'],
+    descripcion: 'Crea productos nuevos por código. Si el código ya existe, actualiza sus datos (mismo criterio de siempre). "linea" es opcional ("organic" o "fit"; vacío = sin línea). "proveedor" es opcional (nombre; si no existe registrado se crea solo).',
     permiteSumarStock: true,
   },
   {
@@ -121,8 +121,8 @@ const IMPORTADORES_MASIVOS = [
     Icon: RefreshCw,
     endpoint: '/products/carga-masiva',
     extraBody: { crear_nuevos: false },
-    columnas: ['codigo', 'nombre', 'categoria', 'marca', 'linea', 'unidad', 'precio_unitario', 'precio_compra', 'stock'],
-    filaEjemplo: ['PROD001', 'Creatina Monohidratada 300g', 'Suplementos', 'Creapure', 'fit', 'NIU', '89.9', '55', '40'],
+    columnas: ['codigo', 'nombre', 'categoria', 'marca', 'linea', 'proveedor', 'unidad', 'precio_unitario', 'precio_compra', 'stock'],
+    filaEjemplo: ['PROD001', 'Creatina Monohidratada 300g', 'Suplementos', 'Creapure', 'fit', 'Distribuidora XYZ', 'NIU', '89.9', '55', '40'],
     descripcion: 'Actualiza productos que YA existen por código. Si un código no existe, esa fila queda en error (a diferencia de "Productos nuevos", esta opción nunca crea productos).',
     permiteSumarStock: true,
   },
@@ -164,7 +164,12 @@ const EXPORTADORES_MASIVOS = [
     titulo: 'Productos',
     Icon: Boxes,
     endpoint: '/products',
-    columnas: ['codigo', 'nombre', 'categoria', 'marca', 'linea', 'unidad', 'precio_unitario', 'precio_compra', 'stock'],
+    // "proveedor_nombre" es como lo devuelve GET /products (ver
+    // PROVEEDOR_SUBQUERY en routes/products.js); "headers" lo muestra como
+    // "proveedor" para que la columna coincida con la que espera el
+    // importador de "Productos nuevos"/"Actualización de datos" de arriba.
+    columnas: ['codigo', 'nombre', 'categoria', 'marca', 'linea', 'proveedor_nombre', 'unidad', 'precio_unitario', 'precio_compra', 'stock'],
+    headers: ['codigo', 'nombre', 'categoria', 'marca', 'linea', 'proveedor', 'unidad', 'precio_unitario', 'precio_compra', 'stock'],
     descripcion: 'Todo el catálogo de productos activos, con stock de la sede activa.',
   },
   {
