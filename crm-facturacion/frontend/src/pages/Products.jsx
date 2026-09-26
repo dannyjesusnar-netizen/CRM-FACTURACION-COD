@@ -290,7 +290,7 @@ export default function Products() {
 
   function descargarPlantillaCargaMasiva() {
     const header = CARGA_MASIVA_COLUMNAS;
-    const ejemplo = ['P100', 'Producto de ejemplo', 'General', 'NIU', '19.90', '10', '2', '12.00', '7501234567890'];
+    const ejemplo = ['P100', 'Producto de ejemplo', 'General', 'Optimum Nutrition', 'NIU', '19.90', '10', '12.00', '7501234567890'];
     const csv = [header, ejemplo].map((r) => r.join(',')).join('\n');
     const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -301,7 +301,7 @@ export default function Products() {
   }
 
   function descargarPlantillaCargaMasivaExcel() {
-    const ejemplo = ['P100', 'Producto de ejemplo', 'General', 'NIU', 19.90, 10, 2, 12.00, '7501234567890'];
+    const ejemplo = ['P100', 'Producto de ejemplo', 'General', 'Optimum Nutrition', 'NIU', 19.90, 10, 12.00, '7501234567890'];
     descargarComoExcel('plantilla_carga_masiva_productos.xlsx', CARGA_MASIVA_COLUMNAS, [ejemplo]);
   }
 
