@@ -2,6 +2,7 @@ const express = require('express');
 const db = require('../db');
 const { requireAuth, resolveSucursal } = require('../middleware/auth');
 const { requirePermiso, requireAccion } = require('../utils/permisos');
+const { requireTurnoCajaAbierto } = require('../utils/cajaTurno');
 const { round2, buildResumen } = require('../utils/cajaCalculos');
 const { hoyPeru } = require('../utils/fechas');
 
@@ -84,7 +85,7 @@ function metodoActivo(codigo) {
 }
 
 // POST /api/caja/movimientos { fecha, tipo, medio, categoria, monto, descripcion }
-router.post('/movimientos', requireAccion('caja', 'movimientos'), (req, res) => {
+router.post('/movimientos', requireAccion('caja', 'movimientos'), requireTurnoCajaAbierto, (req, res) => {
   const { fecha, tipo, medio, categoria, monto, descripcion } = req.body || {};
   if (!fecha || !tipo || !medio || !categoria || monto === undefined || monto === null || monto === '') {
     return res.status(400).json({ error: 'fecha, tipo, medio, categoria y monto son requeridos.' });

@@ -2,6 +2,7 @@ const express = require('express');
 const db = require('../db');
 const { requireAuth, resolveSucursal } = require('../middleware/auth');
 const { requirePermiso, requireAccion, tieneAccion, tienePermiso, requireGerenciaOSupervisor } = require('../utils/permisos');
+const { requireTurnoCajaAbierto } = require('../utils/cajaTurno');
 const { siguienteNumero } = require('../utils/series');
 const { resolverDescuentoPct } = require('../utils/descuentos');
 const { consumirStock, incrementarStock, StockInsuficienteError } = require('../utils/stock');
@@ -161,7 +162,7 @@ router.get('/:id', (req, res) => {
   res.json({ ...nv, items });
 });
 
-router.post('/', requireAccion('ventas', 'nota_venta'), (req, res) => {
+router.post('/', requireAccion('ventas', 'nota_venta'), requireTurnoCajaAbierto, (req, res) => {
   const {
     client_id, items, moneda, observaciones, fecha_emision,
     descuento_id, numero: numeroManual, forma_pago,

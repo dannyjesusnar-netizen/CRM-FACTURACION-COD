@@ -5,7 +5,8 @@ const { buildInvoicePdf } = require('../utils/pdf');
 const { consumirStock, incrementarStock, ajustarStockSucursal, getStockSucursal, StockInsuficienteError } = require('../utils/stock');
 const { emitirComprobante, consultarComprobante, estaConfigurado } = require('../utils/facturacionElectronica');
 const { reenviarComprobante } = require('../utils/sincronizarSunat');
-const { requirePermiso, requireAccion, requireAlgunPermiso, tieneAccion, tienePermiso, requireGerenciaOSupervisor } = require('../utils/permisos');
+const { requirePermiso, requireAccion, requireAlgunPermiso, tieneAccion, tienePermiso, requireGerenciaOSupervisor, esGerenciaOSupervisor } = require('../utils/permisos');
+const { tieneTurnoAbierto } = require('../utils/cajaTurno');
 const { siguienteNumero } = require('../utils/series');
 const { resolverDescuentoPct } = require('../utils/descuentos');
 const { resolverDescuentoItemPct } = require('../utils/promociones');
@@ -258,6 +259,14 @@ router.post('/', async (req, res) => {
   }
   if (!tieneAccion(req.user, 'ventas', tipo_comprobante)) {
     return res.status(403).json({ error: 'No tienes permiso para emitir este tipo de comprobante.' });
+  }
+  // Emitir una venta (Boleta/Factura) requiere haber abierto el turno de
+  // caja del día (pantalla Planillas) — una Nota de Crédito no queda
+  // bloqueada, porque es una corrección/reversión de una venta ya hecha, no
+  // una venta nueva. Gerencia/Supervisor quedan exentos (ver
+  // utils/cajaTurno.js).
+  if (['factura', 'boleta'].includes(tipo_comprobante) && !esGerenciaOSupervisor(req.user) && !tieneTurnoAbierto(req.user.id, req.sucursalId)) {
+    return res.status(403).json({ error: 'Debes abrir tu turno de caja (pantalla Planillas) antes de emitir una venta.' });
   }
   if (!client_id) return res.status(400).json({ error: 'client_id es requerido.' });
   if (!Array.isArray(items) || items.length === 0) {

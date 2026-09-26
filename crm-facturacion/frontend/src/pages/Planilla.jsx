@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import api from '../api';
 import { hoyPeru } from '../utils/fechas';
 import { useToast } from '../context/ToastContext';
+import { useAuth } from '../context/AuthContext';
 
 function todayStr() {
   return hoyPeru();
@@ -27,9 +28,13 @@ function duracion(abiertoAt, cerradoAt) {
 }
 
 export default function Planilla() {
+  const { user } = useAuth();
   const toast = useToast();
+  const esGerencia = user?.role === 'gerencia';
   const [desde, setDesde] = useState(todayStr());
   const [hasta, setHasta] = useState(todayStr());
+  const [sucursalId, setSucursalId] = useState('');
+  const [sucursales, setSucursales] = useState([]);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
@@ -39,7 +44,7 @@ export default function Planilla() {
   function load() {
     setLoading(true);
     setLoadError('');
-    api.get('/planilla', { params: { desde, hasta } })
+    api.get('/planilla', { params: { desde, hasta, sucursal_id: esGerencia ? (sucursalId || undefined) : undefined } })
       .then((res) => setData(res.data))
       .catch((err) => setLoadError(err.response?.data?.error || 'No se pudo cargar la planilla.'))
       .finally(() => setLoading(false));
@@ -49,7 +54,10 @@ export default function Planilla() {
     api.get('/planilla/mi-turno-abierto').then((res) => setMiTurnoAbierto(res.data)).catch(() => {});
   }
 
-  useEffect(() => { load(); }, [desde, hasta]);
+  useEffect(() => {
+    if (esGerencia) api.get('/sucursales').then((res) => setSucursales(res.data)).catch(() => {});
+  }, [esGerencia]);
+  useEffect(() => { load(); }, [desde, hasta, sucursalId]);
   useEffect(() => { loadMiTurno(); }, []);
 
   async function handleAbrir() {
@@ -109,10 +117,24 @@ export default function Planilla() {
           <label>Hasta</label>
           <input type="date" value={hasta} min={desde} onChange={(e) => setHasta(e.target.value)} />
         </div>
+        {esGerencia && (
+          <div className="filter-field">
+            <label>Sede</label>
+            <select value={sucursalId} onChange={(e) => setSucursalId(e.target.value)}>
+              <option value="">Todas las sedes</option>
+              {sucursales.map((s) => (
+                <option key={s.id} value={s.id}>{s.nombre}</option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       <div className="panel">
-        <h3>{data?.verTodos ? 'Turnos de caja — todos los empleados' : 'Mis turnos de caja'}</h3>
+        <h3>
+          {data?.verTodos ? 'Turnos de caja — todos los empleados' : 'Mis turnos de caja'}
+          {data?.puedeElegirSede && !sucursalId && ' (todas las sedes)'}
+        </h3>
         {loadError ? (
           <>
             <p className="form-error">{loadError}</p>
