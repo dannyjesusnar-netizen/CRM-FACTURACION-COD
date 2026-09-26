@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Building2, Users as UsersIcon, Store, ShieldCheck, FileText, Wallet, Hash, Percent,
   Upload, Download, Boxes, PackagePlus, RefreshCw, UserPlus, Tags, AlertTriangle, DatabaseBackup,
-  Cloud, CloudOff, Plug, Copy, Trash2, ArrowLeftRight,
+  Cloud, CloudOff, Plug, Copy, Trash2, ArrowLeftRight, ChevronDown, ChevronRight,
 } from 'lucide-react';
 import api from '../api';
 import { hoyPeru } from '../utils/fechas';
@@ -500,6 +500,17 @@ export default function Configuracion() {
   const [metasGuardando, setMetasGuardando] = useState(null);
   const [filasVendedores, setFilasVendedores] = useState([]);
   const [vendedorGuardando, setVendedorGuardando] = useState(null);
+  // Sedes con el desglose de vendedores abierto (fila "Vendedores" de la
+  // tabla de metas) — un Set en vez de un solo id para poder comparar dos
+  // sedes abiertas a la vez.
+  const [sedesConVendedoresAbiertos, setSedesConVendedoresAbiertos] = useState(() => new Set());
+  function toggleVendedoresSede(sucursalId) {
+    setSedesConVendedoresAbiertos((prev) => {
+      const next = new Set(prev);
+      if (next.has(sucursalId)) next.delete(sucursalId); else next.add(sucursalId);
+      return next;
+    });
+  }
 
   // --- Descuentos (Registrar Venta) ---
   // Un % con nombre y vigencia que el vendedor elige de una lista al
@@ -2389,8 +2400,9 @@ export default function Configuracion() {
                 la dotación de ese equipo (cuántas personas la reparten) — si no la asignas, se reparte entre
                 los empleados activos de esa categoría en esa sede. Para Vendedores, además puedes asignar una
                 cuota individual manual por sede (reemplaza ese cálculo para todos los vendedores de esa sede) y,
-                más abajo, una cuota a un vendedor puntual (tiene prioridad sobre la de su sede). Alimenta el
-                Ranking Trainers/Vendedores/Supervisores y el Resumen de sedes del Dashboard.
+                haciendo clic en el nombre de la sede, desglosarla por vendedor puntual (tiene prioridad sobre
+                la de su sede). Alimenta el Ranking Trainers/Vendedores/Supervisores y el Resumen de sedes del
+                Dashboard.
               </p>
               <div className="filter-panel">
                 <div className="filter-field">
@@ -2423,9 +2435,25 @@ export default function Configuracion() {
                     const tieneManual = esVendedor && f.monto_individual !== null && f.monto_individual !== undefined;
                     const dotacionEfectiva = f.dotacion > 0 ? f.dotacion : f.cantidad_empleados;
                     const individual = tieneManual ? f.monto_individual : (dotacionEfectiva > 0 ? f.monto_meta / dotacionEfectiva : 0);
+                    const abierto = sedesConVendedoresAbiertos.has(f.sucursal_id);
+                    const vendedoresDeSede = filasVendedores.filter((v) => v.sucursal_id === f.sucursal_id);
                     return (
-                      <tr key={key}>
-                        <td>{f.sede_nombre}</td>
+                      <Fragment key={key}>
+                      <tr>
+                        <td>
+                          {esVendedor ? (
+                            <button
+                              type="button"
+                              className="btn-link"
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontWeight: 600 }}
+                              onClick={() => toggleVendedoresSede(f.sucursal_id)}
+                              title="Ver vendedores de esta sede"
+                            >
+                              {abierto ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                              {f.sede_nombre}
+                            </button>
+                          ) : f.sede_nombre}
+                        </td>
                         <td>{CATEGORIA_STAFF_LABEL[f.categoria_staff] || f.categoria_staff}</td>
                         <td style={{ textAlign: 'right' }}>{f.cantidad_empleados}</td>
                         <td style={{ textAlign: 'right' }}>
@@ -2498,58 +2526,62 @@ export default function Configuracion() {
                           {tieneManual || dotacionEfectiva > 0 ? `S/ ${individual.toFixed(2)}` : '—'}
                         </td>
                       </tr>
+                      {esVendedor && abierto && (
+                        <tr key={`${key}-desglose`} className="metas-desglose-fila">
+                          <td colSpan={7} style={{ padding: '10px 14px 14px 34px', background: 'var(--surface-hover)' }}>
+                            <p style={{ fontSize: 12, color: 'var(--ink-muted)', margin: '0 0 8px' }}>
+                              Cuota individual de cada vendedor de {f.sede_nombre} — tiene prioridad sobre la
+                              cuota individual de la sede y sobre el cálculo por pool/dotación de arriba. Déjala
+                              en blanco para que ese vendedor vuelva a la cuota de su sede.
+                            </p>
+                            <table className="data-table compact">
+                              <thead>
+                                <tr>
+                                  <th>Vendedor</th><th>Turno</th>
+                                  <th style={{ textAlign: 'right' }}>Cuota individual (S/)</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {vendedoresDeSede.map((v) => (
+                                  <tr key={v.user_id}>
+                                    <td>{v.nombre}</td>
+                                    <td>{v.turno === 'manana' ? 'Mañana' : v.turno === 'tarde' ? 'Tarde' : '—'}</td>
+                                    <td style={{ textAlign: 'right' }}>
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        step="0.01"
+                                        style={{ width: 130, textAlign: 'right' }}
+                                        disabled={vendedorGuardando === v.user_id}
+                                        placeholder="Sin asignar"
+                                        value={v.monto_meta ?? ''}
+                                        onChange={(e) => {
+                                          const valor = e.target.value;
+                                          setFilasVendedores((filas) => filas.map((fila) => (
+                                            fila.user_id === v.user_id ? { ...fila, monto_meta: valor === '' ? null : Number(valor) } : fila
+                                          )));
+                                        }}
+                                        onBlur={(e) => {
+                                          const valor = e.target.value;
+                                          guardarMontoVendedor(v.user_id, valor === '' ? null : Number(valor));
+                                        }}
+                                      />
+                                    </td>
+                                  </tr>
+                                ))}
+                                {vendedoresDeSede.length === 0 && (
+                                  <tr><td colSpan={3} className="empty-row">No hay vendedores activos en esta sede.</td></tr>
+                                )}
+                              </tbody>
+                            </table>
+                          </td>
+                        </tr>
+                      )}
+                      </Fragment>
                     );
                   })}
                   {filasMetas.length === 0 && (
                     <tr><td colSpan={7} className="empty-row">No hay sedes activas.</td></tr>
-                  )}
-                </tbody>
-              </table>
-
-              <h3 style={{ marginTop: 24 }}>Cuota individual por vendedor</h3>
-              <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -8 }}>
-                Asigna la meta mensual (S/) de un vendedor puntual — tiene prioridad sobre la cuota individual
-                de su sede y sobre el cálculo por pool/dotación. Déjala en blanco para que ese vendedor vuelva
-                a la cuota de su sede.
-              </p>
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Vendedor</th><th>Sede</th><th>Turno</th>
-                    <th style={{ textAlign: 'right' }}>Cuota individual (S/)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filasVendedores.map((v) => (
-                    <tr key={v.user_id}>
-                      <td>{v.nombre}</td>
-                      <td>{v.sede_nombre || '—'}</td>
-                      <td>{v.turno === 'manana' ? 'Mañana' : v.turno === 'tarde' ? 'Tarde' : '—'}</td>
-                      <td style={{ textAlign: 'right' }}>
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          style={{ width: 130, textAlign: 'right' }}
-                          disabled={vendedorGuardando === v.user_id}
-                          placeholder="Sin asignar"
-                          value={v.monto_meta ?? ''}
-                          onChange={(e) => {
-                            const valor = e.target.value;
-                            setFilasVendedores((filas) => filas.map((fila) => (
-                              fila.user_id === v.user_id ? { ...fila, monto_meta: valor === '' ? null : Number(valor) } : fila
-                            )));
-                          }}
-                          onBlur={(e) => {
-                            const valor = e.target.value;
-                            guardarMontoVendedor(v.user_id, valor === '' ? null : Number(valor));
-                          }}
-                        />
-                      </td>
-                    </tr>
-                  ))}
-                  {filasVendedores.length === 0 && (
-                    <tr><td colSpan={4} className="empty-row">No hay vendedores activos.</td></tr>
                   )}
                 </tbody>
               </table>
