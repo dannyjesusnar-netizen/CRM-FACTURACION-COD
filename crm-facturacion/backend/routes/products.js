@@ -117,6 +117,21 @@ function normalizarLinea(valor) {
   return v;
 }
 
+// Identifica el proveedor de un producto por su NOMBRE (a diferencia de
+// utils/rucLookup + identificarOCrearProveedor en routes/movements.js, que
+// resuelven por RUC vía SUNAT) — pensado para la carga masiva de productos,
+// donde el archivo de origen suele traer solo el nombre del proveedor
+// (ej. "QNT", "Muscleshop"), sin RUC. Búsqueda sin distinguir mayúsculas
+// para no crear duplicados por variantes de tipeo ("QNT" vs "Qnt"); si no
+// existe, se da de alta con ese nombre (sin RUC, editable después desde
+// Compras -> Proveedores).
+function idProveedorPorNombre(nombre) {
+  const existente = db.prepare('SELECT id FROM suppliers WHERE nombre = ? COLLATE NOCASE').get(nombre);
+  if (existente) return existente.id;
+  const info = db.prepare('INSERT INTO suppliers (nombre) VALUES (?)').run(nombre);
+  return info.lastInsertRowid;
+}
+
 router.post('/', requireAccion('inventario', 'productos'), (req, res) => {
   const {
     codigo, codigo_barras, nombre, descripcion, categoria, marca, linea, unidad,
@@ -179,8 +194,9 @@ router.post('/', requireAccion('inventario', 'productos'), (req, res) => {
   }
 });
 
-// POST /api/products/carga-masiva { rows: [{ codigo, nombre, categoria, unidad,
-// precio_unitario, stock, precio_compra, codigo_barras }], crear_nuevos }
+// POST /api/products/carga-masiva { rows: [{ codigo, nombre, categoria, marca,
+// linea, proveedor, unidad, precio_unitario, stock, precio_compra,
+// codigo_barras }], crear_nuevos }
 // Crea productos nuevos (por código) o actualiza los que ya existen. El
 // stock de cada fila es el de la sede activa, igual que en el alta/edición
 // individual. Con crear_nuevos:false (usado por "Actualización de datos" en
@@ -230,6 +246,11 @@ router.post('/carga-masiva', requireAccion('inventario', 'productos'), (req, res
         errores.push({ codigo, error: 'linea inválida — use "organic" o "fit" (o déjelo vacío).' });
         continue;
       }
+      // proveedor (por nombre, opcional): mismo criterio que linea — sin la
+      // columna no se toca, vacía explícita quita el proveedor asignado.
+      const proveedorNombre = (r.proveedor || '').toString().trim();
+      const proveedorIdResultado = r.proveedor === undefined ? undefined
+        : (proveedorNombre ? idProveedorPorNombre(proveedorNombre) : null);
 
       const existing = db.prepare('SELECT * FROM products WHERE codigo = ?').get(codigo);
       if (!existing && !crearNuevos) {
@@ -249,18 +270,20 @@ router.post('/carga-masiva', requireAccion('inventario', 'productos'), (req, res
             }
           }
           const lineaFinal = lineaResultado === undefined ? existing.linea : lineaResultado;
+          const proveedorIdFinal = proveedorIdResultado === undefined ? existing.proveedor_id : proveedorIdResultado;
           db.prepare(
             `UPDATE products SET nombre = ?, categoria = ?, marca = ?, unidad = ?, tipo = ?, precio_unitario = ?, precio_compra = ?,
-             codigo_barras = ?, stock = ?, linea = ? WHERE id = ?`
-          ).run(nombre, categoria, marca, unidad, tipo, precioUnitario, precioCompra, codigoBarras, nuevoAgregado, lineaFinal, existing.id);
+             codigo_barras = ?, stock = ?, linea = ?, proveedor_id = ? WHERE id = ?`
+          ).run(nombre, categoria, marca, unidad, tipo, precioUnitario, precioCompra, codigoBarras, nuevoAgregado, lineaFinal, proveedorIdFinal, existing.id);
           if (tipo !== 'servicio') setStockSucursal(existing.id, req.sucursalId, sedeStockNuevo);
           actualizados.push({ codigo, nombre });
         } else {
           const lineaFinal = lineaResultado === undefined ? null : lineaResultado;
+          const proveedorIdFinal = proveedorIdResultado === undefined ? null : proveedorIdResultado;
           const info = db.prepare(
-            `INSERT INTO products (codigo, codigo_barras, nombre, tipo, categoria, marca, unidad, precio_compra, precio_unitario, stock, linea)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-          ).run(codigo, codigoBarras, nombre, tipo, categoria, marca, unidad, precioCompra, precioUnitario, stock, lineaFinal);
+            `INSERT INTO products (codigo, codigo_barras, nombre, tipo, categoria, marca, unidad, precio_compra, precio_unitario, stock, linea, proveedor_id)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          ).run(codigo, codigoBarras, nombre, tipo, categoria, marca, unidad, precioCompra, precioUnitario, stock, lineaFinal, proveedorIdFinal);
           if (tipo !== 'servicio' && stock > 0) setStockSucursal(info.lastInsertRowid, req.sucursalId, stock);
           creados.push({ codigo, nombre });
         }
