@@ -1381,6 +1381,12 @@ CREATE TABLE IF NOT EXISTS promocion_items (
   if (!invoiceItemColumnsPromo.includes('promocion_id')) {
     db.exec('ALTER TABLE invoice_items ADD COLUMN promocion_id INTEGER REFERENCES promociones(id)');
   }
+  // Las Ofertas/Combos de Promociones ahora también aplican en Nota de Venta
+  // Interna, no solo en Boleta/Factura — mismo mecanismo que invoice_items.
+  const notaVentaItemColumnsPromo = db.prepare("PRAGMA table_info(nota_venta_items)").all().map((c) => c.name);
+  if (!notaVentaItemColumnsPromo.includes('promocion_id')) {
+    db.exec('ALTER TABLE nota_venta_items ADD COLUMN promocion_id INTEGER REFERENCES promociones(id)');
+  }
 
   // Referencia informativa a qué lote/serie se está moviendo en un traslado
   // entre sedes (para trazabilidad de vencimiento) — igual que
