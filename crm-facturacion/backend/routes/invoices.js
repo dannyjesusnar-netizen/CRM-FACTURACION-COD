@@ -50,25 +50,37 @@ function requireRegistrarCobro(req, res, next) {
 }
 
 // GET /api/invoices/deudas -> ventas "abonado" con saldo pendiente (cuentas por cobrar)
+// Un cliente ("colaborador") suele comprar en varias sedes, así que Gerencia
+// ve por defecto la deuda de TODAS las sedes juntas (mismo criterio que el
+// Tablero de Ventas y Planillas: sedeFiltro), con un filtro opcional para
+// acotar a una sede puntual. Cualquier otro rol sigue viendo solo su sede.
 router.get('/deudas', requireVerCuentasPorCobrar, (req, res) => {
+  const sucursalFiltro = req.user.role === 'gerencia'
+    ? (req.query.sucursal_id ? Number(req.query.sucursal_id) : null)
+    : req.sucursalId;
   const rows = db.prepare(`
     SELECT i.id, i.tipo_comprobante, i.serie, i.numero, i.fecha_emision, i.moneda, i.total, i.monto_pagado,
            (i.total - i.monto_pagado) AS saldo,
            c.id AS client_id, c.nombre AS cliente_nombre, c.numero_documento AS cliente_documento,
            c.tipo_documento AS cliente_tipo_documento, c.telefono AS cliente_telefono,
-           u.full_name AS vendedor_nombre
+           u.full_name AS vendedor_nombre, s.nombre AS sede_nombre
     FROM invoices i JOIN clients c ON c.id = i.client_id
     LEFT JOIN users u ON u.id = i.created_by
-    WHERE i.sucursal_id = ? AND i.forma_pago = 'abonado' AND i.estado = 'emitido'
+    JOIN sucursales s ON s.id = i.sucursal_id
+    WHERE (? IS NULL OR i.sucursal_id = ?) AND i.forma_pago = 'abonado' AND i.estado = 'emitido'
       AND (i.total - i.monto_pagado) > 0.005
     ORDER BY i.fecha_emision ASC, i.id ASC
-  `).all(req.sucursalId);
+  `).all(sucursalFiltro, sucursalFiltro);
   res.json(rows.map((r) => ({ ...r, saldo: round2(r.saldo) })));
 });
 
 // GET /api/invoices/:id/cobros -> historial de abonos/cobros de una venta "abonado"
+// Gerencia puede consultar/cobrar una deuda de cualquier sede (ver /deudas);
+// cualquier otro rol solo las de su propia sede.
 router.get('/:id/cobros', requireVerCuentasPorCobrar, (req, res) => {
-  const invoice = db.prepare('SELECT id FROM invoices WHERE id = ? AND sucursal_id = ?').get(req.params.id, req.sucursalId);
+  const invoice = req.user.role === 'gerencia'
+    ? db.prepare('SELECT id FROM invoices WHERE id = ?').get(req.params.id)
+    : db.prepare('SELECT id FROM invoices WHERE id = ? AND sucursal_id = ?').get(req.params.id, req.sucursalId);
   if (!invoice) return res.status(404).json({ error: 'Comprobante no encontrado.' });
   const rows = db.prepare(
     `SELECT co.*, u.full_name AS usuario_nombre FROM cobros co
@@ -80,7 +92,9 @@ router.get('/:id/cobros', requireVerCuentasPorCobrar, (req, res) => {
 
 // POST /api/invoices/:id/cobros { monto, medio, observacion } -> registra un cobro contra el saldo pendiente
 router.post('/:id/cobros', requireRegistrarCobro, (req, res) => {
-  const invoice = db.prepare('SELECT * FROM invoices WHERE id = ? AND sucursal_id = ?').get(req.params.id, req.sucursalId);
+  const invoice = req.user.role === 'gerencia'
+    ? db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id)
+    : db.prepare('SELECT * FROM invoices WHERE id = ? AND sucursal_id = ?').get(req.params.id, req.sucursalId);
   if (!invoice) return res.status(404).json({ error: 'Comprobante no encontrado.' });
   if (invoice.forma_pago !== 'abonado') {
     return res.status(400).json({ error: 'Este comprobante no es una venta abonada.' });
@@ -107,10 +121,14 @@ router.post('/:id/cobros', requireRegistrarCobro, (req, res) => {
     db.prepare(
       `INSERT INTO cobros (invoice_id, monto, medio, observacion, created_by) VALUES (?, ?, ?, ?, ?)`
     ).run(invoice.id, montoNum, medio, observacion || null, req.user?.id || null);
+    // sucursal_id: la sede DUEÑA de la deuda (invoice.sucursal_id), no la
+    // sede activa de quien registra el cobro — Gerencia puede cobrar una
+    // deuda de cualquier sede sin tener que cambiar de sede primero, y el
+    // ingreso debe cuadrar en el arqueo de Caja de la sede correcta.
     db.prepare(
       `INSERT INTO caja_movimientos (fecha, tipo, medio, categoria, monto, descripcion, created_by, sucursal_id, invoice_id)
        VALUES (?, 'ingreso', ?, 'cuentas_cobrar', ?, ?, ?, ?, ?)`
-    ).run(hoy, medio, montoNum, `Cobro - ${referenciaComprobante} - ${client?.nombre || ''}`, req.user?.id || null, req.sucursalId, invoice.id);
+    ).run(hoy, medio, montoNum, `Cobro - ${referenciaComprobante} - ${client?.nombre || ''}`, req.user?.id || null, invoice.sucursal_id, invoice.id);
   });
   registrar();
 
