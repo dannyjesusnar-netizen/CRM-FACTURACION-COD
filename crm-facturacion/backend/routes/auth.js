@@ -80,6 +80,9 @@ function construirUsuarioCliente(user) {
     // requireGerenciaOSupervisorCanales, sin pasar por el módulo
     // "Configuración" de Roles.
     puede_administrar_canales: esGerenciaOSupervisor(user),
+    // Generar/copiar/revocar el link público del Tablero de Ventas (ver
+    // routes/tablero.js: requireGerenciaOSupervisor en /link-publico).
+    puede_compartir_dashboard: esGerenciaOSupervisor(user),
     // Cambiar de sede desde el selector rápido de la barra superior (ver
     // middleware/auth.js: resolveSucursal). Gerencia/Supervisor lo tienen
     // automático; cualquier otro rol lo gana desde Configuración → Roles →

@@ -1,7 +1,8 @@
+const crypto = require('crypto');
 const express = require('express');
 const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
-const { requireTableroVentas } = require('../utils/permisos');
+const { requireTableroVentas, requireGerenciaOSupervisor } = require('../utils/permisos');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -371,6 +372,62 @@ router.get('/total-por-producto', (req, res) => {
     ORDER BY venta DESC
   `).all(String(anio), mesPad, sucursalId, sucursalId, String(anio), mesPad, sucursalId, sucursalId);
   res.json(conPorcentaje(rows));
+});
+
+// Link público (sin login) para compartir el resumen de ventas por sede —
+// ver routes/dashboardPublico.js, que lo consume. A diferencia de
+// sedeFiltro (que en Gerencia respeta el query param, es decir "lo que
+// tiene elegido en el selector en este momento"), acá el alcance es fijo
+// para que el link no cambie de significado según lo que Gerencia esté
+// mirando en pantalla al copiarlo: Gerencia siempre comparte "todas las
+// sedes", un Supervisor siempre comparte su propia sede asignada.
+function sedeDelLinkPublico(req) {
+  if (req.user.role === 'gerencia') return null;
+  const row = db.prepare('SELECT sucursal_id FROM users WHERE id = ?').get(req.user.id);
+  return row?.sucursal_id || null;
+}
+
+function filaLinkPublico(sucursalId) {
+  return sucursalId === null
+    ? db.prepare('SELECT id, token, activo FROM dashboard_publico_links WHERE sucursal_id IS NULL ORDER BY id DESC LIMIT 1').get()
+    : db.prepare('SELECT id, token, activo FROM dashboard_publico_links WHERE sucursal_id = ? ORDER BY id DESC LIMIT 1').get(sucursalId);
+}
+
+// Reservado a Gerencia o Supervisor (no a cualquier otro rol con acceso al
+// Tablero de Ventas): es la única acción de esta pantalla que expone datos
+// de la empresa sin necesidad de sesión.
+router.get('/link-publico', requireGerenciaOSupervisor, (req, res) => {
+  const fila = filaLinkPublico(sedeDelLinkPublico(req));
+  res.json({ token: fila && fila.activo ? fila.token : null });
+});
+
+// Idempotente: si ya hay un link activo para este alcance, devuelve el
+// mismo token (no lo rota cada vez que alguien le da "Copiar"). Si estaba
+// revocado o nunca existió, genera uno nuevo.
+router.post('/link-publico', requireGerenciaOSupervisor, (req, res) => {
+  const sucursalId = sedeDelLinkPublico(req);
+  const fila = filaLinkPublico(sucursalId);
+  if (fila && fila.activo) return res.json({ token: fila.token });
+  const token = crypto.randomBytes(24).toString('hex');
+  if (fila) {
+    db.prepare(
+      "UPDATE dashboard_publico_links SET token = ?, activo = 1, created_by = ?, created_at = datetime('now'), ultimo_uso_at = NULL WHERE id = ?"
+    ).run(token, req.user.id, fila.id);
+  } else {
+    db.prepare(
+      'INSERT INTO dashboard_publico_links (token, sucursal_id, created_by) VALUES (?, ?, ?)'
+    ).run(token, sucursalId, req.user.id);
+  }
+  res.status(201).json({ token });
+});
+
+// Revocar invalida el link ya compartido; volver a generarlo emite un
+// token nuevo (no reactiva el viejo), para que un link filtrado no pueda
+// "revivir" solo.
+router.delete('/link-publico', requireGerenciaOSupervisor, (req, res) => {
+  const fila = filaLinkPublico(sedeDelLinkPublico(req));
+  if (fila) db.prepare('UPDATE dashboard_publico_links SET activo = 0 WHERE id = ?').run(fila.id);
+  res.json({ ok: true });
 });
 
 module.exports = router;

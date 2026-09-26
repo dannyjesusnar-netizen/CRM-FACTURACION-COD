@@ -12,7 +12,7 @@ import {
   Legend,
   Filler,
 } from 'chart.js';
-import { Circle, Triangle, Diamond, Camera, Download, FileSpreadsheet } from 'lucide-react';
+import { Circle, Triangle, Diamond, Camera, Download, FileSpreadsheet, Share2, Copy, Check, Trash2 } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
@@ -191,6 +191,60 @@ export default function Dashboard() {
       toast.error(err.response?.data?.error || 'No se pudo guardar el color.');
     }
   }
+
+  // Link público del Tablero (solo resumen por sede y por línea, sin
+  // nombres de empleados) — ver routes/tablero.js: /link-publico.
+  const [mostrarCompartir, setMostrarCompartir] = useState(false);
+  const [linkPublicoToken, setLinkPublicoToken] = useState(null);
+  const [linkPublicoLoading, setLinkPublicoLoading] = useState(false);
+  const [linkCopiado, setLinkCopiado] = useState(false);
+  const puedeCompartirDashboard = !!user?.puede_compartir_dashboard;
+
+  function abrirCompartir() {
+    setMostrarCompartir(true);
+    setLinkCopiado(false);
+    setLinkPublicoLoading(true);
+    api.get('/tablero/link-publico')
+      .then((res) => setLinkPublicoToken(res.data.token))
+      .catch(() => toast.error('No se pudo consultar el link público.'))
+      .finally(() => setLinkPublicoLoading(false));
+  }
+
+  async function generarLinkPublico() {
+    setLinkPublicoLoading(true);
+    try {
+      const res = await api.post('/tablero/link-publico');
+      setLinkPublicoToken(res.data.token);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'No se pudo generar el link.');
+    } finally {
+      setLinkPublicoLoading(false);
+    }
+  }
+
+  async function revocarLinkPublico() {
+    setLinkPublicoLoading(true);
+    try {
+      await api.delete('/tablero/link-publico');
+      setLinkPublicoToken(null);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'No se pudo revocar el link.');
+    } finally {
+      setLinkPublicoLoading(false);
+    }
+  }
+
+  function urlLinkPublico() {
+    return `${window.location.origin}/dashboard-publico/${empresa?.ruc}/${linkPublicoToken}`;
+  }
+
+  function copiarLinkPublico() {
+    navigator.clipboard?.writeText(urlLinkPublico()).then(() => {
+      setLinkCopiado(true);
+      setTimeout(() => setLinkCopiado(false), 2000);
+    });
+  }
+
   // Hoja 1 = Tablero de Ventas (solo Gerencia/Supervisor), Hoja 2 = el
   // resumen general que ya existía. Quien no puede ver el Tablero solo
   // tiene la Hoja 2, sin selector.
@@ -435,6 +489,19 @@ export default function Dashboard() {
                     className="color-picker-btn"
                     title="Cambiar el color de la franja superior de cada panel"
                   />
+                </div>
+              )}
+              {puedeCompartirDashboard && (
+                <div className="filter-field">
+                  <label>&nbsp;</label>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}
+                    onClick={abrirCompartir}
+                  >
+                    <Share2 size={14} /> Compartir dashboard
+                  </button>
                 </div>
               )}
             </div>
@@ -775,6 +842,44 @@ export default function Dashboard() {
               </div>
             </>
           )}
+        </div>
+      )}
+
+      {mostrarCompartir && (
+        <div className="modal-overlay" onClick={() => setMostrarCompartir(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h2>Compartir dashboard</h2>
+            <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -6 }}>
+              Genera un link público (sin necesidad de iniciar sesión) con el resumen de ventas por sede y por
+              línea (Organic/Fit) — sin nombres de empleados ni montos individuales. Cualquiera con el link puede
+              verlo mientras esté activo.
+            </p>
+            {linkPublicoLoading ? (
+              <p style={{ fontSize: 13 }}>Cargando…</p>
+            ) : linkPublicoToken ? (
+              <>
+                <div className="filter-field" style={{ width: '100%' }}>
+                  <label>Link público</label>
+                  <input readOnly value={urlLinkPublico()} onFocus={(e) => e.target.select()} style={{ width: '100%' }} />
+                </div>
+                <div className="modal-actions">
+                  <button type="button" className="btn-secondary" onClick={revocarLinkPublico} disabled={linkPublicoLoading}>
+                    <Trash2 size={14} /> Revocar link
+                  </button>
+                  <button type="button" className="btn-primary" style={{ width: 'auto' }} onClick={copiarLinkPublico}>
+                    {linkCopiado ? <Check size={16} /> : <Copy size={16} />} {linkCopiado ? 'Copiado' : 'Copiar link'}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="modal-actions">
+                <button type="button" className="btn-secondary" onClick={() => setMostrarCompartir(false)}>Cancelar</button>
+                <button type="button" className="btn-primary" style={{ width: 'auto' }} onClick={generarLinkPublico}>
+                  <Share2 size={14} /> Generar link
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

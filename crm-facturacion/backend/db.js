@@ -558,6 +558,25 @@ CREATE TABLE IF NOT EXISTS bi_tokens (
   ultimo_uso_at TEXT
 );
 
+-- Link público (sin login) para compartir el resumen de ventas por sede del
+-- Tablero — ver routes/tablero.js (generarlo/revocarlo, requiere sesión) y
+-- routes/dashboardPublico.js (consumirlo, resuelve la empresa por el RUC en
+-- la URL ya que no hay sesión). Deliberadamente muestra SOLO totales
+-- agregados por sede y por línea (Organic/Fit), nunca el Ranking Personal
+-- con nombres de empleados. sucursal_id NULL = todas las sedes (link de
+-- Gerencia); con sede fija ve solo esa (link de un Supervisor). Uno por
+-- alcance: revocar solo desactiva la fila para poder reactivarla (con un
+-- token nuevo) si se vuelve a generar.
+CREATE TABLE IF NOT EXISTS dashboard_publico_links (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  token TEXT NOT NULL UNIQUE,
+  sucursal_id INTEGER REFERENCES sucursales(id),
+  created_by INTEGER REFERENCES users(id),
+  activo INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT DEFAULT (datetime('now')),
+  ultimo_uso_at TEXT
+);
+
 -- Registro de pagos recibidos por Yape/Plin (pantalla "QR Único") —
 -- control manual con foto de respaldo del comprobante. monto_detectado es
 -- lo que el OCR leyó de la foto (puede ser NULL si no detectó nada); monto
