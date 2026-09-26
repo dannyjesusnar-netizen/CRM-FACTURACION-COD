@@ -5,7 +5,7 @@ const { buildInvoicePdf } = require('../utils/pdf');
 const { consumirStock, incrementarStock, ajustarStockSucursal, getStockSucursal, StockInsuficienteError } = require('../utils/stock');
 const { emitirComprobante, consultarComprobante, estaConfigurado } = require('../utils/facturacionElectronica');
 const { reenviarComprobante } = require('../utils/sincronizarSunat');
-const { requirePermiso, requireAccion, requireAlgunPermiso, tieneAccion, tienePermiso, requireGerenciaOSupervisor, esGerenciaOSupervisor } = require('../utils/permisos');
+const { requirePermiso, requireAccion, requireAlgunPermiso, tieneAccion, requireGerenciaOSupervisor, esGerenciaOSupervisor } = require('../utils/permisos');
 const { tieneTurnoAbierto } = require('../utils/cajaTurno');
 const { siguienteNumero } = require('../utils/series');
 const { resolverDescuentoPct } = require('../utils/descuentos');
@@ -36,16 +36,19 @@ function round2(n) {
 // Cuentas por cobrar es visible tanto desde Ventas como desde Caja y Bancos
 // (pantalla "Cuentas por Cobrar" enlazada desde ambas), así que estos tres
 // endpoints se registran ANTES del candado general `requirePermiso('ventas')`
-// de más abajo: alcanza con tener el módulo Caja habilitado, o el desglose
-// existente por acción dentro de Ventas (para no perder esa granularidad).
+// de más abajo. El toggle que Gerencia ve y edita en Configuración → Roles
+// vive en Caja y Bancos → Cuentas por cobrar (ver ACCIONES_POR_MODULO.caja);
+// también se acepta el de Ventas como respaldo por compatibilidad, para no
+// quitarle el acceso a un rol que ya lo tuviera configurado ahí desde antes
+// de que este toggle existiera en Caja.
 function requireVerCuentasPorCobrar(req, res, next) {
   if (!req.user) return res.status(401).json({ error: 'No autenticado.' });
-  if (tienePermiso(req.user, 'caja') || tieneAccion(req.user, 'ventas', 'cuentas_por_cobrar')) return next();
+  if (tieneAccion(req.user, 'caja', 'cuentas_por_cobrar') || tieneAccion(req.user, 'ventas', 'cuentas_por_cobrar')) return next();
   return res.status(403).json({ error: 'No tienes permiso para ver cuentas por cobrar.' });
 }
 function requireRegistrarCobro(req, res, next) {
   if (!req.user) return res.status(401).json({ error: 'No autenticado.' });
-  if (tienePermiso(req.user, 'caja') || tieneAccion(req.user, 'ventas', 'registrar_cobro')) return next();
+  if (tieneAccion(req.user, 'caja', 'registrar_cobro') || tieneAccion(req.user, 'ventas', 'registrar_cobro')) return next();
   return res.status(403).json({ error: 'No tienes permiso para registrar cobros.' });
 }
 

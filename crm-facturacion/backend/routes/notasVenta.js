@@ -1,10 +1,11 @@
 const express = require('express');
 const db = require('../db');
 const { requireAuth, resolveSucursal } = require('../middleware/auth');
-const { requirePermiso, requireAccion, tieneAccion, tienePermiso, requireGerenciaOSupervisor } = require('../utils/permisos');
+const { requirePermiso, requireAccion, tieneAccion, requireGerenciaOSupervisor } = require('../utils/permisos');
 const { requireTurnoCajaAbierto } = require('../utils/cajaTurno');
 const { siguienteNumero } = require('../utils/series');
 const { resolverDescuentoPct } = require('../utils/descuentos');
+const { resolverDescuentoItemPct } = require('../utils/promociones');
 const { consumirStock, incrementarStock, StockInsuficienteError } = require('../utils/stock');
 const { buildNotaVentaPdf } = require('../utils/pdf');
 const { hoyPeru } = require('../utils/fechas');
@@ -28,15 +29,19 @@ function esMetodoPagoValido(codigo) {
 
 // Cuentas por cobrar es visible tanto desde Ventas como desde Caja y Bancos,
 // así que estos tres endpoints se registran ANTES del candado general
-// `requirePermiso('ventas')` de más abajo — mismo patrón que invoices.js.
+// `requirePermiso('ventas')` de más abajo — mismo patrón que invoices.js. El
+// toggle que Gerencia edita en Configuración → Roles vive en Caja y Bancos →
+// Cuentas por cobrar; el de Ventas se acepta como respaldo por
+// compatibilidad, para no quitarle el acceso a un rol que ya lo tuviera
+// configurado ahí desde antes de que este toggle existiera en Caja.
 function requireVerCuentasPorCobrar(req, res, next) {
   if (!req.user) return res.status(401).json({ error: 'No autenticado.' });
-  if (tienePermiso(req.user, 'caja') || tieneAccion(req.user, 'ventas', 'cuentas_por_cobrar')) return next();
+  if (tieneAccion(req.user, 'caja', 'cuentas_por_cobrar') || tieneAccion(req.user, 'ventas', 'cuentas_por_cobrar')) return next();
   return res.status(403).json({ error: 'No tienes permiso para ver cuentas por cobrar.' });
 }
 function requireRegistrarCobro(req, res, next) {
   if (!req.user) return res.status(401).json({ error: 'No autenticado.' });
-  if (tienePermiso(req.user, 'caja') || tieneAccion(req.user, 'ventas', 'registrar_cobro')) return next();
+  if (tieneAccion(req.user, 'caja', 'registrar_cobro') || tieneAccion(req.user, 'ventas', 'registrar_cobro')) return next();
   return res.status(403).json({ error: 'No tienes permiso para registrar cobros.' });
 }
 
@@ -238,24 +243,34 @@ router.post('/', requireAccion('ventas', 'nota_venta'), requireTurnoCajaAbierto,
 
   // Sin IGV: el total de cada línea es el importe final tal cual, sin
   // separar impuesto — es exactamente lo que diferencia a este documento
-  // de una Boleta/Factura reales.
+  // de una Boleta/Factura reales. El % de descuento de una línea nunca se
+  // acepta a mano (mismo criterio que invoices.js): solo puede venir de una
+  // Oferta/Combo vigente en Promociones, recalculado en el servidor a
+  // partir de promocion_id, ignorando lo que mande el cliente.
   let totalBruto = 0;
-  const preparedItems = items.map((it) => {
-    const cantidad = Number(it.cantidad);
-    const precio_unitario = Number(it.precio_unitario);
-    const descuentoPct = Math.min(100, Math.max(0, Number(it.descuento_pct || 0)));
-    const lineBruta = cantidad * precio_unitario;
-    const lineNeta = round2(lineBruta - lineBruta * (descuentoPct / 100));
-    totalBruto += lineNeta;
-    return {
-      product_id: it.product_id || null,
-      descripcion: it.descripcion || '',
-      cantidad,
-      precio_unitario,
-      descuento_pct: descuentoPct,
-      subtotal: lineNeta,
-    };
-  });
+  let preparedItems;
+  try {
+    preparedItems = items.map((it) => {
+      const cantidad = Number(it.cantidad);
+      const precio_unitario = Number(it.precio_unitario);
+      const descuentoPct = resolverDescuentoItemPct(it.promocion_id, req.sucursalId, it.product_id);
+      const lineBruta = cantidad * precio_unitario;
+      const lineNeta = round2(lineBruta - lineBruta * (descuentoPct / 100));
+      totalBruto += lineNeta;
+      return {
+        product_id: it.product_id || null,
+        descripcion: it.descripcion || '',
+        cantidad,
+        precio_unitario,
+        descuento_pct: descuentoPct,
+        subtotal: lineNeta,
+        promocion_id: it.promocion_id || null,
+      };
+    });
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ error: err.message });
+    throw err;
+  }
 
   totalBruto = round2(totalBruto);
   const total = round2(totalBruto * (1 - descuentoGlobalPct / 100));
@@ -291,11 +306,11 @@ router.post('/', requireAccion('ventas', 'nota_venta'), requireTurnoCajaAbierto,
     );
     const notaVentaId = info.lastInsertRowid;
     const insertItem = db.prepare(
-      `INSERT INTO nota_venta_items (nota_venta_id, product_id, descripcion, cantidad, precio_unitario, descuento_pct, subtotal)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO nota_venta_items (nota_venta_id, product_id, descripcion, cantidad, precio_unitario, descuento_pct, subtotal, promocion_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     );
     for (const it of preparedItems) {
-      insertItem.run(notaVentaId, it.product_id, it.descripcion, it.cantidad, it.precio_unitario, it.descuento_pct, it.subtotal);
+      insertItem.run(notaVentaId, it.product_id, it.descripcion, it.cantidad, it.precio_unitario, it.descuento_pct, it.subtotal, it.promocion_id);
       if (it.product_id) {
         consumirStock(it.product_id, it.cantidad, {
           tipoMovimiento: 'venta',
