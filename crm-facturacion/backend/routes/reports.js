@@ -1,7 +1,7 @@
 const express = require('express');
 const db = require('../db');
 const { requireAuth, resolveSucursal } = require('../middleware/auth');
-const { requirePermiso, requireAlgunPermiso, requireAccion } = require('../utils/permisos');
+const { requirePermiso, requireAlgunPermiso, requireAccion, puedeCambiarSede } = require('../utils/permisos');
 const { buildResumen } = require('../utils/cajaCalculos');
 const { hoyPeru } = require('../utils/fechas');
 
@@ -228,17 +228,29 @@ function proveedorExpr(alias) {
 }
 const ATRIBUIDO_CATEGORIA_EXPR = (alias) => `CASE ${alias}.categoria_staff
   WHEN 'trainer' THEN 'Entrenador' WHEN 'supervisor' THEN 'Supervisor' WHEN 'vendedor' THEN 'Vendedor' ELSE '' END`;
+const LINEA_EXPR = (alias) => `CASE ${alias}.linea WHEN 'organic' THEN 'Organic' WHEN 'fit' THEN 'Fit' ELSE '' END`;
 
 // Detalle línea por línea de todo lo vendido (Boletas/Facturas/Notas de
-// Crédito + Notas de Venta Interna), con producto, marca, proveedor,
-// categoría, vendedor y a quién se le atribuyó la venta (y si es
-// Entrenador/Supervisor/Vendedor) — pensado para el Exportador de Datos
-// Masivos de Configuración, sin límite de fecha (a diferencia de los demás
-// reportes de esta pantalla, que sí filtran por mes/año). Trae los dos
-// descuentos que puede tener una venta por separado: descuento_pct (el de
-// ese ítem puntual, de una Oferta o Combo) y descuento_global_pct (el de
+// Crédito + Notas de Venta Interna), con producto, marca, línea (Organic/
+// Fit), proveedor, categoría, vendedor y a quién se le atribuyó la venta (y
+// si es Entrenador/Supervisor/Vendedor) — pensado para el Exportador de
+// Datos Masivos de Configuración, sin límite de fecha (a diferencia de los
+// demás reportes de esta pantalla, que sí filtran por mes/año). Trae los
+// dos descuentos que puede tener una venta por separado: descuento_pct (el
+// de ese ítem puntual, de una Oferta o Combo) y descuento_global_pct (el de
 // toda la venta, de un Descuento con nombre elegido al facturar).
+//
+// todas_sedes=1: descarga global cruzando las 11 sedes en un solo Excel, en
+// vez de solo la sede activa en el selector — solo para quien puede ver
+// todas las sedes (puedeCambiarSede: Gerencia, Supervisor, o un rol con el
+// toggle de Configuración → Roles → Inicio → "Cambiar de sede"); cualquier
+// otro usuario sigue limitado a su propia sede, aunque mande el parámetro.
 router.get('/ventas-detalle', requireAlgunPermiso(['ventas', 'reportes']), (req, res) => {
+  const todasLasSedes = req.query.todas_sedes === '1' && puedeCambiarSede(req.user);
+  const filtroInvoices = todasLasSedes ? '1 = 1' : 'i.sucursal_id = ?';
+  const filtroNotasVenta = todasLasSedes ? '1 = 1' : 'nv.sucursal_id = ?';
+  const params = todasLasSedes ? [] : [req.sucursalId];
+
   const sql = `
     SELECT i.fecha_emision, suc.nombre AS sede,
       CASE i.tipo_comprobante WHEN 'factura' THEN 'Factura' WHEN 'boleta' THEN 'Boleta' WHEN 'nota_credito' THEN 'Nota de crédito' ELSE i.tipo_comprobante END AS tipo,
@@ -247,6 +259,7 @@ router.get('/ventas-detalle', requireAlgunPermiso(['ventas', 'reportes']), (req,
       COALESCE(p.codigo, '') AS producto_codigo, COALESCE(p.nombre, ii.descripcion) AS producto_nombre,
       COALESCE(p.categoria, '') AS categoria,
       COALESCE(p.marca, '') AS marca,
+      ${LINEA_EXPR('p')} AS linea,
       ${proveedorExpr('p')} AS proveedor,
       ii.cantidad, ii.precio_unitario, ii.descuento_pct, ii.subtotal AS subtotal_item,
       i.forma_pago, i.descuento_global_pct, i.total AS total_venta, i.estado,
@@ -259,7 +272,7 @@ router.get('/ventas-detalle', requireAlgunPermiso(['ventas', 'reportes']), (req,
     LEFT JOIN products p ON p.id = ii.product_id
     LEFT JOIN users u ON u.id = i.created_by
     LEFT JOIN users au ON au.id = i.atribuido_a
-    WHERE i.sucursal_id = ?
+    WHERE ${filtroInvoices}
     UNION ALL
     SELECT nv.fecha_emision, suc2.nombre AS sede,
       'Nota de Venta Interna' AS tipo,
@@ -268,6 +281,7 @@ router.get('/ventas-detalle', requireAlgunPermiso(['ventas', 'reportes']), (req,
       COALESCE(p2.codigo, '') AS producto_codigo, COALESCE(p2.nombre, nvi.descripcion) AS producto_nombre,
       COALESCE(p2.categoria, '') AS categoria,
       COALESCE(p2.marca, '') AS marca,
+      ${LINEA_EXPR('p2')} AS linea,
       ${proveedorExpr('p2')} AS proveedor,
       nvi.cantidad, nvi.precio_unitario, nvi.descuento_pct, nvi.subtotal AS subtotal_item,
       nv.forma_pago, nv.descuento_global_pct, nv.total AS total_venta, nv.estado,
@@ -280,10 +294,10 @@ router.get('/ventas-detalle', requireAlgunPermiso(['ventas', 'reportes']), (req,
     LEFT JOIN products p2 ON p2.id = nvi.product_id
     LEFT JOIN users u2 ON u2.id = nv.created_by
     LEFT JOIN users au2 ON au2.id = nv.atribuido_a
-    WHERE nv.sucursal_id = ?
+    WHERE ${filtroNotasVenta}
     ORDER BY fecha_emision DESC
   `;
-  const rows = db.prepare(sql).all(req.sucursalId, req.sucursalId);
+  const rows = db.prepare(sql).all(...params, ...params);
   res.json(rows);
 });
 
