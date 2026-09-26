@@ -481,6 +481,12 @@ export default function Reports() {
                       <td style={{ textAlign: 'right' }}>{totalGeneral ? ((r.total / totalGeneral) * 100).toFixed(1) : '0.0'}%</td>
                     </tr>
                   ))}
+                  <tr className="totals-footer">
+                    <td>Total general</td>
+                    <td style={{ textAlign: 'right' }}>{ventasPorTipo.reduce((s, r) => s + r.cantidad, 0)}</td>
+                    <td style={{ textAlign: 'right' }}>{money(totalGeneral)}</td>
+                    <td style={{ textAlign: 'right' }}>100.0%</td>
+                  </tr>
                 </tbody>
               </table>
             </>
