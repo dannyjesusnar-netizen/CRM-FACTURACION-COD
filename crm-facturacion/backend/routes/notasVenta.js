@@ -2,6 +2,7 @@ const express = require('express');
 const db = require('../db');
 const { requireAuth, resolveSucursal } = require('../middleware/auth');
 const { requirePermiso, requireAccion, tieneAccion, tienePermiso, requireGerenciaOSupervisor } = require('../utils/permisos');
+const { requireTurnoCajaAbierto } = require('../utils/cajaTurno');
 const { siguienteNumero } = require('../utils/series');
 const { resolverDescuentoPct } = require('../utils/descuentos');
 const { consumirStock, incrementarStock, StockInsuficienteError } = require('../utils/stock');
@@ -40,25 +41,34 @@ function requireRegistrarCobro(req, res, next) {
 }
 
 // GET /api/notas-venta/deudas -> notas de venta "abonado" con saldo pendiente
+// Mismo criterio que /invoices/deudas: Gerencia ve por defecto todas las
+// sedes juntas (un cliente puede deber en varias), con filtro opcional para
+// acotar a una sede puntual. Cualquier otro rol sigue viendo solo su sede.
 router.get('/deudas', requireVerCuentasPorCobrar, (req, res) => {
+  const sucursalFiltro = req.user.role === 'gerencia'
+    ? (req.query.sucursal_id ? Number(req.query.sucursal_id) : null)
+    : req.sucursalId;
   const rows = db.prepare(`
     SELECT nv.id, nv.serie, nv.numero, nv.fecha_emision, nv.moneda, nv.total, nv.monto_pagado,
            (nv.total - nv.monto_pagado) AS saldo,
            c.id AS client_id, c.nombre AS cliente_nombre, c.numero_documento AS cliente_documento,
            c.tipo_documento AS cliente_tipo_documento, c.telefono AS cliente_telefono,
-           u.full_name AS vendedor_nombre
+           u.full_name AS vendedor_nombre, s.nombre AS sede_nombre
     FROM notas_venta nv JOIN clients c ON c.id = nv.client_id
     LEFT JOIN users u ON u.id = nv.created_by
-    WHERE nv.sucursal_id = ? AND nv.forma_pago = 'abonado' AND nv.estado = 'emitido'
+    JOIN sucursales s ON s.id = nv.sucursal_id
+    WHERE (? IS NULL OR nv.sucursal_id = ?) AND nv.forma_pago = 'abonado' AND nv.estado = 'emitido'
       AND (nv.total - nv.monto_pagado) > 0.005
     ORDER BY nv.fecha_emision ASC, nv.id ASC
-  `).all(req.sucursalId);
+  `).all(sucursalFiltro, sucursalFiltro);
   res.json(rows.map((r) => ({ ...r, saldo: round2(r.saldo) })));
 });
 
 // GET /api/notas-venta/:id/cobros -> historial de abonos de una nota de venta "abonado"
 router.get('/:id/cobros', requireVerCuentasPorCobrar, (req, res) => {
-  const nv = db.prepare('SELECT id FROM notas_venta WHERE id = ? AND sucursal_id = ?').get(req.params.id, req.sucursalId);
+  const nv = req.user.role === 'gerencia'
+    ? db.prepare('SELECT id FROM notas_venta WHERE id = ?').get(req.params.id)
+    : db.prepare('SELECT id FROM notas_venta WHERE id = ? AND sucursal_id = ?').get(req.params.id, req.sucursalId);
   if (!nv) return res.status(404).json({ error: 'Nota de venta interna no encontrada.' });
   const rows = db.prepare(
     `SELECT nvc.*, u.full_name AS usuario_nombre FROM nota_venta_cobros nvc
@@ -70,7 +80,9 @@ router.get('/:id/cobros', requireVerCuentasPorCobrar, (req, res) => {
 
 // POST /api/notas-venta/:id/cobros { monto, medio, observacion } -> registra un cobro contra el saldo pendiente
 router.post('/:id/cobros', requireRegistrarCobro, (req, res) => {
-  const nv = db.prepare('SELECT * FROM notas_venta WHERE id = ? AND sucursal_id = ?').get(req.params.id, req.sucursalId);
+  const nv = req.user.role === 'gerencia'
+    ? db.prepare('SELECT * FROM notas_venta WHERE id = ?').get(req.params.id)
+    : db.prepare('SELECT * FROM notas_venta WHERE id = ? AND sucursal_id = ?').get(req.params.id, req.sucursalId);
   if (!nv) return res.status(404).json({ error: 'Nota de venta interna no encontrada.' });
   if (nv.forma_pago !== 'abonado') {
     return res.status(400).json({ error: 'Esta nota de venta no es a crédito (abonado).' });
@@ -97,10 +109,13 @@ router.post('/:id/cobros', requireRegistrarCobro, (req, res) => {
     db.prepare(
       `INSERT INTO nota_venta_cobros (nota_venta_id, monto, medio, observacion, created_by) VALUES (?, ?, ?, ?, ?)`
     ).run(nv.id, montoNum, medio, observacion || null, req.user?.id || null);
+    // sucursal_id: la sede DUEÑA de la deuda (nv.sucursal_id), no la sede
+    // activa de quien registra el cobro — ver el mismo comentario en
+    // routes/invoices.js.
     db.prepare(
       `INSERT INTO caja_movimientos (fecha, tipo, medio, categoria, monto, descripcion, created_by, sucursal_id, nota_venta_id)
        VALUES (?, 'ingreso', ?, 'cuentas_cobrar', ?, ?, ?, ?, ?)`
-    ).run(hoy, medio, montoNum, `Cobro - ${referencia} - ${client?.nombre || ''}`, req.user?.id || null, req.sucursalId, nv.id);
+    ).run(hoy, medio, montoNum, `Cobro - ${referencia} - ${client?.nombre || ''}`, req.user?.id || null, nv.sucursal_id, nv.id);
   });
   registrar();
 
@@ -161,7 +176,7 @@ router.get('/:id', (req, res) => {
   res.json({ ...nv, items });
 });
 
-router.post('/', requireAccion('ventas', 'nota_venta'), (req, res) => {
+router.post('/', requireAccion('ventas', 'nota_venta'), requireTurnoCajaAbierto, (req, res) => {
   const {
     client_id, items, moneda, observaciones, fecha_emision,
     descuento_id, numero: numeroManual, forma_pago,

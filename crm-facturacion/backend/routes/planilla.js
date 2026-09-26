@@ -13,15 +13,24 @@ function todayStr() {
   return hoyPeru();
 }
 
-// GET /api/planilla?desde=&hasta=&empleado_id=
+// GET /api/planilla?desde=&hasta=&empleado_id=&sucursal_id=
 // Un cajero/vendedor solo ve sus propios turnos, sin importar qué mande en
 // empleado_id — el filtro por empleado (y ver los de todos) es exclusivo de
-// Gerencia/Supervisor.
+// Gerencia/Supervisor. Gerencia además puede ver TODAS las sedes a la vez
+// (sin depender de la sede activa del selector rápido de la barra
+// superior) o filtrar por una sede puntual con sucursal_id — mismo criterio
+// que el Tablero de Ventas (ver routes/tablero.js: sedeFiltro). Un
+// Supervisor (aunque también sea esGerenciaOSupervisor) sigue viendo solo
+// su propia sede: el cruce entre sedes es exclusivo del role 'gerencia'.
 router.get('/', (req, res) => {
   const esSupervisorOGerencia = esGerenciaOSupervisor(req.user);
   const hoy = todayStr();
   const desde = req.query.desde || hoy;
   const hasta = req.query.hasta && req.query.hasta >= desde ? req.query.hasta : desde;
+
+  const sucursalFiltro = req.user.role === 'gerencia'
+    ? (req.query.sucursal_id ? Number(req.query.sucursal_id) : null)
+    : req.sucursalId;
 
   let sql = `
     SELECT ct.id, ct.fecha, ct.abierto_at, ct.cerrado_at, ct.created_by,
@@ -29,9 +38,10 @@ router.get('/', (req, res) => {
     FROM caja_turnos ct
     JOIN users u ON u.id = ct.created_by
     JOIN sucursales s ON s.id = ct.sucursal_id
-    WHERE ct.sucursal_id = ? AND ct.fecha BETWEEN ? AND ?
+    WHERE ct.fecha BETWEEN ? AND ?
+      AND (? IS NULL OR ct.sucursal_id = ?)
   `;
-  const params = [req.sucursalId, desde, hasta];
+  const params = [desde, hasta, sucursalFiltro, sucursalFiltro];
   if (esSupervisorOGerencia) {
     if (req.query.empleado_id) { sql += ' AND ct.created_by = ?'; params.push(Number(req.query.empleado_id)); }
   } else {
@@ -40,7 +50,11 @@ router.get('/', (req, res) => {
   }
   sql += ' ORDER BY ct.abierto_at DESC';
   const turnos = db.prepare(sql).all(...params);
-  res.json({ desde, hasta, verTodos: esSupervisorOGerencia, turnos });
+  res.json({
+    desde, hasta, verTodos: esSupervisorOGerencia,
+    puedeElegirSede: req.user.role === 'gerencia', sucursal_id: sucursalFiltro,
+    turnos,
+  });
 });
 
 // GET /api/planilla/mi-turno-abierto — para saber si el botón debe mostrar

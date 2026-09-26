@@ -39,6 +39,7 @@ import CambiarContrasena from './pages/CambiarContrasena';
 import MisPagos from './pages/MisPagos';
 import QrUnico from './pages/QrUnico';
 import PagoPublico from './pages/PagoPublico';
+import DashboardPublico from './pages/DashboardPublico';
 import SeleccionarSede from './pages/SeleccionarSede';
 import RolForm from './pages/RolForm';
 
@@ -54,6 +55,7 @@ export default function App() {
           <Route path="/privacidad" element={<PoliticaPrivacidad />} />
           <Route path="/terminos" element={<TerminosServicio />} />
           <Route path="/pago/:ruc" element={<PagoPublico />} />
+          <Route path="/dashboard-publico/:ruc/:token" element={<DashboardPublico />} />
           <Route
             path="/seleccionar-sede"
             element={

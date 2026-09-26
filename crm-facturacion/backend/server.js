@@ -51,6 +51,7 @@ const odinRoutes = require('./routes/odin');
 const pagosQrRoutes = require('./routes/pagosQr');
 const qrUnicoRoutes = require('./routes/qrUnico');
 const pagoPublicoRoutes = require('./routes/pagoPublico');
+const dashboardPublicoRoutes = require('./routes/dashboardPublico');
 const metasVentaRoutes = require('./routes/metasVenta');
 const tableroRoutes = require('./routes/tablero');
 const planillaRoutes = require('./routes/planilla');
@@ -134,6 +135,9 @@ app.use('/api/bi/:ruc', biRoutes);
 // Pública (sin sesión) — la escanea el cliente del comercio desde el QR
 // impreso, ver routes/pagoPublico.js.
 app.use('/api/pago-publico', pagoPublicoRoutes);
+// Pública (sin sesión) — el link que se comparte desde el Tablero de
+// Ventas, ver routes/dashboardPublico.js.
+app.use('/api/dashboard-publico', dashboardPublicoRoutes);
 
 // panel-central: su API vive en /panel-api (no /api, para no chocar con la
 // de este CRM) y su login/base de datos son completamente independientes

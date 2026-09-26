@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import api from '../api';
 import { useToast } from '../context/ToastContext';
+import { useAuth } from '../context/AuthContext';
 import MetodoPagoQr from '../components/MetodoPagoQr';
 import ExportButton from '../components/ExportButton';
 import { exportarTabla } from '../utils/excelImport';
@@ -20,6 +21,8 @@ function tipoLabel(d) {
 export default function CuentasPorCobrar() {
   const navigate = useNavigate();
   const toast = useToast();
+  const { user } = useAuth();
+  const esGerencia = user?.role === 'gerencia';
   const [deudas, setDeudas] = useState([]);
   const [cobrando, setCobrando] = useState(null); // deuda seleccionada para registrar cobro
   const [monto, setMonto] = useState('');
@@ -32,6 +35,11 @@ export default function CuentasPorCobrar() {
   const [hasta, setHasta] = useState('');
   const [vista, setVista] = useState('detalle'); // 'detalle' | 'resumen'
   const [expandido, setExpandido] = useState(null); // client_id expandido en la vista Resumen
+  // Un cliente ("colaborador") suele comprar en varias sedes, así que
+  // Gerencia ve por defecto la deuda de TODAS las sedes juntas (sin filtro
+  // = todas), con esta opción para acotar a una sede puntual.
+  const [sucursalId, setSucursalId] = useState('');
+  const [sucursales, setSucursales] = useState([]);
 
   const [marcando, setMarcando] = useState(null); // grupo de cliente para "Marcar todo pagado"
   const [medioMarcar, setMedioMarcar] = useState('efectivo');
@@ -39,14 +47,17 @@ export default function CuentasPorCobrar() {
   const [errorMarcar, setErrorMarcar] = useState('');
 
   useEffect(() => {
-    load();
     api.get('/metodos-pago').then((res) => setMetodosPago(res.data));
+    if (esGerencia) api.get('/sucursales').then((res) => setSucursales(res.data)).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  useEffect(() => { load(); }, [sucursalId]);
 
   function load() {
+    const params = esGerencia ? { sucursal_id: sucursalId || undefined } : {};
     Promise.all([
-      api.get('/invoices/deudas'),
-      api.get('/notas-venta/deudas'),
+      api.get('/invoices/deudas', { params }),
+      api.get('/notas-venta/deudas', { params }),
     ]).then(([invRes, nvRes]) => {
       const invRows = invRes.data.map((r) => ({ ...r, _source: 'invoice' }));
       const nvRows = nvRes.data.map((r) => ({ ...r, _source: 'nota_venta' }));
@@ -138,11 +149,12 @@ export default function CuentasPorCobrar() {
   }
 
   async function handleExportar(formato) {
-    const header = ['Fecha', 'Comprobante', 'Tipo', 'Cliente', 'Documento', 'Vendedor', 'Total', 'Pagado', 'Saldo'];
+    const header = ['Fecha', 'Comprobante', 'Tipo', ...(esGerencia ? ['Sede'] : []), 'Cliente', 'Documento', 'Vendedor', 'Total', 'Pagado', 'Saldo'];
     const rows = deudasFiltradas.map((d) => [
       d.fecha_emision,
       `${d.serie}-${String(d.numero).padStart(6, '0')}`,
       tipoLabel(d),
+      ...(esGerencia ? [d.sede_nombre || ''] : []),
       d.cliente_nombre,
       `${d.cliente_tipo_documento || ''} ${d.cliente_documento || ''}`.trim(),
       d.vendedor_nombre || '',
@@ -180,6 +192,17 @@ export default function CuentasPorCobrar() {
           <label>Hasta</label>
           <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} />
         </div>
+        {esGerencia && (
+          <div className="filter-field">
+            <label>Sede</label>
+            <select value={sucursalId} onChange={(e) => setSucursalId(e.target.value)}>
+              <option value="">Todas las sedes</option>
+              {sucursales.map((s) => (
+                <option key={s.id} value={s.id}>{s.nombre}</option>
+              ))}
+            </select>
+          </div>
+        )}
         <ExportButton onExport={handleExportar} className="btn-primary" />
       </div>
 
@@ -195,7 +218,11 @@ export default function CuentasPorCobrar() {
       {vista === 'detalle' && (
         <table className="data-table">
           <thead>
-            <tr><th>Fecha</th><th>Comprobante</th><th>Tipo</th><th>Cliente</th><th>Documento</th><th>Vendedor</th><th>Total</th><th>Pagado</th><th>Saldo</th><th></th></tr>
+            <tr>
+              <th>Fecha</th><th>Comprobante</th><th>Tipo</th>
+              {esGerencia && <th>Sede</th>}
+              <th>Cliente</th><th>Documento</th><th>Vendedor</th><th>Total</th><th>Pagado</th><th>Saldo</th><th></th>
+            </tr>
           </thead>
           <tbody>
             {deudasFiltradas.map((d) => (
@@ -203,6 +230,7 @@ export default function CuentasPorCobrar() {
                 <td>{d.fecha_emision}</td>
                 <td>{d.serie}-{String(d.numero).padStart(6, '0')}</td>
                 <td>{tipoLabel(d)}</td>
+                {esGerencia && <td>{d.sede_nombre}</td>}
                 <td>{d.cliente_nombre}</td>
                 <td>{d.cliente_tipo_documento} {d.cliente_documento}</td>
                 <td>{d.vendedor_nombre || '—'}</td>
@@ -215,7 +243,7 @@ export default function CuentasPorCobrar() {
               </tr>
             ))}
             {deudasFiltradas.length === 0 && (
-              <tr><td colSpan={10} className="empty-row">
+              <tr><td colSpan={esGerencia ? 11 : 10} className="empty-row">
                 {deudas.length === 0 ? 'No hay cuentas por cobrar pendientes.' : 'Ningún comprobante coincide con el filtro.'}
               </td></tr>
             )}
@@ -248,7 +276,10 @@ export default function CuentasPorCobrar() {
                 </tr>
                 {expandido === g.client_id && g.items.map((d) => (
                   <tr key={`${d._source}-${d.id}`} className="caja-row-auto">
-                    <td colSpan={2} style={{ paddingLeft: 28 }}>{d.fecha_emision} · {d.serie}-{String(d.numero).padStart(6, '0')} · {tipoLabel(d)}</td>
+                    <td colSpan={2} style={{ paddingLeft: 28 }}>
+                      {d.fecha_emision} · {d.serie}-{String(d.numero).padStart(6, '0')} · {tipoLabel(d)}
+                      {esGerencia && d.sede_nombre ? ` · ${d.sede_nombre}` : ''}
+                    </td>
                     <td></td>
                     <td style={{ textAlign: 'right' }}>S/ {d.saldo.toFixed(2)}</td>
                     <td className="row-actions">
