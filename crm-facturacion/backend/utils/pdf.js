@@ -268,20 +268,32 @@ function buildA4Pdf(invoice, items, empresa, acento, logo, qr, cobros) {
   y += 10;
 
   // ---------- Totales + monto en letras ----------
+  // El % de descuento global (Configuración → Descuentos) no tiene una
+  // columna propia en la tabla de items (esa columna "DESC" es el
+  // descuento por línea de una Oferta/Combo, un concepto aparte) — sin esta
+  // línea, el cliente ve un P.U./Importe con números "raros" sin ninguna
+  // explicación de por qué. Op. gravada/IGV/TOTAL ya vienen calculados
+  // sobre el monto con el descuento aplicado, así que esto es solo
+  // informativo: no cambia ningún cálculo, únicamente hace visible el %.
+  const tieneDescuentoGlobal = Number(invoice.descuento_global_pct) > 0;
+  const discOffset = tieneDescuentoGlobal ? 15 : 0;
   const totalsBoxY = y;
   doc.font('Helvetica').fontSize(9).fillColor('#000');
-  doc.text('Op. gravada:', 350, totalsBoxY, { width: 120, align: 'left' });
-  doc.text(money(invoice.subtotal, invoice.moneda), 475, totalsBoxY, { width: 80, align: 'right' });
-  doc.text(igvLabel(invoice, empresa), 350, totalsBoxY + 15, { width: 120, align: 'left' });
-  doc.text(money(invoice.igv, invoice.moneda), 475, totalsBoxY + 15, { width: 80, align: 'right' });
+  if (tieneDescuentoGlobal) {
+    doc.text(`Descuento aplicado (${invoice.descuento_global_pct}%):`, 350, totalsBoxY, { width: 160, align: 'left' });
+  }
+  doc.text('Op. gravada:', 350, totalsBoxY + discOffset, { width: 120, align: 'left' });
+  doc.text(money(invoice.subtotal, invoice.moneda), 475, totalsBoxY + discOffset, { width: 80, align: 'right' });
+  doc.text(igvLabel(invoice, empresa), 350, totalsBoxY + discOffset + 15, { width: 120, align: 'left' });
+  doc.text(money(invoice.igv, invoice.moneda), 475, totalsBoxY + discOffset + 15, { width: 80, align: 'right' });
   doc.font('Helvetica-Bold').fontSize(12).fillColor(acento);
-  doc.text('TOTAL:', 350, totalsBoxY + 33, { width: 120, align: 'left' });
-  doc.text(money(invoice.total, invoice.moneda), 475, totalsBoxY + 33, { width: 80, align: 'right' });
+  doc.text('TOTAL:', 350, totalsBoxY + discOffset + 33, { width: 120, align: 'left' });
+  doc.text(money(invoice.total, invoice.moneda), 475, totalsBoxY + discOffset + 33, { width: 80, align: 'right' });
 
   doc.font('Helvetica-Bold').fontSize(8).fillColor('#333');
-  doc.text(montoEnLetras(invoice.total, invoice.moneda), 40, totalsBoxY + 8, { width: 290 });
+  doc.text(montoEnLetras(invoice.total, invoice.moneda), 40, totalsBoxY + discOffset + 8, { width: 290 });
 
-  y = totalsBoxY + 56;
+  y = totalsBoxY + discOffset + 56;
 
   // ---------- Crédito (ventas "abonado") o desglose (pago "mixto") ----------
   if (esAbonado || esMixto) {
@@ -451,6 +463,15 @@ async function buildNotaVentaPdf(notaVenta, items, empresa) {
   doc.moveTo(40, y).lineTo(555, y).stroke('#ddd');
   y += 10;
 
+  // Ver el mismo comentario en buildA4Pdf: el % de descuento global no
+  // tiene columna propia en la tabla de items, así que sin esta línea no
+  // hay forma de saber por qué el importe no calza con cantidad × P.U.
+  if (Number(notaVenta.descuento_global_pct) > 0) {
+    doc.font('Helvetica').fontSize(9).fillColor('#000');
+    doc.text(`Descuento aplicado (${notaVenta.descuento_global_pct}%):`, 350, y, { width: 160, align: 'left' });
+    y += 15;
+  }
+
   doc.font('Helvetica-Bold').fontSize(12).fillColor(acento);
   doc.text('TOTAL:', 350, y, { width: 120, align: 'left' });
   doc.text(money(notaVenta.total, notaVenta.moneda), 475, y, { width: 80, align: 'right' });
@@ -492,6 +513,7 @@ function buildTicketPdf(invoice, items, empresa, acento, logo, qr, cobros) {
     + (qr ? 130 : 0)
     + (invoice.cliente_direccion ? 20 : 0)
     + (invoice.cliente_referencia ? 20 : 0)
+    + (Number(invoice.descuento_global_pct) > 0 ? 10 : 0)
     + ((esAbonado || esMixto) ? 90 + (cobros?.length || 0) * 12 : 0);
   const doc = new PDFDocument({ margin, size: [width, estimatedHeight] });
   const esReal = invoice.modo_emision === 'real' && invoice.sunat_estado === 'aceptado';
@@ -562,6 +584,10 @@ function buildTicketPdf(invoice, items, empresa, acento, logo, qr, cobros) {
   doc.moveTo(margin, y).lineTo(width - margin, y).stroke('#000');
   y += 8;
   doc.fontSize(7);
+  if (Number(invoice.descuento_global_pct) > 0) {
+    doc.fillColor('#000').text(`Descuento aplicado (${invoice.descuento_global_pct}%)`, margin, y, { width: contentWidth });
+    y += 10;
+  }
   doc.text('Subtotal:', margin, y, { width: contentWidth - 60 });
   doc.text(money(invoice.subtotal, invoice.moneda), margin, y, { width: contentWidth, align: 'right' });
   y += 10;
