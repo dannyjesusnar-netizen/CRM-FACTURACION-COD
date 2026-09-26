@@ -66,11 +66,19 @@ function construirPayload(invoice, items, client) {
       codigo: it.codigo_producto || String(it.product_id || 'ITEM'),
       descripcion: it.descripcion,
       cantidad: it.cantidad,
-      // Se deriva del subtotal/igv reales de la línea (no de una tasa fija)
-      // porque la tasa de IGV es configurable y puede variar entre comprobantes.
-      valor_unitario: gravado ? round2((it.subtotal - it.igv_item) / it.cantidad) : it.precio_unitario,
-      precio_unitario: it.precio_unitario,
-      descuento: it.descuento_pct ? String(round2((it.cantidad * it.precio_unitario) * (it.descuento_pct / 100))) : '',
+      // valor_unitario/precio_unitario SIEMPRE se derivan de it.subtotal (el
+      // importe real de la línea, ya neto de descuento — ver
+      // RegistroVenta.jsx:computed.rows) en vez de it.precio_unitario (el
+      // precio de lista, SIN descuento). Antes se mandaba precio_unitario
+      // sin descontar mientras subtotal/total sí iban descontados: para una
+      // línea con descuento, SUNAT rechazaba el comprobante con "Error de
+      // cálculo de 'precio_unitario'" porque no cuadraba con el total real
+      // de la línea. descuento_global (arriba) sigue el mismo criterio —
+      // vacío/0 porque el descuento ya está aplicado dentro de los totales,
+      // no se reporta aparte.
+      valor_unitario: round2((it.subtotal - it.igv_item) / it.cantidad),
+      precio_unitario: round2(it.subtotal / it.cantidad),
+      descuento: '',
       subtotal: it.subtotal - it.igv_item,
       tipo_de_igv: gravado ? 1 : 8, // 1 = Gravado - Op. Onerosa, 8 = Exonerado (catálogo 07 SUNAT)
       igv: it.igv_item,
