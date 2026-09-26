@@ -10,6 +10,16 @@ router.use(requireAuth);
 
 const TIPOS_VALIDOS = ['efectivo', 'billetera', 'pos', 'transferencia', 'link', 'otro'];
 
+// "abonado" no es un método de pago real, es el valor que ya usa todo el
+// sistema para marcar una venta al crédito (invoices.forma_pago = 'abonado'
+// — ver Cuentas por Cobrar, utils/cajaCalculos.js). Ese código no está en la
+// tabla metodos_pago (buildResumen arma su tarjeta "Abonados" del Tablero de
+// Caja aparte, en memoria) así que nada impedía crear un método de pago real
+// cuyo nombre también slugifique a "abonado" — quedaban dos tarjetas
+// distintas en Caja con el mismo significado, y encima cualquier venta
+// cobrada con ese método quedaba registrada como crédito real sin querer.
+const CODIGOS_RESERVADOS = ['abonado'];
+
 function slugify(nombre) {
   return String(nombre)
     .normalize('NFD').replace(/[̀-ͯ]/g, '') // quita tildes
@@ -53,6 +63,9 @@ router.post('/', requireMetodosPago, (req, res) => {
   if (errorQr) return res.status(400).json({ error: errorQr });
   const codigo = slugify(nombre);
   if (!codigo) return res.status(400).json({ error: 'nombre inválido.' });
+  if (CODIGOS_RESERVADOS.includes(codigo)) {
+    return res.status(400).json({ error: '"Abonado" ya es un concepto reservado del sistema (venta al crédito) — usa otro nombre para este método de pago.' });
+  }
   const maxOrden = db.prepare('SELECT COALESCE(MAX(orden), 0) AS m FROM metodos_pago').get().m;
   try {
     const info = db.prepare(
