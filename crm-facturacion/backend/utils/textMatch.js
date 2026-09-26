@@ -45,9 +45,15 @@ function distanciaLevenshtein(a, b) {
 // producto? Primero por substring (rápido, cubre la mayoría de casos);
 // si no, por distancia de edición chica — más tolerancia para palabras
 // largas (1 error cada ~4 letras, tope 2) que para palabras cortas.
+// Palabras de 4 letras o menos NO toleran errores de tipeo: con solo 4
+// letras, una distancia de 1 permite que "lata" coincida con "nata",
+// "pata", "bata", "rata", "gata" o "data" — palabras completamente
+// distintas, no errores de tipeo — e inunda la búsqueda de resultados sin
+// relación. Para esas, solo vale la coincidencia por substring de arriba.
 function palabraCoincide(token, palabras) {
   if (palabras.some((p) => p.includes(token) || token.includes(p))) return true;
-  const maxDistancia = token.length <= 4 ? 1 : 2;
+  if (token.length <= 4) return false;
+  const maxDistancia = token.length <= 8 ? 1 : 2;
   return palabras.some((p) => distanciaLevenshtein(token, p) <= maxDistancia);
 }
 
