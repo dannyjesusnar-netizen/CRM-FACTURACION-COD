@@ -196,9 +196,10 @@ const EXPORTADORES_MASIVOS = [
     // separado: "% Descuento" es el del ítem (Oferta/Combo) y "% Descuento
     // Venta" es el global de todo el comprobante (un Descuento con nombre).
     endpoint: '/reports/ventas-detalle',
-    columnas: ['fecha_emision', 'sede', 'tipo', 'serie', 'numero', 'cliente_documento', 'cliente_nombre', 'producto_codigo', 'producto_nombre', 'categoria', 'marca', 'proveedor', 'cantidad', 'precio_unitario', 'descuento_pct', 'subtotal_item', 'forma_pago', 'descuento_global_pct', 'total_venta', 'estado', 'vendedor_nombre', 'atribuido_nombre', 'atribuido_categoria'],
-    headers: ['Fecha', 'Sede', 'Tipo', 'Serie', 'Número', 'Doc. Cliente', 'Cliente', 'Cód. Producto', 'Producto', 'Categoría', 'Marca', 'Proveedor', 'Cantidad', 'Precio Unit.', '% Descuento', 'Subtotal Ítem', 'Forma de Pago', '% Descuento Venta', 'Total Venta', 'Estado', 'Vendedor', 'Atribuido a', 'Categoría Atribuido'],
-    descripcion: 'Detalle de cada producto vendido (Boletas, Facturas, Notas de Crédito y Notas de Venta Interna), con marca y proveedor por separado, el descuento del ítem y el descuento global de la venta, categoría, vendedor y a quién se atribuyó — sin filtro de fecha.',
+    columnas: ['fecha_emision', 'sede', 'tipo', 'serie', 'numero', 'cliente_documento', 'cliente_nombre', 'producto_codigo', 'producto_nombre', 'categoria', 'marca', 'linea', 'proveedor', 'cantidad', 'precio_unitario', 'descuento_pct', 'subtotal_item', 'forma_pago', 'descuento_global_pct', 'total_venta', 'estado', 'vendedor_nombre', 'atribuido_nombre', 'atribuido_categoria'],
+    headers: ['Fecha', 'Sede', 'Tipo', 'Serie', 'Número', 'Doc. Cliente', 'Cliente', 'Cód. Producto', 'Producto', 'Categoría', 'Marca', 'Línea', 'Proveedor', 'Cantidad', 'Precio Unit.', '% Descuento', 'Subtotal Ítem', 'Forma de Pago', '% Descuento Venta', 'Total Venta', 'Estado', 'Vendedor', 'Atribuido a', 'Categoría Atribuido'],
+    descripcion: 'Detalle de cada producto vendido (Boletas, Facturas, Notas de Crédito y Notas de Venta Interna), con marca, línea (Organic/Fit) y proveedor por separado, el descuento del ítem y el descuento global de la venta, categoría, vendedor y a quién se atribuyó — sin filtro de fecha.',
+    permiteTodasSedes: true,
   },
 ];
 
@@ -1353,15 +1354,17 @@ export default function Configuracion() {
     descargarComoExcel('plantilla_carga_masiva_operativos.xlsx', CARGA_MASIVA_OPERATIVOS_COLUMNAS, [ejemplo]);
   }
 
-  async function exportarDatos(config) {
-    setExportandoKey(config.key);
+  async function exportarDatos(config, todasSedes = false) {
+    setExportandoKey(todasSedes ? `${config.key}:todas` : config.key);
     try {
-      const datos = config.fetchAll ? await config.fetchAll() : (await api.get(config.endpoint)).data;
+      const endpoint = todasSedes ? `${config.endpoint}?todas_sedes=1` : config.endpoint;
+      const datos = config.fetchAll ? await config.fetchAll() : (await api.get(endpoint)).data;
       const filas = datos.map((fila) => {
         const f = config.transformar ? config.transformar(fila) : fila;
         return config.columnas.map((c) => f[c] ?? '');
       });
-      await descargarComoExcel(`${config.key}.xlsx`, config.headers || config.columnas, filas);
+      const nombreArchivo = todasSedes ? `${config.key}_todas_sedes.xlsx` : `${config.key}.xlsx`;
+      await descargarComoExcel(nombreArchivo, config.headers || config.columnas, filas);
       toast.success(`${config.titulo}: Excel generado con ${filas.length} fila${filas.length === 1 ? '' : 's'}.`);
     } catch (err) {
       toast.error(err.response?.data?.error || 'No se pudo generar el Excel.');
@@ -2789,16 +2792,28 @@ export default function Configuracion() {
                       <strong>{config.titulo}</strong>
                       <span style={{ fontSize: 12, color: 'var(--ink-muted)' }}>{config.descripcion}</span>
                     </div>
-                    <div className="metodo-pago-actions">
+                    <div className="metodo-pago-actions" style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end' }}>
                       <button
                         type="button"
                         className="btn-primary"
                         style={{ width: 'auto' }}
-                        disabled={exportandoKey === config.key}
+                        disabled={!!exportandoKey}
                         onClick={() => exportarDatos(config)}
                       >
                         {exportandoKey === config.key ? 'Generando...' : 'Descargar'}
                       </button>
+                      {config.permiteTodasSedes && user?.puede_cambiar_sede && (
+                        <button
+                          type="button"
+                          className="btn-secondary"
+                          style={{ width: 'auto', fontSize: 12 }}
+                          disabled={!!exportandoKey}
+                          onClick={() => exportarDatos(config, true)}
+                          title="Descarga en un solo Excel las ventas de las 11 sedes, en vez de solo la sede activa."
+                        >
+                          {exportandoKey === `${config.key}:todas` ? 'Generando...' : 'Descargar todas las sedes'}
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}
