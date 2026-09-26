@@ -96,6 +96,34 @@ router.get('/ranking-personal', (req, res) => {
     GROUP BY u.id
   `).all(String(anio), mesPad, String(anio), mesPad, categoria, sucursalId, sucursalId);
 
+  // A pedido: la venta de los Entrenadores suma automáticamente a la del
+  // Supervisor de su misma sede y turno (no afecta la meta, solo la venta
+  // que se compara contra ella en este ranking).
+  if (categoria === 'supervisor') {
+    const ventasTrainer = db.prepare(`
+      SELECT u.sucursal_id, u.turno, COALESCE(SUM(v.monto), 0) AS venta
+      FROM users u
+      LEFT JOIN (
+        SELECT COALESCE(atribuido_a, created_by) AS user_id,
+               CASE WHEN tipo_comprobante = 'nota_credito' THEN -total ELSE total END AS monto
+        FROM invoices
+        WHERE estado = 'emitido' AND strftime('%Y', fecha_emision) = ? AND strftime('%m', fecha_emision) = ?
+        UNION ALL
+        SELECT COALESCE(atribuido_a, created_by) AS user_id, total AS monto
+        FROM notas_venta
+        WHERE estado = 'emitido' AND strftime('%Y', fecha_emision) = ? AND strftime('%m', fecha_emision) = ?
+      ) v ON v.user_id = u.id
+      WHERE u.categoria_staff = 'trainer' AND u.activo = 1 AND u.turno IS NOT NULL
+      GROUP BY u.sucursal_id, u.turno
+    `).all(String(anio), mesPad, String(anio), mesPad);
+    const trainerMap = new Map(ventasTrainer.map((t) => [`${t.sucursal_id}:${t.turno}`, t.venta]));
+    rows.forEach((r) => {
+      if (r.turno) {
+        r.venta += trainerMap.get(`${r.sucursal_id}:${r.turno}`) || 0;
+      }
+    });
+  }
+
   const pools = db.prepare(
     'SELECT sucursal_id, monto_meta, dotacion, monto_individual FROM metas_venta_sede WHERE categoria_staff = ? AND anio = ? AND mes = ?'
   ).all(categoria, anio, mes);
