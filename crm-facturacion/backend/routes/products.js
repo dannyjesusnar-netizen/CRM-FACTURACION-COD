@@ -222,6 +222,14 @@ router.post('/carga-masiva', requireAccion('inventario', 'productos'), (req, res
       const categoria = (r.categoria || 'General').toString().trim() || 'General';
       const marca = (r.marca || '').toString().trim() || null;
       const codigoBarras = (r.codigo_barras || '').toString().trim() || null;
+      // linea (organic/fit): igual criterio que el alta/edición individual —
+      // sin la columna en el archivo (undefined) no se toca; vacía explícita
+      // borra la línea; cualquier otro valor debe ser "organic" o "fit".
+      const lineaResultado = normalizarLinea(r.linea);
+      if (lineaResultado !== null && typeof lineaResultado === 'object' && lineaResultado.error) {
+        errores.push({ codigo, error: 'linea inválida — use "organic" o "fit" (o déjelo vacío).' });
+        continue;
+      }
 
       const existing = db.prepare('SELECT * FROM products WHERE codigo = ?').get(codigo);
       if (!existing && !crearNuevos) {
@@ -240,17 +248,19 @@ router.post('/carga-masiva', requireAccion('inventario', 'productos'), (req, res
               nuevoAgregado = round2(existing.stock + (stock - getStockSucursal(existing.id, req.sucursalId)));
             }
           }
+          const lineaFinal = lineaResultado === undefined ? existing.linea : lineaResultado;
           db.prepare(
             `UPDATE products SET nombre = ?, categoria = ?, marca = ?, unidad = ?, tipo = ?, precio_unitario = ?, precio_compra = ?,
-             codigo_barras = ?, stock = ? WHERE id = ?`
-          ).run(nombre, categoria, marca, unidad, tipo, precioUnitario, precioCompra, codigoBarras, nuevoAgregado, existing.id);
+             codigo_barras = ?, stock = ?, linea = ? WHERE id = ?`
+          ).run(nombre, categoria, marca, unidad, tipo, precioUnitario, precioCompra, codigoBarras, nuevoAgregado, lineaFinal, existing.id);
           if (tipo !== 'servicio') setStockSucursal(existing.id, req.sucursalId, sedeStockNuevo);
           actualizados.push({ codigo, nombre });
         } else {
+          const lineaFinal = lineaResultado === undefined ? null : lineaResultado;
           const info = db.prepare(
-            `INSERT INTO products (codigo, codigo_barras, nombre, tipo, categoria, marca, unidad, precio_compra, precio_unitario, stock)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-          ).run(codigo, codigoBarras, nombre, tipo, categoria, marca, unidad, precioCompra, precioUnitario, stock);
+            `INSERT INTO products (codigo, codigo_barras, nombre, tipo, categoria, marca, unidad, precio_compra, precio_unitario, stock, linea)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          ).run(codigo, codigoBarras, nombre, tipo, categoria, marca, unidad, precioCompra, precioUnitario, stock, lineaFinal);
           if (tipo !== 'servicio' && stock > 0) setStockSucursal(info.lastInsertRowid, req.sucursalId, stock);
           creados.push({ codigo, nombre });
         }
