@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, ZoomIn, ZoomOut, RotateCcw, Camera } from 'lucide-react';
 import api from '../api';
+import { useAuth } from '../context/AuthContext';
 import { hoyPeru } from '../utils/fechas';
 import { useToast } from '../context/ToastContext';
 
@@ -11,6 +12,11 @@ function todayStr() {
 
 function money(n) {
   return `S/ ${Number(n || 0).toFixed(2)}`;
+}
+
+function fechaLegible(iso) {
+  const [y, m, d] = String(iso).slice(0, 10).split('-');
+  return `${d}/${m}/${y}`;
 }
 
 // Mismo mecanismo que Dashboard.jsx:copiarPanelComoImagen — primero intenta
@@ -47,16 +53,29 @@ async function capturarComoImagen(ref, toast) {
   }
 }
 
-// Cierre de caja personal: cada vendedor/cajero ve SOLO lo suyo (el backend
-// ya fuerza empleado_id = quien está logueado para cualquiera que no sea
-// Gerencia/Supervisor — ver GET /reports/cierre-caja), así que acá no hay
-// selector de empleado. Letra grande y poco espacio entre secciones a
-// propósito: pensada para leerse y capturarse de un vistazo al cerrar
-// turno, con un botón de cámara (copia/descarga la imagen directo) además
-// del zoom manual para cuando el contenido no entra en la pantalla.
+// Una fila simple "etiqueta ... valor", como una línea de boleta — en vez de
+// una tabla con bordes, para que el conjunto se sienta como un recibo real.
+function Fila({ label, valor, total }) {
+  return (
+    <div className={'mi-cierre-row' + (total ? ' total' : '')}>
+      <span>{label}</span>
+      <strong>{valor}</strong>
+    </div>
+  );
+}
+
+// Cierre de caja personal, con formato de recibo (como una boleta simple):
+// cada vendedor/cajero ve SOLO lo suyo (el backend ya fuerza empleado_id =
+// quien está logueado para cualquiera que no sea Gerencia/Supervisor — ver
+// GET /reports/cierre-caja), así que acá no hay selector de empleado. Usa
+// el color y el logo de la empresa (Configuración → Empresa /
+// color_tablero_ventas) para que se sienta parte de la marca. El botón de
+// cámara (html2canvas) y el zoom manual sirven para capturar todo de un
+// vistazo al cerrar turno.
 export default function MiCierreCaja() {
   const navigate = useNavigate();
   const toast = useToast();
+  const { user, empresa } = useAuth();
   const panelRef = useRef(null);
   const [fecha, setFecha] = useState(todayStr());
   const [cierre, setCierre] = useState(null);
@@ -80,6 +99,10 @@ export default function MiCierreCaja() {
     setZoom((z) => Math.max(0.5, Math.round((z - 0.1) * 100) / 100));
   }
 
+  const color = empresa?.color_tablero_ventas || '#16a34a';
+  const totalDocumentos = cierre?.ventas_por_documento.reduce((s, d) => s + d.cantidad, 0) ?? 0;
+  const totalDocumentosMonto = cierre?.ventas_por_documento.reduce((s, d) => s + d.total, 0) ?? 0;
+
   return (
     <div>
       <h1 className="page-title" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -92,7 +115,7 @@ export default function MiCierreCaja() {
         Solo tus propias ventas y movimientos del día — no los de otros empleados de la sede.
       </p>
 
-      <div className="filter-panel" style={{ marginBottom: 12 }}>
+      <div className="filter-panel" style={{ marginBottom: 16 }}>
         <div className="filter-field">
           <label>Fecha</label>
           <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} />
@@ -117,7 +140,7 @@ export default function MiCierreCaja() {
           <button
             type="button"
             className="btn-primary"
-            style={{ width: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}
+            style={{ width: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', background: color, borderColor: color }}
             onClick={() => capturarComoImagen(panelRef, toast)}
           >
             <Camera size={16} /> Capturar
@@ -133,86 +156,61 @@ export default function MiCierreCaja() {
         <div style={{ overflow: 'auto' }}>
           <div
             ref={panelRef}
-            className="panel"
-            style={{
-              transform: `scale(${zoom})`, transformOrigin: 'top left', width: zoom < 1 ? `${100 / zoom}%` : 'auto',
-              fontSize: 16, background: 'var(--surface)',
-            }}
+            className="mi-cierre-receipt"
+            style={{ transform: `scale(${zoom})`, transformOrigin: 'top center', width: zoom < 1 ? `${100 / zoom}%` : 'auto' }}
           >
-            <h4 style={{ marginTop: 0, marginBottom: 6, fontSize: 17 }}>Efectivo</h4>
-            {cierre.efectivo ? (
-              <table className="data-table compact mi-cierre-table">
-                <tbody>
-                  <tr><td>Saldo inicial</td><td style={{ textAlign: 'right' }}>{money(cierre.efectivo.saldo_inicial)}</td></tr>
-                  <tr><td>Ingresos</td><td style={{ textAlign: 'right' }}>{money(cierre.efectivo.ingresos.total)}</td></tr>
-                  <tr><td>Egresos</td><td style={{ textAlign: 'right' }}>{money(cierre.efectivo.egresos.total)}</td></tr>
-                  <tr className="totals-footer"><td>Saldo final</td><td style={{ textAlign: 'right' }}>{money(cierre.efectivo.saldo_final)}</td></tr>
-                </tbody>
-              </table>
-            ) : <p className="empty-row">El método Efectivo no está activo.</p>}
+            <div className="mi-cierre-receipt-header" style={{ background: color }}>
+              {empresa?.logo_data_url && (
+                <img src={empresa.logo_data_url} alt="Logo" className="mi-cierre-receipt-logo" />
+              )}
+              <div className="mi-cierre-receipt-empresa">{empresa?.nombre_comercial || empresa?.razon_social || 'QORIA'}</div>
+            </div>
 
-            <h4 style={{ marginTop: 14, marginBottom: 6, fontSize: 17 }}>🧾 Abonados</h4>
-            {cierre.abonados ? (
-              <table className="data-table compact mi-cierre-table">
-                <tbody>
-                  <tr><td>Cantidad de ventas abonado</td><td style={{ textAlign: 'right' }}>{cierre.abonados.cantidad}</td></tr>
-                  <tr className="totals-footer"><td>Total vendido a crédito</td><td style={{ textAlign: 'right' }}>{money(cierre.abonados.ingresos.total)}</td></tr>
-                </tbody>
-              </table>
-            ) : <p className="empty-row">Sin ventas abonado en la fecha seleccionada.</p>}
+            <div className="mi-cierre-receipt-body">
+              <p className="mi-cierre-receipt-titulo">Cierre de Caja</p>
+              <div className="mi-cierre-receipt-meta">
+                <strong>{user?.full_name}</strong>
+                {fechaLegible(fecha)} · {user?.sucursal_nombre || ''}
+              </div>
 
-            <h4 style={{ marginTop: 14, marginBottom: 6, fontSize: 17 }}>Ventas por Documento</h4>
-            <table className="data-table mi-cierre-table">
-              <thead>
-                <tr><th>Documento</th><th style={{ textAlign: 'right' }}>Cantidad</th><th style={{ textAlign: 'right' }}>Total</th></tr>
-              </thead>
-              <tbody>
-                {cierre.ventas_por_documento.map((d) => (
-                  <tr key={d.doc}>
-                    <td>{d.label}</td>
-                    <td style={{ textAlign: 'right' }}>{d.cantidad}</td>
-                    <td style={{ textAlign: 'right' }}>{money(d.total)}</td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr className="totals-footer">
-                  <td>Total</td>
-                  <td style={{ textAlign: 'right' }}>{cierre.ventas_por_documento.reduce((s, d) => s + d.cantidad, 0)}</td>
-                  <td style={{ textAlign: 'right' }}>{money(cierre.ventas_por_documento.reduce((s, d) => s + d.total, 0))}</td>
-                </tr>
-              </tfoot>
-            </table>
+              <p className="mi-cierre-section-title" style={{ color }}>Efectivo</p>
+              {cierre.efectivo ? (
+                <>
+                  <Fila label="Saldo inicial" valor={money(cierre.efectivo.saldo_inicial)} />
+                  <Fila label="Ingresos" valor={money(cierre.efectivo.ingresos.total)} />
+                  <Fila label="Egresos" valor={`-${money(cierre.efectivo.egresos.total)}`} />
+                  <Fila label="Saldo final" valor={money(cierre.efectivo.saldo_final)} total />
+                </>
+              ) : <p className="mi-cierre-empty">El método Efectivo no está activo.</p>}
 
-            <h4 style={{ marginTop: 14, marginBottom: 6, fontSize: 17 }}>Ventas por Forma de Pago</h4>
-            <table className="data-table mi-cierre-table">
-              <thead>
-                <tr><th>Forma de pago</th><th style={{ textAlign: 'right' }}>Cantidad</th><th style={{ textAlign: 'right' }}>Total</th></tr>
-              </thead>
-              <tbody>
-                {cierre.ventas_por_forma_pago.map((f) => (
-                  <tr key={f.forma_pago}>
-                    <td>{f.label}</td>
-                    <td style={{ textAlign: 'right' }}>{f.cantidad}</td>
-                    <td style={{ textAlign: 'right' }}>{money(f.total)}</td>
-                  </tr>
-                ))}
-                {cierre.ventas_por_forma_pago.length === 0 && (
-                  <tr><td colSpan={3} className="empty-row">Sin ventas en la fecha seleccionada.</td></tr>
-                )}
-              </tbody>
-            </table>
+              <p className="mi-cierre-section-title" style={{ color }}>🧾 Abonados (crédito)</p>
+              {cierre.abonados ? (
+                <Fila label={`Vendido a crédito (${cierre.abonados.cantidad})`} valor={money(cierre.abonados.ingresos.total)} total />
+              ) : <p className="mi-cierre-empty">Sin ventas abonado en la fecha seleccionada.</p>}
 
-            <h4 style={{ marginTop: 14, marginBottom: 6, fontSize: 17 }}>Resultado del Día</h4>
-            <table className="data-table compact mi-cierre-table">
-              <tbody>
-                <tr><td>Total de ventas bruto</td><td style={{ textAlign: 'right' }}>{money(cierre.turno.bruto)}</td></tr>
-                <tr><td>Descuento</td><td style={{ textAlign: 'right' }}>-{money(cierre.turno.descuento)}</td></tr>
-                <tr><td>Devoluciones</td><td style={{ textAlign: 'right' }}>-{money(cierre.turno.devoluciones)}</td></tr>
-                <tr><td>Anulaciones</td><td style={{ textAlign: 'right' }}>-{money(cierre.turno.anulaciones)}</td></tr>
-                <tr className="totals-footer"><td>Total de ventas neto</td><td style={{ textAlign: 'right' }}>{money(cierre.turno.neto)}</td></tr>
-              </tbody>
-            </table>
+              <p className="mi-cierre-section-title" style={{ color }}>Ventas por Documento</p>
+              {cierre.ventas_por_documento.map((d) => (
+                <Fila key={d.doc} label={`${d.label} (${d.cantidad})`} valor={money(d.total)} />
+              ))}
+              <Fila label={`Total (${totalDocumentos})`} valor={money(totalDocumentosMonto)} total />
+
+              <p className="mi-cierre-section-title" style={{ color }}>Ventas por Forma de Pago</p>
+              {cierre.ventas_por_forma_pago.map((f) => (
+                <Fila key={f.forma_pago} label={`${f.label} (${f.cantidad})`} valor={money(f.total)} />
+              ))}
+              {cierre.ventas_por_forma_pago.length === 0 && (
+                <p className="mi-cierre-empty">Sin ventas en la fecha seleccionada.</p>
+              )}
+
+              <p className="mi-cierre-section-title" style={{ color }}>Resultado del Día</p>
+              <Fila label="Total de ventas bruto" valor={money(cierre.turno.bruto)} />
+              <Fila label="Descuento" valor={`-${money(cierre.turno.descuento)}`} />
+              <Fila label="Devoluciones" valor={`-${money(cierre.turno.devoluciones)}`} />
+              <Fila label="Anulaciones" valor={`-${money(cierre.turno.anulaciones)}`} />
+              <Fila label="Total neto" valor={money(cierre.turno.neto)} total />
+
+              <p className="mi-cierre-receipt-footer">Generado por QORIA</p>
+            </div>
           </div>
         </div>
       )}

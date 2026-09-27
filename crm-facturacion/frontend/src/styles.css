@@ -735,13 +735,44 @@ html.dark .btn-export { color: #04231e; }
 .table-scroll { overflow-x: auto; }
 .data-table.compact th, .data-table.compact td { padding: 8px 8px; font-size: 12px; white-space: nowrap; }
 
-/* Mi Cierre de Caja (vendedor): letra más grande y menos espacio entre
-   filas que el resto de tablas del sistema — pensada para leerse y
-   capturarse de un vistazo desde el celular al cerrar turno. */
-.data-table.mi-cierre-table th,
-.data-table.mi-cierre-table td { font-size: 16px; padding: 7px 8px; }
-.data-table.compact.mi-cierre-table th,
-.data-table.compact.mi-cierre-table td { font-size: 16px; padding: 6px 8px; }
+/* Mi Cierre de Caja (vendedor): formato de recibo/boleta simple — una
+   tarjeta angosta y centrada, con la franja superior del color de marca
+   (empresa.color_tablero_ventas) y logo, en vez de las tablas anchas del
+   resto del sistema. Pensada para leerse y capturarse de un vistazo desde
+   el celular al cerrar turno. */
+.mi-cierre-receipt {
+  max-width: 420px; margin: 0 auto; background: var(--surface); border-radius: 16px;
+  overflow: hidden; box-shadow: var(--shadow-md);
+}
+.mi-cierre-receipt-header { padding: 18px 20px; text-align: center; color: #fff; }
+.mi-cierre-receipt-logo { max-height: 48px; max-width: 180px; margin: 0 auto 8px; display: block; object-fit: contain; }
+.mi-cierre-receipt-empresa { font-weight: 800; font-size: 15px; letter-spacing: 0.02em; }
+.mi-cierre-receipt-body { padding: 20px 22px 20px; }
+.mi-cierre-receipt-titulo {
+  text-align: center; font-size: 13px; font-weight: 800; letter-spacing: 0.08em;
+  color: var(--ink-muted); margin: 0 0 4px; text-transform: uppercase;
+}
+.mi-cierre-receipt-meta { text-align: center; font-size: 13px; color: var(--ink-muted); margin-bottom: 8px; }
+.mi-cierre-receipt-meta strong { display: block; font-size: 16px; color: var(--ink); }
+.mi-cierre-section-title {
+  font-size: 11.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em;
+  margin: 16px 0 2px;
+}
+.mi-cierre-row {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 10px;
+  padding: 5px 0; border-bottom: 1px dashed var(--border); font-size: 15px;
+}
+.mi-cierre-row span:first-child { color: var(--ink-muted); }
+.mi-cierre-row.total {
+  font-size: 16px; border-bottom: none; border-top: 2px solid var(--ink);
+  margin-top: 2px; padding-top: 7px;
+}
+.mi-cierre-row.total span:first-child { color: var(--ink); font-weight: 700; }
+.mi-cierre-empty { font-size: 13px; color: var(--ink-muted); padding: 4px 0 10px; }
+.mi-cierre-receipt-footer {
+  text-align: center; font-size: 11px; color: var(--ink-muted); margin: 18px 0 0;
+  padding-top: 10px; border-top: 1px dashed var(--border);
+}
 
 /* ---------- Toasts ---------- */
 
