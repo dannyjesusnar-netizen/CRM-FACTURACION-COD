@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import api from '../api';
 import { hoyPeru } from '../utils/fechas';
-import { useToast } from '../context/ToastContext';
 import { useAuth } from '../context/AuthContext';
 
 function todayStr() {
@@ -29,7 +28,6 @@ function duracion(abiertoAt, cerradoAt) {
 
 export default function Planilla() {
   const { user } = useAuth();
-  const toast = useToast();
   const esGerencia = user?.role === 'gerencia';
   const [desde, setDesde] = useState(todayStr());
   const [hasta, setHasta] = useState(todayStr());
@@ -38,8 +36,6 @@ export default function Planilla() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
-  const [miTurnoAbierto, setMiTurnoAbierto] = useState(null);
-  const [procesando, setProcesando] = useState(false);
 
   function load() {
     setLoading(true);
@@ -50,62 +46,19 @@ export default function Planilla() {
       .finally(() => setLoading(false));
   }
 
-  function loadMiTurno() {
-    api.get('/planilla/mi-turno-abierto').then((res) => setMiTurnoAbierto(res.data)).catch(() => {});
-  }
-
   useEffect(() => {
     if (esGerencia) api.get('/sucursales').then((res) => setSucursales(res.data)).catch(() => {});
   }, [esGerencia]);
   useEffect(() => { load(); }, [desde, hasta, sucursalId]);
-  useEffect(() => { loadMiTurno(); }, []);
-
-  async function handleAbrir() {
-    setProcesando(true);
-    try {
-      await api.post('/planilla/abrir');
-      toast.success('Turno de caja abierto.');
-      loadMiTurno();
-      load();
-    } catch (err) {
-      toast.error(err.response?.data?.error || 'No se pudo abrir el turno.');
-    } finally {
-      setProcesando(false);
-    }
-  }
-
-  async function handleCerrar() {
-    setProcesando(true);
-    try {
-      await api.post('/planilla/cerrar');
-      toast.success('Turno de caja cerrado.');
-      loadMiTurno();
-      load();
-    } catch (err) {
-      toast.error(err.response?.data?.error || 'No se pudo cerrar el turno.');
-    } finally {
-      setProcesando(false);
-    }
-  }
 
   return (
     <div>
       <div className="page-header">
         <h1 className="page-title">Planilla</h1>
-        {miTurnoAbierto ? (
-          <button className="btn-primary" style={{ background: 'var(--critical)', borderColor: 'var(--critical)' }} disabled={procesando} onClick={handleCerrar}>
-            {procesando ? 'Cerrando...' : 'Cerrar caja'}
-          </button>
-        ) : (
-          <button className="btn-primary" style={{ background: 'var(--good)', borderColor: 'var(--good)' }} disabled={procesando} onClick={handleAbrir}>
-            {procesando ? 'Abriendo...' : 'Abrir caja'}
-          </button>
-        )}
       </div>
       <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -8, marginBottom: 16 }}>
-        {miTurnoAbierto
-          ? `Tienes un turno de caja abierto desde las ${fmtHora(miTurnoAbierto.abierto_at)}.`
-          : 'No tienes un turno de caja abierto — presiona "Abrir caja" al empezar tu turno.'}
+        Reporte de horas: quién abrió y cerró su turno de caja, y cuánto duró. Para abrir o cerrar tu turno,
+        ve a Caja y Bancos.
       </p>
 
       <div className="filter-panel" style={{ marginBottom: 16 }}>

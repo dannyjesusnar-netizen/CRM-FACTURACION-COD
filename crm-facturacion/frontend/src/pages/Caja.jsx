@@ -9,6 +9,15 @@ function todayStr() {
   return hoyPeru();
 }
 
+function fmtHora(iso) {
+  if (!iso) return '—';
+  // Los timestamps de sqlite vienen en UTC sin sufijo "Z" — hay que
+  // agregarlo para que el navegador los interprete como UTC y los
+  // convierta a la hora local, en vez de asumir que ya son locales.
+  const d = new Date(iso.replace(' ', 'T') + 'Z');
+  return d.toLocaleString('es-PE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+}
+
 const INGRESO_LABELS = { ventas: 'Ventas', cuentas_cobrar: 'Cuentas x Cobrar', transferencia: 'Transferencias', otros: 'Otros Ingresos' };
 const EGRESO_LABELS = { compras: 'Compras', cuentas_pagar: 'Cuentas x Pagar', transferencia: 'Transferencias', otros: 'Otros Egresos' };
 const INGRESO_CATS = ['ventas', 'cuentas_cobrar', 'transferencia', 'otros'];
@@ -29,6 +38,12 @@ export default function Caja() {
 
   const [showSaldoForm, setShowSaldoForm] = useState(false);
   const [saldoInput, setSaldoInput] = useState('');
+
+  // Abrir/Cerrar turno de caja (antes vivía en Planillas, que ahora es solo
+  // el reporte de horas — ver routes/planilla.js: POST /abrir, /cerrar,
+  // GET /mi-turno-abierto). Se sigue registrando por sede vía resolveSucursal.
+  const [miTurnoAbierto, setMiTurnoAbierto] = useState(null);
+  const [procesandoTurno, setProcesandoTurno] = useState(false);
 
   const [showMovForm, setShowMovForm] = useState(false);
   const [movContext, setMovContext] = useState(null); // { tipo, medio, categoria, label, color, icono }
@@ -55,6 +70,37 @@ export default function Caja() {
 
   useEffect(() => { load(); }, [fecha, hasta, empleadoId, moneda]);
   useEffect(() => { api.get('/caja/empleados').then((res) => setEmpleados(res.data)); }, []);
+
+  function loadMiTurno() {
+    api.get('/planilla/mi-turno-abierto').then((res) => setMiTurnoAbierto(res.data)).catch(() => {});
+  }
+  useEffect(() => { loadMiTurno(); }, []);
+
+  async function handleAbrirCaja() {
+    setProcesandoTurno(true);
+    try {
+      await api.post('/planilla/abrir');
+      toast.success('Turno de caja abierto.');
+      loadMiTurno();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'No se pudo abrir el turno.');
+    } finally {
+      setProcesandoTurno(false);
+    }
+  }
+
+  async function handleCerrarCaja() {
+    setProcesandoTurno(true);
+    try {
+      await api.post('/planilla/cerrar');
+      toast.success('Turno de caja cerrado.');
+      loadMiTurno();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'No se pudo cerrar el turno.');
+    } finally {
+      setProcesandoTurno(false);
+    }
+  }
 
   const metodoPorCodigo = useMemo(() => {
     const map = {};
@@ -133,15 +179,31 @@ export default function Caja() {
     <div>
       <div className="page-header">
         <h1 className="page-title">Caja y Bancos</h1>
-        {data && (
-          <div className="caja-total-general">
-            <span>{esRango ? 'Total del período' : 'Total del día'}</span>
-            <strong>S/ {fmt(data.totalGeneral)}</strong>
-          </div>
-        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap' }}>
+          {data && (
+            <div className="caja-total-general" style={{ paddingRight: 20, borderRight: '1px solid var(--border)' }}>
+              <span>{esRango ? 'Total del período' : 'Total del día'}</span>
+              <strong>S/ {fmt(data.totalGeneral)}</strong>
+            </div>
+          )}
+          {miTurnoAbierto ? (
+            <button className="btn-primary" style={{ width: 'auto', background: 'var(--critical)', borderColor: 'var(--critical)' }} disabled={procesandoTurno} onClick={handleCerrarCaja}>
+              {procesandoTurno ? 'Cerrando...' : 'Cerrar caja'}
+            </button>
+          ) : (
+            <button className="btn-primary" style={{ width: 'auto', background: 'var(--good)', borderColor: 'var(--good)' }} disabled={procesandoTurno} onClick={handleAbrirCaja}>
+              {procesandoTurno ? 'Abriendo...' : 'Abrir caja'}
+            </button>
+          )}
+        </div>
       </div>
+      <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -8, marginBottom: 16 }}>
+        {miTurnoAbierto
+          ? `Tienes un turno de caja abierto desde las ${fmtHora(miTurnoAbierto.abierto_at)}.`
+          : 'No tienes un turno de caja abierto — presiona "Abrir caja" al empezar tu turno.'}
+      </p>
 
-      <div className="actions-buttons" style={{ marginBottom: 16 }}>
+      <div className="actions-buttons" style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
         <button className="ventas-action-btn" onClick={() => navigate('/caja/cuentas-por-cobrar')}>Cuentas por Cobrar</button>
         <button className="ventas-action-btn" onClick={() => navigate('/caja/mi-cierre')}>Mi Cierre de Caja</button>
       </div>
