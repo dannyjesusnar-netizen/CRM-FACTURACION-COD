@@ -1,7 +1,7 @@
 const express = require('express');
 const db = require('../db');
 const { requireAuth, resolveSucursal } = require('../middleware/auth');
-const { requirePermiso, esGerenciaOSupervisor } = require('../utils/permisos');
+const { requirePermiso, tieneAccionSupervisor } = require('../utils/permisos');
 const { hoyPeru } = require('../utils/fechas');
 
 const router = express.Router();
@@ -19,11 +19,11 @@ function todayStr() {
 // Gerencia/Supervisor. Gerencia además puede ver TODAS las sedes a la vez
 // (sin depender de la sede activa del selector rápido de la barra
 // superior) o filtrar por una sede puntual con sucursal_id — mismo criterio
-// que el Tablero de Ventas (ver routes/tablero.js: sedeFiltro). Un
-// Supervisor (aunque también sea esGerenciaOSupervisor) sigue viendo solo
-// su propia sede: el cruce entre sedes es exclusivo del role 'gerencia'.
+// que el Tablero de Ventas (ver routes/tablero.js: sedeFiltro). Un rol con
+// el permiso de Supervisor "Ver todos" sigue viendo solo su propia sede: el
+// cruce entre sedes es exclusivo del role 'gerencia'.
 router.get('/', (req, res) => {
-  const esSupervisorOGerencia = esGerenciaOSupervisor(req.user);
+  const esSupervisorOGerencia = tieneAccionSupervisor(req.user, 'ver_todos_planilla_caja');
   const hoy = todayStr();
   const desde = req.query.desde || hoy;
   const hasta = req.query.hasta && req.query.hasta >= desde ? req.query.hasta : desde;

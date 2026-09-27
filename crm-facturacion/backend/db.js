@@ -751,18 +751,42 @@ CREATE TABLE IF NOT EXISTS role_acciones (
 );
 `);
 
-  // "Permisos de Supervisor" (Configuración → Roles → toggle explícito):
-  // antes, funciones como aprobar traslados o cambiar de sede se activaban
-  // solo si un rol se llamaba literalmente "Supervisor" (ver
-  // utils/permisos.js:esGerenciaOSupervisor). Ahora es un toggle explícito
-  // por rol, para poder dárselo a cualquier rol con el nombre que sea — la
-  // migración corre una sola vez (guardada por si la columna ya existe) y,
-  // justo al crearla, prende el toggle para los roles que YA se llamaban
-  // "Supervisor" para no quitarles el acceso de golpe.
+  // "Permisos de Supervisor" (Configuración → Roles, arriba del formulario):
+  // funciones como aprobar traslados o cambiar de sede antes se activaban
+  // todas juntas, solo si un rol se llamaba literalmente "Supervisor". Se
+  // volvieron un toggle único por rol (roles.es_supervisor, columna que ya
+  // no se usa — ver más abajo) y luego, en esta misma migración, siete
+  // candados independientes (uno por función, ver
+  // utils/permisos.js:ACCIONES_POR_MODULO.supervisor y
+  // tieneAccionSupervisor), guardados como role_acciones normales bajo el
+  // "módulo" reservado 'supervisor'.
   const rolesColumns = db.prepare("PRAGMA table_info(roles)").all().map((c) => c.name);
   if (!rolesColumns.includes('es_supervisor')) {
     db.exec('ALTER TABLE roles ADD COLUMN es_supervisor INTEGER NOT NULL DEFAULT 0');
     db.prepare("UPDATE roles SET es_supervisor = 1 WHERE nombre = 'Supervisor'").run();
+  }
+
+  // Backfill de una sola vez (repetible sin efecto: INSERT OR IGNORE no
+  // toca una fila que ya existe, prendida o apagada) — todo rol que haya
+  // tenido el toggle único "es_supervisor" prendido (ya sea por el backfill
+  // de arriba, o porque alguien lo prendió a mano antes de que esto se
+  // volviera granular) recibe las 7 acciones de supervisor ya prendidas,
+  // para no quitarle ningún permiso de golpe. De ahí en adelante Gerencia
+  // decide cada una por separado desde Configuración → Roles.
+  const rolesConSupervisorPrendido = db.prepare('SELECT id FROM roles WHERE es_supervisor = 1').all();
+  if (rolesConSupervisorPrendido.length > 0) {
+    const ACCIONES_SUPERVISOR_BACKFILL = [
+      'aprobar_traslados', 'reatribuir_venta', 'cambiar_sede', 'compartir_tablero',
+      'canales_movimiento', 'ver_todos_planilla_caja', 'sin_turno_caja',
+    ];
+    const insertarAccionSupervisorBackfill = db.prepare(
+      'INSERT OR IGNORE INTO role_acciones (role_id, modulo, accion, habilitado) VALUES (?, ?, ?, 1)'
+    );
+    for (const r of rolesConSupervisorPrendido) {
+      for (const accion of ACCIONES_SUPERVISOR_BACKFILL) {
+        insertarAccionSupervisorBackfill.run(r.id, 'supervisor', accion);
+      }
+    }
   }
 
   const userColumns = db.prepare("PRAGMA table_info(users)").all().map((c) => c.name);

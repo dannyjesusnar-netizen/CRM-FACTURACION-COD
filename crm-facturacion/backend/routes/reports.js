@@ -1,7 +1,7 @@
 const express = require('express');
 const db = require('../db');
 const { requireAuth, resolveSucursal } = require('../middleware/auth');
-const { requirePermiso, requireAlgunPermiso, requireAccion, puedeCambiarSede, esGerenciaOSupervisor } = require('../utils/permisos');
+const { requirePermiso, requireAlgunPermiso, requireAccion, puedeCambiarSede, tieneAccionSupervisor } = require('../utils/permisos');
 const { buildResumen } = require('../utils/cajaCalculos');
 const { hoyPeru } = require('../utils/fechas');
 
@@ -312,7 +312,7 @@ router.get('/cierre-caja', requireAlgunPermiso(['caja', 'reportes']), (req, res)
   // empleado ni el de "todos" (sin importar lo que mande empleado_id).
   // Gerencia y Supervisor sí pueden elegir cualquier empleado o dejarlo
   // vacío para ver el total de la sede.
-  const empleadoId = esGerenciaOSupervisor(req.user)
+  const empleadoId = tieneAccionSupervisor(req.user, 'ver_todos_planilla_caja')
     ? (req.query.empleado_id ? Number(req.query.empleado_id) : null)
     : req.user.id;
   const empleadoFiltro = empleadoId ? 'AND created_by = ?' : '';

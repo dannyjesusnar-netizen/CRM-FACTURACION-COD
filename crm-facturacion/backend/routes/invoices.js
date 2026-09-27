@@ -5,7 +5,7 @@ const { buildInvoicePdf } = require('../utils/pdf');
 const { consumirStock, incrementarStock, ajustarStockSucursal, getStockSucursal, StockInsuficienteError } = require('../utils/stock');
 const { emitirComprobante, consultarComprobante, estaConfigurado } = require('../utils/facturacionElectronica');
 const { reenviarComprobante } = require('../utils/sincronizarSunat');
-const { requirePermiso, requireAccion, requireAlgunPermiso, tieneAccion, requireGerenciaOSupervisor, esGerenciaOSupervisor } = require('../utils/permisos');
+const { requirePermiso, requireAccion, requireAlgunPermiso, tieneAccion, requireAccionSupervisor, tieneAccionSupervisor } = require('../utils/permisos');
 const { tieneTurnoAbierto } = require('../utils/cajaTurno');
 const { siguienteNumero } = require('../utils/series');
 const { resolverDescuentoPct } = require('../utils/descuentos');
@@ -286,7 +286,7 @@ router.post('/', async (req, res) => {
   // bloqueada, porque es una corrección/reversión de una venta ya hecha, no
   // una venta nueva. Gerencia/Supervisor quedan exentos (ver
   // utils/cajaTurno.js).
-  if (['factura', 'boleta'].includes(tipo_comprobante) && !esGerenciaOSupervisor(req.user) && !tieneTurnoAbierto(req.user.id, req.sucursalId)) {
+  if (['factura', 'boleta'].includes(tipo_comprobante) && !tieneAccionSupervisor(req.user, 'sin_turno_caja') && !tieneTurnoAbierto(req.user.id, req.sucursalId)) {
     return res.status(403).json({ error: 'Debes abrir tu turno de caja (pantalla Planillas) antes de emitir una venta.' });
   }
   if (!client_id) return res.status(400).json({ error: 'client_id es requerido.' });
@@ -829,7 +829,7 @@ router.post('/:id/anular', requireAccion('ventas', 'anular_comprobante'), (req, 
 // la venta en el Tablero de Ventas (ver el mismo criterio en POST /,
 // donde el propio vendedor lo elige al emitir). atribuido_a_id vacío
 // revierte la venta al vendedor que la registró (created_by).
-router.put('/:id/atribuido-a', requireGerenciaOSupervisor, (req, res) => {
+router.put('/:id/atribuido-a', requireAccionSupervisor('reatribuir_venta', 'No tienes permiso para reatribuir esta venta.'), (req, res) => {
   const invoice = db.prepare('SELECT * FROM invoices WHERE id = ? AND sucursal_id = ?').get(req.params.id, req.sucursalId);
   if (!invoice) return res.status(404).json({ error: 'Comprobante no encontrado.' });
   if (invoice.estado === 'anulado') {

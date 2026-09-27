@@ -34,7 +34,27 @@ function conPermisos(role) {
     });
     return { modulo: m.key, label: m.label, habilitado: !!porModulo[m.key], acciones };
   });
-  return { ...role, es_supervisor: !!role.es_supervisor, permisos };
+
+  // "Permisos de Supervisor" (Configuración → Roles, arriba del formulario):
+  // mismo mecanismo (role_acciones) que las acciones por módulo, pero bajo
+  // el "módulo" reservado 'supervisor' — cada una es un candado
+  // independiente, apagada por defecto (nunca el default-true del resto).
+  const supervisorGuardadas = accionesPorModulo.supervisor || {};
+  const accionesSupervisor = (ACCIONES_POR_MODULO.supervisor || []).map((a) => ({
+    accion: a.key,
+    label: a.label,
+    habilitado: !!supervisorGuardadas[a.key],
+  }));
+
+  return {
+    ...role,
+    // Derivado (no la columna roles.es_supervisor, que quedó en desuso al
+    // volverse granular): true si el rol tiene AL MENOS una acción de
+    // Supervisor prendida — usado solo para el badge del listado de roles.
+    es_supervisor: accionesSupervisor.some((a) => a.habilitado),
+    permisos,
+    acciones_supervisor: accionesSupervisor,
+  };
 }
 
 // GET /api/roles?q=&estado=
@@ -51,7 +71,10 @@ router.get('/', (req, res) => {
 });
 
 router.get('/modulos', (req, res) => {
-  res.json(MODULOS.map((m) => ({ ...m, acciones: ACCIONES_POR_MODULO[m.key] || [] })));
+  res.json({
+    modulos: MODULOS.map((m) => ({ ...m, acciones: ACCIONES_POR_MODULO[m.key] || [] })),
+    acciones_supervisor: ACCIONES_POR_MODULO.supervisor || [],
+  });
 });
 
 router.get('/:id', (req, res) => {
@@ -88,11 +111,11 @@ function guardarAcciones(roleId, acciones) {
 }
 
 router.post('/', (req, res) => {
-  const { nombre, descripcion, permisos, acciones, es_supervisor } = req.body || {};
+  const { nombre, descripcion, permisos, acciones } = req.body || {};
   if (!nombre) return res.status(400).json({ error: 'nombre es requerido.' });
   const info = db.prepare(
-    'INSERT INTO roles (nombre, descripcion, es_supervisor, created_by) VALUES (?, ?, ?, ?)'
-  ).run(nombre, descripcion || null, es_supervisor ? 1 : 0, req.user?.id || null);
+    'INSERT INTO roles (nombre, descripcion, created_by) VALUES (?, ?, ?)'
+  ).run(nombre, descripcion || null, req.user?.id || null);
   guardarPermisos(info.lastInsertRowid, permisos);
   guardarAcciones(info.lastInsertRowid, acciones);
   const role = db.prepare('SELECT * FROM roles WHERE id = ?').get(info.lastInsertRowid);
@@ -102,10 +125,9 @@ router.post('/', (req, res) => {
 router.put('/:id', (req, res) => {
   const existing = db.prepare('SELECT * FROM roles WHERE id = ?').get(req.params.id);
   if (!existing) return res.status(404).json({ error: 'Rol no encontrado.' });
-  const { nombre, descripcion, permisos, acciones, es_supervisor } = req.body || {};
+  const { nombre, descripcion, permisos, acciones } = req.body || {};
   if (!nombre) return res.status(400).json({ error: 'nombre es requerido.' });
-  db.prepare('UPDATE roles SET nombre = ?, descripcion = ?, es_supervisor = ? WHERE id = ?')
-    .run(nombre, descripcion || null, es_supervisor ? 1 : 0, req.params.id);
+  db.prepare('UPDATE roles SET nombre = ?, descripcion = ? WHERE id = ?').run(nombre, descripcion || null, req.params.id);
   if (permisos) guardarPermisos(req.params.id, permisos);
   if (acciones) guardarAcciones(req.params.id, acciones);
   const role = db.prepare('SELECT * FROM roles WHERE id = ?').get(req.params.id);

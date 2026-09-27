@@ -2,16 +2,16 @@ const express = require('express');
 const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { getStockSucursal, setStockSucursal } = require('../utils/stock');
-const { requirePermiso, requireAccion, esGerenciaOSupervisor } = require('../utils/permisos');
+const { requirePermiso, requireAccion, tieneAccionSupervisor, requireAccionSupervisor } = require('../utils/permisos');
 
 const router = express.Router();
 router.use(requireAuth);
 router.use(requirePermiso('inventario'));
 
-function requireAprobadorTraslados(req, res, next) {
-  if (esGerenciaOSupervisor(req.user)) return next();
-  return res.status(403).json({ error: 'Solo Gerencia o un Supervisor puede aprobar o rechazar traslados.' });
-}
+const requireAprobadorTraslados = requireAccionSupervisor(
+  'aprobar_traslados',
+  'No tienes permiso para aprobar o rechazar traslados.'
+);
 
 // GET /api/traslados?emisor=&desde=&hasta=&estado=
 router.get('/', (req, res) => {
@@ -118,7 +118,7 @@ router.post('/', requireAccion('inventario', 'traslados'), (req, res) => {
     }
   }
 
-  const requiereAprobacion = !esGerenciaOSupervisor(req.user);
+  const requiereAprobacion = !tieneAccionSupervisor(req.user, 'aprobar_traslados');
   const estadoInicial = requiereAprobacion ? 'pendiente' : 'completado';
 
   const insertAll = db.transaction(() => {
