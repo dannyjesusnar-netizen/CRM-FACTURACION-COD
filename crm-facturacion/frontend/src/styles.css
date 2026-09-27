@@ -735,6 +735,14 @@ html.dark .btn-export { color: #04231e; }
 .table-scroll { overflow-x: auto; }
 .data-table.compact th, .data-table.compact td { padding: 8px 8px; font-size: 12px; white-space: nowrap; }
 
+/* Mi Cierre de Caja (vendedor): letra más grande y menos espacio entre
+   filas que el resto de tablas del sistema — pensada para leerse y
+   capturarse de un vistazo desde el celular al cerrar turno. */
+.data-table.mi-cierre-table th,
+.data-table.mi-cierre-table td { font-size: 16px; padding: 7px 8px; }
+.data-table.compact.mi-cierre-table th,
+.data-table.compact.mi-cierre-table td { font-size: 16px; padding: 6px 8px; }
+
 /* ---------- Toasts ---------- */
 
 .toast-stack {
