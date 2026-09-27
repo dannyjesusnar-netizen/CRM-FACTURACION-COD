@@ -18,6 +18,7 @@ import Movements from './pages/Movements';
 import CargarStockFotos from './pages/CargarStockFotos';
 import CargarGuiaFoto from './pages/CargarGuiaFoto';
 import RegistrarMovimiento from './pages/RegistrarMovimiento';
+import ConstanciaMovimiento from './pages/ConstanciaMovimiento';
 import Lotes from './pages/Lotes';
 import Caja from './pages/Caja';
 import MiCierreCaja from './pages/MiCierreCaja';
@@ -83,6 +84,7 @@ export default function App() {
             <Route path="/movimientos/fotos" element={<RequirePermiso modulo="inventario"><CargarStockFotos /></RequirePermiso>} />
             <Route path="/movimientos/guia-foto" element={<RequirePermiso modulo="inventario"><CargarGuiaFoto /></RequirePermiso>} />
             <Route path="/movimientos/registrar" element={<RequirePermiso modulo="inventario"><RegistrarMovimiento /></RequirePermiso>} />
+            <Route path="/movimientos/constancia" element={<RequirePermiso modulo="inventario"><ConstanciaMovimiento /></RequirePermiso>} />
             <Route path="/lotes" element={<RequirePermiso modulo="inventario"><Lotes /></RequirePermiso>} />
             <Route path="/caja" element={<RequirePermiso modulo="caja"><Caja /></RequirePermiso>} />
             <Route path="/caja/mi-cierre" element={<RequirePermiso modulo="caja"><MiCierreCaja /></RequirePermiso>} />

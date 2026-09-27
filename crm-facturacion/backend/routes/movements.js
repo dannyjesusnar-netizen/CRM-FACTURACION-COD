@@ -147,11 +147,13 @@ router.get('/resumen-por-producto', (req, res) => {
   res.json(rows);
 });
 
-// POST /api/movements  { product_id, cantidad, motivo, codigo_lote?, fecha_vencimiento? }  -- ajuste manual (+ ingreso / - salida)
+// POST /api/movements  { product_id, cantidad, motivo, codigo_lote?, fecha_vencimiento?, lote_id? }  -- ajuste manual (+ ingreso / - salida)
 // Si es un ingreso (cantidad > 0) y viene codigo_lote, se crea el lote junto con el
-// movimiento en la misma transacción (mismo patrón que POST /api/lotes).
+// movimiento en la misma transacción (mismo patrón que POST /api/lotes). Si es una
+// salida (cantidad < 0) y viene lote_id, se descuenta ese lote/serie existente en
+// vez de solo el stock agregado -- para saber exactamente qué lote salió.
 router.post('/', requireAccion('inventario', 'ajustes'), (req, res) => {
-  const { product_id, cantidad, motivo, codigo_lote, fecha_vencimiento, canal, proveedor_ruc, proveedor_nombre } = req.body || {};
+  const { product_id, cantidad, motivo, codigo_lote, fecha_vencimiento, canal, proveedor_ruc, proveedor_nombre, lote_id } = req.body || {};
   if (!product_id || !cantidad) {
     return res.status(400).json({ error: 'product_id y cantidad son requeridos.' });
   }
@@ -176,6 +178,15 @@ router.post('/', requireAccion('inventario', 'ajustes'), (req, res) => {
     return res.status(400).json({ error: 'El lote solo puede registrarse en un ingreso (cantidad positiva).' });
   }
 
+  let loteSalida = null;
+  if (cant < 0 && lote_id) {
+    loteSalida = db.prepare('SELECT * FROM lotes WHERE id = ? AND product_id = ? AND activo = 1').get(lote_id, product_id);
+    if (!loteSalida) return res.status(404).json({ error: 'El lote seleccionado no existe o no pertenece a este producto.' });
+    if (loteSalida.cantidad_actual < Math.abs(cant)) {
+      return res.status(409).json({ error: `Stock insuficiente en el lote ${loteSalida.codigo_lote} (disponible: ${loteSalida.cantidad_actual}).` });
+    }
+  }
+
   const insertAll = db.transaction(() => {
     db.prepare('UPDATE products SET stock = stock + ? WHERE id = ?').run(cant, product_id);
     const updated = db.prepare('SELECT stock FROM products WHERE id = ?').get(product_id);
@@ -190,6 +201,12 @@ router.post('/', requireAccion('inventario', 'ajustes'), (req, res) => {
         `INSERT INTO stock_movements (product_id, lote_id, tipo, cantidad, stock_resultante, motivo, referencia, canal, proveedor_ruc, proveedor_nombre, created_by, sucursal_id)
          VALUES (?, ?, 'ingreso_lote', ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       ).run(product_id, loteInfo.lastInsertRowid, cant, updated.stock, motivo || null, codigoLote, canalFinal, proveedorRuc || null, proveedorNombre, req.user?.id || null, req.sucursalId);
+    } else if (loteSalida) {
+      db.prepare('UPDATE lotes SET cantidad_actual = cantidad_actual - ? WHERE id = ?').run(Math.abs(cant), loteSalida.id);
+      db.prepare(
+        `INSERT INTO stock_movements (product_id, lote_id, tipo, cantidad, stock_resultante, motivo, referencia, canal, proveedor_ruc, proveedor_nombre, created_by, sucursal_id)
+         VALUES (?, ?, 'salida_lote', ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).run(product_id, loteSalida.id, cant, updated.stock, motivo || null, loteSalida.codigo_lote, canalFinal, proveedorRuc || null, proveedorNombre, req.user?.id || null, req.sucursalId);
     } else {
       db.prepare(
         `INSERT INTO stock_movements (product_id, tipo, cantidad, stock_resultante, motivo, canal, proveedor_ruc, proveedor_nombre, created_by, sucursal_id)

@@ -24,6 +24,8 @@ export default function RegistrarMovimiento() {
   const [proveedorRuc, setProveedorRuc] = useState('');
   const [proveedorNombre, setProveedorNombre] = useState('');
   const [buscandoProveedor, setBuscandoProveedor] = useState(false);
+  const [lotesProducto, setLotesProducto] = useState([]);
+  const [loteIdSalida, setLoteIdSalida] = useState('');
 
   const [filas, setFilas] = useState([]);
   const [enviando, setEnviando] = useState(false);
@@ -58,8 +60,24 @@ export default function RegistrarMovimiento() {
   }, [proveedorRuc]);
 
   const esIngreso = Number(cantidad) > 0;
+  const esSalida = Number(cantidad) < 0;
   const productosDisponibles = products.filter((p) => p.tipo === 'producto');
   const productoSeleccionado = productosDisponibles.find((p) => String(p.id) === String(productId));
+
+  // Al registrar una salida, se puede elegir de qué lote/serie específico
+  // sale la mercadería (para trazabilidad) — se listan solo los lotes de
+  // ESTE producto que todavía tienen stock. Es opcional: sin elegir uno, la
+  // salida descuenta del stock general del producto, como antes.
+  useEffect(() => {
+    if (esSalida && productId) {
+      api.get('/lotes', { params: { product_id: productId, mostrar: 'con_stock' } })
+        .then((res) => setLotesProducto(res.data))
+        .catch(() => setLotesProducto([]));
+    } else {
+      setLotesProducto([]);
+    }
+    setLoteIdSalida('');
+  }, [esSalida, productId]);
 
   function limpiarFormulario() {
     setProductId('');
@@ -69,6 +87,7 @@ export default function RegistrarMovimiento() {
     setFechaVencimiento('');
     setProveedorRuc('');
     setProveedorNombre('');
+    setLoteIdSalida('');
   }
 
   function agregarFila() {
@@ -79,16 +98,20 @@ export default function RegistrarMovimiento() {
       return;
     }
     const producto = productosDisponibles.find((p) => String(p.id) === String(productId));
+    const loteSeleccionado = esSalida ? lotesProducto.find((l) => String(l.id) === String(loteIdSalida)) : null;
     setFilas((prev) => [...prev, {
       id: nuevaFilaId(),
       product_id: Number(productId),
       codigo: producto?.codigo || '',
       producto_nombre: producto?.nombre || '',
+      unidad: producto?.unidad || '',
       cantidad: Number(cantidad),
       canal,
       motivo: motivo.trim(),
       codigo_lote: Number(cantidad) > 0 ? codigoLote.trim() : '',
       fecha_vencimiento: Number(cantidad) > 0 ? fechaVencimiento : '',
+      lote_id: loteSeleccionado ? loteSeleccionado.id : '',
+      lote_codigo: loteSeleccionado ? loteSeleccionado.codigo_lote : '',
       proveedor_ruc: proveedorRuc.trim(),
       proveedor_nombre: proveedorNombre.trim(),
     }]);
@@ -118,6 +141,7 @@ export default function RegistrarMovimiento() {
           canal: f.canal,
           codigo_lote: f.cantidad > 0 ? f.codigo_lote : undefined,
           fecha_vencimiento: f.cantidad > 0 ? (f.fecha_vencimiento || undefined) : undefined,
+          lote_id: f.cantidad < 0 ? (f.lote_id || undefined) : undefined,
           proveedor_ruc: f.proveedor_ruc || undefined,
           proveedor_nombre: f.proveedor_nombre || undefined,
         });
@@ -133,8 +157,14 @@ export default function RegistrarMovimiento() {
       setFilas((prev) => prev.filter((f) => errores.some((e) => e.startsWith(f.codigo))));
       return;
     }
+    // Se navega a la constancia con una copia de las filas recién
+    // registradas (ya no viven en el servidor como un solo "comprobante",
+    // así que se arma acá mismo, con los mismos datos que se acaban de
+    // mandar) — igual que Mi Cierre de Caja, pensada para capturarla o
+    // imprimirla antes de seguir.
+    const filasRegistradas = filas;
     setFilas([]);
-    navigate('/movimientos');
+    navigate('/movimientos/constancia', { state: { filas: filasRegistradas } });
   }
 
   return (
@@ -210,6 +240,25 @@ export default function RegistrarMovimiento() {
           </>
         )}
 
+        {esSalida && productId && (
+          <>
+            <label style={{ marginTop: 10 }}>Lote/serie de salida (opcional)</label>
+            <select value={loteIdSalida} onChange={(e) => setLoteIdSalida(e.target.value)}>
+              <option value="">Sin lote específico (descuenta del stock general)</option>
+              {lotesProducto.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.codigo_lote} — disponible: {l.cantidad_actual}{l.fecha_vencimiento ? ` (vence ${l.fecha_vencimiento})` : ''}
+                </option>
+              ))}
+            </select>
+            <p className="caja-row-auto" style={{ marginTop: -4 }}>
+              {lotesProducto.length === 0
+                ? 'Este producto no tiene lotes/series con stock registrados.'
+                : 'Si eliges un lote, esta salida se descuenta de ese lote específico (para trazabilidad).'}
+            </p>
+          </>
+        )}
+
         <div className="modal-actions" style={{ justifyContent: 'flex-start', marginTop: 16 }}>
           <button type="button" className="btn-primary" style={{ width: 'auto' }} onClick={agregarFila}>
             Agregar a la lista
@@ -228,7 +277,7 @@ export default function RegistrarMovimiento() {
           <table className="data-table compact">
             <thead>
               <tr>
-                <th>Producto</th><th>Cantidad</th><th>Canal</th><th>Proveedor</th><th>Motivo</th><th></th>
+                <th>Producto</th><th>Cantidad</th><th>Lote</th><th>Canal</th><th>Proveedor</th><th>Motivo</th><th></th>
               </tr>
             </thead>
             <tbody>
@@ -236,6 +285,7 @@ export default function RegistrarMovimiento() {
                 <tr key={f.id}>
                   <td>{f.codigo} — {f.producto_nombre}</td>
                   <td style={{ textAlign: 'right' }}>{f.cantidad > 0 ? `+${f.cantidad}` : f.cantidad}</td>
+                  <td>{f.codigo_lote || f.lote_codigo || '—'}</td>
                   <td>
                     <select value={f.canal} onChange={(e) => actualizarFila(f.id, 'canal', e.target.value)}>
                       {canales.map((c) => <option key={c.id} value={c.nombre}>{c.nombre}</option>)}
@@ -253,7 +303,7 @@ export default function RegistrarMovimiento() {
                 </tr>
               ))}
               {filas.length === 0 && (
-                <tr><td colSpan={6} className="empty-row">Todavía no agregaste ningún movimiento.</td></tr>
+                <tr><td colSpan={7} className="empty-row">Todavía no agregaste ningún movimiento.</td></tr>
               )}
             </tbody>
           </table>

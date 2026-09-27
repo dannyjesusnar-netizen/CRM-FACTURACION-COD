@@ -5,6 +5,7 @@ import api from '../api';
 import { useAuth } from '../context/AuthContext';
 import { hoyPeru } from '../utils/fechas';
 import { useToast } from '../context/ToastContext';
+import { capturarPanelComoImagen } from '../utils/capturarImagen';
 
 function todayStr() {
   return hoyPeru();
@@ -19,38 +20,14 @@ function fechaLegible(iso) {
   return `${d}/${m}/${y}`;
 }
 
-// Mismo mecanismo que Dashboard.jsx:copiarPanelComoImagen — primero intenta
-// copiar la imagen directo al portapapeles (para pegarla con Ctrl+V en
-// WhatsApp Web), y si el navegador no lo soporta, la descarga como archivo.
+// Mismo mecanismo que Dashboard.jsx (ver utils/capturarImagen.js), con los
+// mensajes propios de este panel.
 async function capturarComoImagen(ref, toast) {
-  if (!ref.current) return;
-  try {
-    const { default: html2canvas } = await import('html2canvas');
-    const canvas = await html2canvas(ref.current, { scale: 2, logging: false });
-    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
-    if (!blob) throw new Error('sin blob');
-
-    if (navigator.clipboard && window.ClipboardItem) {
-      try {
-        await navigator.clipboard.write([new window.ClipboardItem({ 'image/png': blob })]);
-        toast.success('Captura copiada — pégala directo en WhatsApp con Ctrl+V (o Cmd+V).');
-        return;
-      } catch {
-        // Sin soporte/permiso para portapapeles — sigue al respaldo de descarga.
-      }
-    }
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'mi-cierre-caja.png';
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-    toast.success('Captura descargada — ya puedes enviarla por WhatsApp.');
-  } catch {
-    toast.error('No se pudo generar la captura.');
-  }
+  await capturarPanelComoImagen(ref, 'mi-cierre-caja.png', toast, {
+    mensajeCopiado: 'Captura copiada — pégala directo en WhatsApp con Ctrl+V (o Cmd+V).',
+    mensajeDescargado: 'Captura descargada — ya puedes enviarla por WhatsApp.',
+    mensajeError: 'No se pudo generar la captura.',
+  });
 }
 
 // Una fila simple "etiqueta ... valor", como una línea de boleta — en vez de
