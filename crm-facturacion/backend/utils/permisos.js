@@ -186,16 +186,17 @@ function requireAccionConfiguracion(accion) {
   };
 }
 
-// Reatribuir una venta a otro Trainer/Supervisor desde Facturas (distinto de
-// ver el Tablero de Ventas): sigue reservado a Gerencia o al rol
-// personalizado "Supervisor", sin pasar por Configuración → Roles.
+// Reservado a Gerencia o a cualquier rol con el toggle "Permisos de
+// Supervisor" prendido (Configuración → Roles → editar rol) — ya no depende
+// de que el rol se llame literalmente "Supervisor", así Gerencia puede
+// dárselo a cualquier rol personalizado (ver roles.es_supervisor).
 function esGerenciaOSupervisor(user) {
   if (!user) return false;
   if (user.role === 'gerencia') return true;
   const userRow = db.prepare('SELECT custom_role_id FROM users WHERE id = ?').get(user.id);
   if (!userRow || !userRow.custom_role_id) return false;
-  const role = db.prepare('SELECT nombre FROM roles WHERE id = ?').get(userRow.custom_role_id);
-  return role?.nombre === 'Supervisor';
+  const role = db.prepare('SELECT es_supervisor FROM roles WHERE id = ?').get(userRow.custom_role_id);
+  return !!role?.es_supervisor;
 }
 
 function requireGerenciaOSupervisor(req, res, next) {
@@ -230,9 +231,9 @@ function requireTableroVentas(req, res, next) {
 }
 
 // Cambiar de sede desde el selector rápido de la barra superior (ver
-// middleware/auth.js: resolveSucursal). Gerencia y el rol "Supervisor"
-// siguen teniéndolo automático (esGerenciaOSupervisor, como antes de que
-// existiera este toggle); cualquier OTRO rol lo gana explícitamente desde
+// middleware/auth.js: resolveSucursal). Gerencia y cualquier rol con
+// "Permisos de Supervisor" prendido lo tienen automático (esGerenciaOSupervisor);
+// cualquier OTRO rol lo gana explícitamente desde
 // Configuración → Roles → Inicio → "Cambiar de sede", mismo criterio de
 // "sin rol = sin acceso, sin fila guardada = sin acceso" que el Tablero de
 // Ventas — no es algo que un empleado deba heredar solo por tener "Inicio"

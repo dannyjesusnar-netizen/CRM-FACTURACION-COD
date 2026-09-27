@@ -44,6 +44,7 @@ export default function RolForm() {
   const [moduloSeleccionado, setModuloSeleccionado] = useState('ventas');
   const [nombre, setNombre] = useState('');
   const [descripcion, setDescripcion] = useState('');
+  const [esSupervisor, setEsSupervisor] = useState(false);
   const [preset, setPreset] = useState('personalizado');
   const [permisos, setPermisos] = useState({});
   const [acciones, setAcciones] = useState({}); // { [modulo]: { [accion]: boolean } }
@@ -66,6 +67,7 @@ export default function RolForm() {
     api.get(`/roles/${editingId}`).then((res) => {
       setNombre(res.data.nombre);
       setDescripcion(res.data.descripcion || '');
+      setEsSupervisor(!!res.data.es_supervisor);
       const mapaPermisos = {};
       const mapaAcciones = {};
       res.data.permisos.forEach((p) => {
@@ -127,7 +129,7 @@ export default function RolForm() {
     setError('');
     setSaving(true);
     try {
-      const payload = { nombre, descripcion, permisos, acciones };
+      const payload = { nombre, descripcion, permisos, acciones, es_supervisor: esSupervisor };
       if (editingId) {
         await api.put(`/roles/${editingId}`, payload);
         toast.success('Rol actualizado.');
@@ -164,6 +166,35 @@ export default function RolForm() {
             <input required value={nombre} onChange={(e) => setNombre(e.target.value)} />
             <label>Descripción (Opcional)</label>
             <input value={descripcion} onChange={(e) => setDescripcion(e.target.value)} />
+          </div>
+
+          <div>
+            <h4 style={{ margin: 0 }}>Permisos de Supervisor</h4>
+            <p style={{ fontSize: 12, color: 'var(--ink-muted)' }}>
+              Funciones reservadas hoy a Gerencia, sin importar cómo se llame este rol.
+            </p>
+          </div>
+          <div className="panel">
+            <div className="rol-modulo-row" style={{ cursor: 'default' }}>
+              <span>Este rol tiene permisos de Supervisor</span>
+              <button
+                type="button"
+                className={'toggle-switch' + (esSupervisor ? ' on' : '')}
+                onClick={() => setEsSupervisor((v) => !v)}
+                aria-pressed={esSupervisor}
+              >
+                <span className="toggle-knob" />
+              </button>
+            </div>
+            <ul style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: 10, marginBottom: 0, paddingLeft: 18 }}>
+              <li>Aprobar o rechazar traslados de stock entre sedes</li>
+              <li>Reatribuir una venta a otro vendedor/entrenador</li>
+              <li>Cambiar de sede desde el selector rápido de la barra superior</li>
+              <li>Ver y compartir el Tablero de Ventas de todas las sedes</li>
+              <li>Administrar los canales de movimiento de inventario</li>
+              <li>Ver la Planilla y el cierre de caja de todos los empleados (no solo el propio)</li>
+              <li>Emitir comprobantes sin necesidad de abrir turno de caja</li>
+            </ul>
           </div>
 
           <div>
