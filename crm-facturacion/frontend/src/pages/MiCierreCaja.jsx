@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
+import { ArrowLeft, ZoomIn, ZoomOut, RotateCcw, Camera } from 'lucide-react';
 import api from '../api';
 import { hoyPeru } from '../utils/fechas';
+import { useToast } from '../context/ToastContext';
 
 function todayStr() {
   return hoyPeru();
@@ -12,14 +13,51 @@ function money(n) {
   return `S/ ${Number(n || 0).toFixed(2)}`;
 }
 
+// Mismo mecanismo que Dashboard.jsx:copiarPanelComoImagen — primero intenta
+// copiar la imagen directo al portapapeles (para pegarla con Ctrl+V en
+// WhatsApp Web), y si el navegador no lo soporta, la descarga como archivo.
+async function capturarComoImagen(ref, toast) {
+  if (!ref.current) return;
+  try {
+    const { default: html2canvas } = await import('html2canvas');
+    const canvas = await html2canvas(ref.current, { scale: 2, logging: false });
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+    if (!blob) throw new Error('sin blob');
+
+    if (navigator.clipboard && window.ClipboardItem) {
+      try {
+        await navigator.clipboard.write([new window.ClipboardItem({ 'image/png': blob })]);
+        toast.success('Captura copiada — pégala directo en WhatsApp con Ctrl+V (o Cmd+V).');
+        return;
+      } catch {
+        // Sin soporte/permiso para portapapeles — sigue al respaldo de descarga.
+      }
+    }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'mi-cierre-caja.png';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    toast.success('Captura descargada — ya puedes enviarla por WhatsApp.');
+  } catch {
+    toast.error('No se pudo generar la captura.');
+  }
+}
+
 // Cierre de caja personal: cada vendedor/cajero ve SOLO lo suyo (el backend
 // ya fuerza empleado_id = quien está logueado para cualquiera que no sea
 // Gerencia/Supervisor — ver GET /reports/cierre-caja), así que acá no hay
-// selector de empleado. Pensada para capturar pantalla al cerrar turno: el
-// zoom (transform: scale) permite achicar todo el reporte para que quepa
-// en una sola captura sin tener que hacer scroll ni recortar varias fotos.
+// selector de empleado. Letra grande y poco espacio entre secciones a
+// propósito: pensada para leerse y capturarse de un vistazo al cerrar
+// turno, con un botón de cámara (copia/descarga la imagen directo) además
+// del zoom manual para cuando el contenido no entra en la pantalla.
 export default function MiCierreCaja() {
   const navigate = useNavigate();
+  const toast = useToast();
+  const panelRef = useRef(null);
   const [fecha, setFecha] = useState(todayStr());
   const [cierre, setCierre] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -60,7 +98,7 @@ export default function MiCierreCaja() {
           <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} />
         </div>
         <div className="filter-field">
-          <label>Zoom (para capturar pantalla)</label>
+          <label>Zoom</label>
           <div style={{ display: 'flex', gap: 6 }}>
             <button type="button" className="btn-secondary" onClick={alejar} title="Alejar">
               <ZoomOut size={16} />
@@ -74,6 +112,17 @@ export default function MiCierreCaja() {
             <span style={{ alignSelf: 'center', fontSize: 12, color: 'var(--ink-muted)' }}>{Math.round(zoom * 100)}%</span>
           </div>
         </div>
+        <div className="filter-field">
+          <label>&nbsp;</label>
+          <button
+            type="button"
+            className="btn-primary"
+            style={{ width: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}
+            onClick={() => capturarComoImagen(panelRef, toast)}
+          >
+            <Camera size={16} /> Capturar
+          </button>
+        </div>
       </div>
 
       {loading ? (
@@ -82,10 +131,17 @@ export default function MiCierreCaja() {
         <div className="panel"><p className="form-error">{error}</p></div>
       ) : cierre && (
         <div style={{ overflow: 'auto' }}>
-          <div className="panel" style={{ transform: `scale(${zoom})`, transformOrigin: 'top left', width: zoom < 1 ? `${100 / zoom}%` : 'auto' }}>
-            <h4 style={{ marginTop: 0, marginBottom: 8 }}>Efectivo</h4>
+          <div
+            ref={panelRef}
+            className="panel"
+            style={{
+              transform: `scale(${zoom})`, transformOrigin: 'top left', width: zoom < 1 ? `${100 / zoom}%` : 'auto',
+              fontSize: 16, background: 'var(--surface)',
+            }}
+          >
+            <h4 style={{ marginTop: 0, marginBottom: 6, fontSize: 17 }}>Efectivo</h4>
             {cierre.efectivo ? (
-              <table className="data-table compact">
+              <table className="data-table compact mi-cierre-table">
                 <tbody>
                   <tr><td>Saldo inicial</td><td style={{ textAlign: 'right' }}>{money(cierre.efectivo.saldo_inicial)}</td></tr>
                   <tr><td>Ingresos</td><td style={{ textAlign: 'right' }}>{money(cierre.efectivo.ingresos.total)}</td></tr>
@@ -95,9 +151,9 @@ export default function MiCierreCaja() {
               </table>
             ) : <p className="empty-row">El método Efectivo no está activo.</p>}
 
-            <h4 style={{ marginTop: 24, marginBottom: 8 }}>🧾 Abonados</h4>
+            <h4 style={{ marginTop: 14, marginBottom: 6, fontSize: 17 }}>🧾 Abonados</h4>
             {cierre.abonados ? (
-              <table className="data-table compact">
+              <table className="data-table compact mi-cierre-table">
                 <tbody>
                   <tr><td>Cantidad de ventas abonado</td><td style={{ textAlign: 'right' }}>{cierre.abonados.cantidad}</td></tr>
                   <tr className="totals-footer"><td>Total vendido a crédito</td><td style={{ textAlign: 'right' }}>{money(cierre.abonados.ingresos.total)}</td></tr>
@@ -105,8 +161,8 @@ export default function MiCierreCaja() {
               </table>
             ) : <p className="empty-row">Sin ventas abonado en la fecha seleccionada.</p>}
 
-            <h4 style={{ marginTop: 24, marginBottom: 8 }}>Ventas por Documento</h4>
-            <table className="data-table">
+            <h4 style={{ marginTop: 14, marginBottom: 6, fontSize: 17 }}>Ventas por Documento</h4>
+            <table className="data-table mi-cierre-table">
               <thead>
                 <tr><th>Documento</th><th style={{ textAlign: 'right' }}>Cantidad</th><th style={{ textAlign: 'right' }}>Total</th></tr>
               </thead>
@@ -128,8 +184,8 @@ export default function MiCierreCaja() {
               </tfoot>
             </table>
 
-            <h4 style={{ marginTop: 24, marginBottom: 8 }}>Ventas por Forma de Pago</h4>
-            <table className="data-table">
+            <h4 style={{ marginTop: 14, marginBottom: 6, fontSize: 17 }}>Ventas por Forma de Pago</h4>
+            <table className="data-table mi-cierre-table">
               <thead>
                 <tr><th>Forma de pago</th><th style={{ textAlign: 'right' }}>Cantidad</th><th style={{ textAlign: 'right' }}>Total</th></tr>
               </thead>
@@ -147,8 +203,8 @@ export default function MiCierreCaja() {
               </tbody>
             </table>
 
-            <h4 style={{ marginTop: 24, marginBottom: 8 }}>Resultado del Día</h4>
-            <table className="data-table compact">
+            <h4 style={{ marginTop: 14, marginBottom: 6, fontSize: 17 }}>Resultado del Día</h4>
+            <table className="data-table compact mi-cierre-table">
               <tbody>
                 <tr><td>Total de ventas bruto</td><td style={{ textAlign: 'right' }}>{money(cierre.turno.bruto)}</td></tr>
                 <tr><td>Descuento</td><td style={{ textAlign: 'right' }}>-{money(cierre.turno.descuento)}</td></tr>
