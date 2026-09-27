@@ -39,8 +39,6 @@ const ACCIONES_POR_MODULO = {
     { key: 'guia_remision', label: 'Guías de remisión', grupo: 'Comprobantes' },
     { key: 'nota_venta', label: 'Notas de venta interna (sin IGV, no fiscal)', grupo: 'Comprobantes' },
     { key: 'abonado', label: 'Venta a crédito (Abonado)', grupo: 'Cuentas por cobrar' },
-    { key: 'cuentas_por_cobrar', label: 'Ver cuentas por cobrar', grupo: 'Cuentas por cobrar' },
-    { key: 'registrar_cobro', label: 'Registrar cobro', grupo: 'Cuentas por cobrar' },
     { key: 'anular_comprobante', label: 'Anular comprobante', grupo: 'Otros' },
   ],
   compras: [
@@ -67,6 +65,8 @@ const ACCIONES_POR_MODULO = {
     { key: 'apertura', label: 'Apertura / saldo inicial', grupo: 'Caja' },
     { key: 'movimientos', label: 'Registrar ingresos / egresos', grupo: 'Caja' },
     { key: 'eliminar_movimiento', label: 'Eliminar movimiento', grupo: 'Caja' },
+    { key: 'cuentas_por_cobrar', label: 'Ver cuentas por cobrar', grupo: 'Cuentas por cobrar' },
+    { key: 'registrar_cobro', label: 'Registrar cobro', grupo: 'Cuentas por cobrar' },
   ],
   reportes: [
     { key: 'tributario', label: 'Reporte tributario', grupo: 'Reportes' },

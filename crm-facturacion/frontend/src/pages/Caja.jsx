@@ -143,6 +143,7 @@ export default function Caja() {
 
       <div className="actions-buttons" style={{ marginBottom: 16 }}>
         <button className="ventas-action-btn" onClick={() => navigate('/caja/cuentas-por-cobrar')}>Cuentas por Cobrar</button>
+        <button className="ventas-action-btn" onClick={() => navigate('/caja/mi-cierre')}>Mi Cierre de Caja</button>
       </div>
 
       <div className="caja-date-bar filter-panel">
