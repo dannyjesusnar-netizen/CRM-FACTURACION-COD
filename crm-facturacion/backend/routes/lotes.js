@@ -26,9 +26,9 @@ function sumarDiasIso(fechaIso, dias) {
   return fecha.toISOString().slice(0, 10);
 }
 
-// GET /api/lotes?mostrar=con_stock|todos|agotados|vencidos|por_vencer_7|por_vencer_15|por_vencer_30&q=&categoria=&tipo=
+// GET /api/lotes?mostrar=con_stock|todos|agotados|vencidos|por_vencer_7|por_vencer_15|por_vencer_30&q=&categoria=&tipo=&product_id=
 router.get('/', (req, res) => {
-  const { mostrar, q, categoria, tipo } = req.query;
+  const { mostrar, q, categoria, tipo, product_id } = req.query;
   const today = hoyPeru();
   let sql = `
     SELECT l.*, p.codigo AS producto_codigo, p.nombre AS producto_nombre,
@@ -38,6 +38,7 @@ router.get('/', (req, res) => {
     WHERE l.activo = 1
   `;
   const params = [];
+  if (product_id) { sql += ' AND l.product_id = ?'; params.push(product_id); }
   if (mostrar === 'con_stock') { sql += ' AND l.cantidad_actual > 0'; }
   if (mostrar === 'agotados') { sql += ' AND l.cantidad_actual <= 0'; }
   if (mostrar === 'vencidos') {

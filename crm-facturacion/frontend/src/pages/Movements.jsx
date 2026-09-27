@@ -9,11 +9,13 @@ import ExportButton from '../components/ExportButton';
 
 const TIPO_LABEL = {
   venta: 'Venta', anulacion: 'Anulación', ajuste: 'Ajuste manual',
-  ingreso_lote: 'Ingreso de lote', produccion_consumo: 'Consumo (Producción)', produccion_ingreso: 'Ingreso (Producción)',
+  ingreso_lote: 'Ingreso de lote', salida_lote: 'Salida de lote',
+  produccion_consumo: 'Consumo (Producción)', produccion_ingreso: 'Ingreso (Producción)',
 };
 const TIPO_BADGE = {
   venta: 'badge-critical', anulacion: 'badge-good', ajuste: 'badge-neutral',
-  ingreso_lote: 'badge-good', produccion_consumo: 'badge-critical', produccion_ingreso: 'badge-good',
+  ingreso_lote: 'badge-good', salida_lote: 'badge-critical',
+  produccion_consumo: 'badge-critical', produccion_ingreso: 'badge-good',
 };
 
 function parseCsv(text) {
@@ -320,6 +322,7 @@ export default function Movements() {
             <option value="anulacion">Anulación</option>
             <option value="ajuste">Ajuste manual</option>
             <option value="ingreso_lote">Ingreso de lote</option>
+            <option value="salida_lote">Salida de lote</option>
             <option value="produccion_consumo">Consumo (Producción)</option>
             <option value="produccion_ingreso">Ingreso (Producción)</option>
           </select>

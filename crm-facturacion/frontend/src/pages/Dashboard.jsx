@@ -17,6 +17,7 @@ import api from '../api';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { descargarComoExcel } from '../utils/excelImport';
+import { capturarPanelComoImagen } from '../utils/capturarImagen';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Tooltip, Legend, Filler);
 
@@ -126,45 +127,12 @@ async function descargarDetalleRankingComoExcel(categoria, filename, columnaPers
   }
 }
 
-// Convierte un panel completo (incluida la franja de color y todas las
-// filas de la tabla, aunque no quepan en pantalla) en una imagen PNG:
-// primero intenta copiarla directo al portapapeles para pegarla en
-// WhatsApp Web con Ctrl+V; si el navegador no lo soporta, la descarga
-// como archivo para adjuntarla manualmente.
+// Envoltorio de capturarPanelComoImagen (ver utils/capturarImagen.js) que
+// además ignora el botón de copiar de la propia franja al capturarla.
 async function copiarPanelComoImagen(ref, nombreArchivo, toast) {
-  if (!ref.current) return;
-  try {
-    const { default: html2canvas } = await import('html2canvas');
-    const canvas = await html2canvas(ref.current, {
-      scale: 2,
-      logging: false,
-      ignoreElements: (el) => el.classList?.contains('panel-banda-copy-btn'),
-    });
-    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
-    if (!blob) throw new Error('sin blob');
-
-    if (navigator.clipboard && window.ClipboardItem) {
-      try {
-        await navigator.clipboard.write([new window.ClipboardItem({ 'image/png': blob })]);
-        toast.success('Imagen copiada — pégala directo en WhatsApp con Ctrl+V (o Cmd+V).');
-        return;
-      } catch {
-        // El navegador no dejó copiar al portapapeles (falta de permiso o
-        // sin soporte) — sigue al respaldo de descarga.
-      }
-    }
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = nombreArchivo;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-    toast.success('Imagen descargada — ya puedes enviarla por WhatsApp.');
-  } catch {
-    toast.error('No se pudo generar la imagen de este panel.');
-  }
+  await capturarPanelComoImagen(ref, nombreArchivo, toast, {
+    ignoreElements: (el) => el.classList?.contains('panel-banda-copy-btn'),
+  });
 }
 
 export default function Dashboard() {
