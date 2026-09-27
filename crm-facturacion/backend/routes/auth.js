@@ -8,7 +8,7 @@ const { resolveTenantDb } = require('../utils/tenant');
 const { consultarRuc } = require('../utils/rucLookup');
 const { JWT_SECRET, requireAuth } = require('../middleware/auth');
 const { passwordError } = require('../utils/password');
-const { permisosDeUsuario, esGerenciaOSupervisor, puedeVerTableroVentas, puedeCambiarSede, accionesDeModulo } = require('../utils/permisos');
+const { permisosDeUsuario, tieneAccionSupervisor, puedeVerTableroVentas, puedeCambiarSede, accionesDeModulo } = require('../utils/permisos');
 
 const router = express.Router();
 
@@ -71,18 +71,18 @@ function construirUsuarioCliente(user) {
     // venta a otro Trainer/Supervisor desde Facturas es un permiso aparte,
     // que sigue reservado a Gerencia/Supervisor sin pasar por ese toggle.
     puede_ver_tablero: puedeVerTableroVentas(user),
-    puede_reatribuir_venta: esGerenciaOSupervisor(user),
+    puede_reatribuir_venta: tieneAccionSupervisor(user, 'reatribuir_venta'),
     // Aprobar/rechazar traslados pendientes (ver routes/traslados.js) — un
     // vendedor de sede solo puede crearlos, no aprobarlos.
-    puede_aprobar_traslados: esGerenciaOSupervisor(user),
+    puede_aprobar_traslados: tieneAccionSupervisor(user, 'aprobar_traslados'),
     // Crear/eliminar Canales de movimiento (Configuración → Canales de
     // movimiento) — mismo criterio que routes/movements.js:
     // requireGerenciaOSupervisorCanales, sin pasar por el módulo
     // "Configuración" de Roles.
-    puede_administrar_canales: esGerenciaOSupervisor(user),
+    puede_administrar_canales: tieneAccionSupervisor(user, 'canales_movimiento'),
     // Generar/copiar/revocar el link público del Tablero de Ventas (ver
-    // routes/tablero.js: requireGerenciaOSupervisor en /link-publico).
-    puede_compartir_dashboard: esGerenciaOSupervisor(user),
+    // routes/tablero.js: requireCompartirTablero en /link-publico).
+    puede_compartir_dashboard: tieneAccionSupervisor(user, 'compartir_tablero'),
     // Cambiar de sede desde el selector rápido de la barra superior (ver
     // middleware/auth.js: resolveSucursal). Gerencia/Supervisor lo tienen
     // automático; cualquier otro rol lo gana desde Configuración → Roles →

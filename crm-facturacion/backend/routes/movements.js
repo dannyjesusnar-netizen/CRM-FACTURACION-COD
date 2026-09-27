@@ -3,7 +3,7 @@ const multer = require('multer');
 const db = require('../db');
 const { requireAuth, resolveSucursal } = require('../middleware/auth');
 const { round2, ajustarStockSucursal, getStockSucursal, setStockSucursal } = require('../utils/stock');
-const { requirePermiso, requireAccion, esGerenciaOSupervisor } = require('../utils/permisos');
+const { requirePermiso, requireAccion, requireAccionSupervisor } = require('../utils/permisos');
 const { analizarEtiqueta } = require('../utils/ocrEtiqueta');
 const { analizarGuia } = require('../utils/ocrGuia');
 const { parseGuiaXml, parseGuiaPdf } = require('../utils/guiaParser');
@@ -17,10 +17,10 @@ router.use(requireAuth);
 router.use(requirePermiso('inventario'));
 router.use(resolveSucursal);
 
-function requireGerenciaOSupervisorCanales(req, res, next) {
-  if (esGerenciaOSupervisor(req.user)) return next();
-  return res.status(403).json({ error: 'Solo Gerencia o un Supervisor puede administrar los canales de movimiento.' });
-}
+const requireGerenciaOSupervisorCanales = requireAccionSupervisor(
+  'canales_movimiento',
+  'No tienes permiso para administrar los canales de movimiento.'
+);
 
 // GET /api/movements/canales — canales activos, para el selector al registrar
 // un movimiento y para el filtro del listado.

@@ -44,7 +44,8 @@ export default function RolForm() {
   const [moduloSeleccionado, setModuloSeleccionado] = useState('ventas');
   const [nombre, setNombre] = useState('');
   const [descripcion, setDescripcion] = useState('');
-  const [esSupervisor, setEsSupervisor] = useState(false);
+  const [accionesSupervisorDefs, setAccionesSupervisorDefs] = useState([]); // [{key, label}] — catálogo fijo, del backend
+  const [accionesSupervisor, setAccionesSupervisor] = useState({}); // { [accion]: boolean }
   const [preset, setPreset] = useState('personalizado');
   const [permisos, setPermisos] = useState({});
   const [acciones, setAcciones] = useState({}); // { [modulo]: { [accion]: boolean } }
@@ -53,10 +54,11 @@ export default function RolForm() {
 
   useEffect(() => {
     api.get('/roles/modulos').then((res) => {
-      setModulos(res.data);
+      setModulos(res.data.modulos);
+      setAccionesSupervisorDefs(res.data.acciones_supervisor || []);
       if (!editingId) {
         const inicial = {};
-        res.data.forEach((m) => { inicial[m.key] = false; });
+        res.data.modulos.forEach((m) => { inicial[m.key] = false; });
         setPermisos(inicial);
       }
     });
@@ -67,7 +69,9 @@ export default function RolForm() {
     api.get(`/roles/${editingId}`).then((res) => {
       setNombre(res.data.nombre);
       setDescripcion(res.data.descripcion || '');
-      setEsSupervisor(!!res.data.es_supervisor);
+      const mapaSupervisor = {};
+      (res.data.acciones_supervisor || []).forEach((a) => { mapaSupervisor[a.accion] = a.habilitado; });
+      setAccionesSupervisor(mapaSupervisor);
       const mapaPermisos = {};
       const mapaAcciones = {};
       res.data.permisos.forEach((p) => {
@@ -124,12 +128,29 @@ export default function RolForm() {
     });
   }
 
+  // "Este rol tiene permisos de Supervisor" es un atajo: prende/apaga las 7
+  // acciones a la vez. Cada una también se puede tocar individual más abajo
+  // (toggleAccionSupervisor) sin afectar a las demás.
+  const todasLasAccionesSupervisorPrendidas =
+    accionesSupervisorDefs.length > 0 && accionesSupervisorDefs.every((a) => accionesSupervisor[a.key]);
+
+  function toggleTodoSupervisor() {
+    const nuevoValor = !todasLasAccionesSupervisorPrendidas;
+    const nuevo = {};
+    accionesSupervisorDefs.forEach((a) => { nuevo[a.key] = nuevoValor; });
+    setAccionesSupervisor(nuevo);
+  }
+
+  function toggleAccionSupervisor(accionKey) {
+    setAccionesSupervisor((prev) => ({ ...prev, [accionKey]: !prev[accionKey] }));
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
     setError('');
     setSaving(true);
     try {
-      const payload = { nombre, descripcion, permisos, acciones, es_supervisor: esSupervisor };
+      const payload = { nombre, descripcion, permisos, acciones: { ...acciones, supervisor: accionesSupervisor } };
       if (editingId) {
         await api.put(`/roles/${editingId}`, payload);
         toast.success('Rol actualizado.');
@@ -179,22 +200,35 @@ export default function RolForm() {
               <span>Este rol tiene permisos de Supervisor</span>
               <button
                 type="button"
-                className={'toggle-switch' + (esSupervisor ? ' on' : '')}
-                onClick={() => setEsSupervisor((v) => !v)}
-                aria-pressed={esSupervisor}
+                className={'toggle-switch' + (todasLasAccionesSupervisorPrendidas ? ' on' : '')}
+                onClick={toggleTodoSupervisor}
+                aria-pressed={todasLasAccionesSupervisorPrendidas}
+                title="Prende o apaga las 7 opciones de abajo a la vez"
               >
                 <span className="toggle-knob" />
               </button>
             </div>
-            <ul style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: 10, marginBottom: 0, paddingLeft: 18 }}>
-              <li>Aprobar o rechazar traslados de stock entre sedes</li>
-              <li>Reatribuir una venta a otro vendedor/entrenador</li>
-              <li>Cambiar de sede desde el selector rápido de la barra superior</li>
-              <li>Ver y compartir el Tablero de Ventas de todas las sedes</li>
-              <li>Administrar los canales de movimiento de inventario</li>
-              <li>Ver la Planilla y el cierre de caja de todos los empleados (no solo el propio)</li>
-              <li>Emitir comprobantes sin necesidad de abrir turno de caja</li>
-            </ul>
+            <div style={{ marginTop: 6 }}>
+              {accionesSupervisorDefs.map((a) => {
+                const on = !!accionesSupervisor[a.key];
+                return (
+                  <div key={a.key} className={'rol-accion-row' + (on ? '' : ' off')}>
+                    <span className="rol-accion-label">
+                      <CheckCircle2 size={15} className="rol-accion-check" />
+                      {a.label}
+                    </span>
+                    <button
+                      type="button"
+                      className={'toggle-switch small' + (on ? ' on' : '')}
+                      onClick={() => toggleAccionSupervisor(a.key)}
+                      aria-pressed={on}
+                    >
+                      <span className="toggle-knob" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
           </div>
 
           <div>

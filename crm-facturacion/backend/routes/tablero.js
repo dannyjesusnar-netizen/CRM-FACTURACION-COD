@@ -2,11 +2,16 @@ const crypto = require('crypto');
 const express = require('express');
 const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
-const { requireTableroVentas, requireGerenciaOSupervisor } = require('../utils/permisos');
+const { requireTableroVentas, requireAccionSupervisor } = require('../utils/permisos');
 
 const router = express.Router();
 router.use(requireAuth);
 router.use(requireTableroVentas);
+
+const requireCompartirTablero = requireAccionSupervisor(
+  'compartir_tablero',
+  'No tienes permiso para administrar el link público del Tablero de Ventas.'
+);
 
 function round2(n) {
   return Math.round((n + Number.EPSILON) * 100) / 100;
@@ -393,10 +398,11 @@ function filaLinkPublico(sucursalId) {
     : db.prepare('SELECT id, token, activo FROM dashboard_publico_links WHERE sucursal_id = ? ORDER BY id DESC LIMIT 1').get(sucursalId);
 }
 
-// Reservado a Gerencia o Supervisor (no a cualquier otro rol con acceso al
-// Tablero de Ventas): es la única acción de esta pantalla que expone datos
-// de la empresa sin necesidad de sesión.
-router.get('/link-publico', requireGerenciaOSupervisor, (req, res) => {
+// Reservado a Gerencia o a un rol con "Permisos de Supervisor → Compartir
+// Tablero" (no a cualquier otro rol con acceso al Tablero de Ventas): es la
+// única acción de esta pantalla que expone datos de la empresa sin
+// necesidad de sesión.
+router.get('/link-publico', requireCompartirTablero, (req, res) => {
   const fila = filaLinkPublico(sedeDelLinkPublico(req));
   res.json({ token: fila && fila.activo ? fila.token : null });
 });
@@ -404,7 +410,7 @@ router.get('/link-publico', requireGerenciaOSupervisor, (req, res) => {
 // Idempotente: si ya hay un link activo para este alcance, devuelve el
 // mismo token (no lo rota cada vez que alguien le da "Copiar"). Si estaba
 // revocado o nunca existió, genera uno nuevo.
-router.post('/link-publico', requireGerenciaOSupervisor, (req, res) => {
+router.post('/link-publico', requireCompartirTablero, (req, res) => {
   const sucursalId = sedeDelLinkPublico(req);
   const fila = filaLinkPublico(sucursalId);
   if (fila && fila.activo) return res.json({ token: fila.token });
@@ -424,7 +430,7 @@ router.post('/link-publico', requireGerenciaOSupervisor, (req, res) => {
 // Revocar invalida el link ya compartido; volver a generarlo emite un
 // token nuevo (no reactiva el viejo), para que un link filtrado no pueda
 // "revivir" solo.
-router.delete('/link-publico', requireGerenciaOSupervisor, (req, res) => {
+router.delete('/link-publico', requireCompartirTablero, (req, res) => {
   const fila = filaLinkPublico(sedeDelLinkPublico(req));
   if (fila) db.prepare('UPDATE dashboard_publico_links SET activo = 0 WHERE id = ?').run(fila.id);
   res.json({ ok: true });

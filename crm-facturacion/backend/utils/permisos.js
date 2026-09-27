@@ -94,6 +94,22 @@ const ACCIONES_POR_MODULO = {
     { key: 'exportador', label: 'Exportador de Datos Masivos', grupo: 'Datos' },
     { key: 'power_bi', label: 'Power BI', grupo: 'Integraciones' },
   ],
+  // "supervisor" NO es un módulo real (a propósito no está en MODULOS, así
+  // que nunca aparece en la lista de módulos de Configuración → Roles ni
+  // pasa por tienePermiso/tieneAccion) — son candados independientes,
+  // funciones hoy reservadas a Gerencia, que Configuración → Roles muestra
+  // aparte, arriba del todo ("Permisos de Supervisor"). Cada una arranca
+  // apagada (sin fila guardada = sin acceso, ver tieneAccionSupervisor) y
+  // Gerencia la prende una por una para el rol que quiera.
+  supervisor: [
+    { key: 'aprobar_traslados', label: 'Aprobar o rechazar traslados de stock entre sedes' },
+    { key: 'reatribuir_venta', label: 'Reatribuir una venta a otro vendedor/entrenador' },
+    { key: 'cambiar_sede', label: 'Cambiar de sede desde el selector rápido de la barra superior' },
+    { key: 'compartir_tablero', label: 'Ver y compartir el Tablero de Ventas de todas las sedes' },
+    { key: 'canales_movimiento', label: 'Administrar los canales de movimiento de inventario' },
+    { key: 'ver_todos_planilla_caja', label: 'Ver la Planilla y el cierre de caja de todos los empleados (no solo el propio)' },
+    { key: 'sin_turno_caja', label: 'Emitir comprobantes sin necesidad de abrir turno de caja' },
+  ],
 };
 
 // gerencia = acceso total siempre. Sin rol asignado = compatibilidad (acceso
@@ -186,23 +202,30 @@ function requireAccionConfiguracion(accion) {
   };
 }
 
-// Reservado a Gerencia o a cualquier rol con el toggle "Permisos de
-// Supervisor" prendido (Configuración → Roles → editar rol) — ya no depende
-// de que el rol se llame literalmente "Supervisor", así Gerencia puede
-// dárselo a cualquier rol personalizado (ver roles.es_supervisor).
-function esGerenciaOSupervisor(user) {
+// "Permisos de Supervisor" (Configuración → Roles → editar rol, arriba del
+// todo): cada función de esta lista es un candado independiente, prendido
+// por Gerencia para el rol que quiera (ver ACCIONES_POR_MODULO.supervisor
+// más arriba) — ya no depende de que el rol se llame literalmente
+// "Supervisor" ni es todo-o-nada. Reutiliza role_acciones bajo el "módulo"
+// reservado 'supervisor', pero SIN pasar por tienePermiso (que exigiría un
+// módulo real habilitado): sin fila guardada = sin acceso, siempre.
+function tieneAccionSupervisor(user, accion) {
   if (!user) return false;
   if (user.role === 'gerencia') return true;
   const userRow = db.prepare('SELECT custom_role_id FROM users WHERE id = ?').get(user.id);
   if (!userRow || !userRow.custom_role_id) return false;
-  const role = db.prepare('SELECT es_supervisor FROM roles WHERE id = ?').get(userRow.custom_role_id);
-  return !!role?.es_supervisor;
+  const fila = db.prepare(
+    'SELECT habilitado FROM role_acciones WHERE role_id = ? AND modulo = ? AND accion = ?'
+  ).get(userRow.custom_role_id, 'supervisor', accion);
+  return !!(fila && fila.habilitado);
 }
 
-function requireGerenciaOSupervisor(req, res, next) {
-  if (!req.user) return res.status(401).json({ error: 'No autenticado.' });
-  if (esGerenciaOSupervisor(req.user)) return next();
-  return res.status(403).json({ error: 'Solo Gerencia o un Supervisor puede reatribuir esta venta.' });
+function requireAccionSupervisor(accion, mensajeError) {
+  return (req, res, next) => {
+    if (!req.user) return res.status(401).json({ error: 'No autenticado.' });
+    if (tieneAccionSupervisor(req.user, accion)) return next();
+    return res.status(403).json({ error: mensajeError || 'No tienes permiso para esta acción.' });
+  };
 }
 
 // Acceso al Tablero de Ventas ejecutivo (cross-sede, en Dashboard): Gerencia
@@ -231,8 +254,8 @@ function requireTableroVentas(req, res, next) {
 }
 
 // Cambiar de sede desde el selector rápido de la barra superior (ver
-// middleware/auth.js: resolveSucursal). Gerencia y cualquier rol con
-// "Permisos de Supervisor" prendido lo tienen automático (esGerenciaOSupervisor);
+// middleware/auth.js: resolveSucursal). Gerencia y cualquier rol con la
+// acción de Supervisor "Cambiar de sede" prendida lo tienen automático;
 // cualquier OTRO rol lo gana explícitamente desde
 // Configuración → Roles → Inicio → "Cambiar de sede", mismo criterio de
 // "sin rol = sin acceso, sin fila guardada = sin acceso" que el Tablero de
@@ -240,7 +263,7 @@ function requireTableroVentas(req, res, next) {
 // prendido.
 function puedeCambiarSede(user) {
   if (!user) return false;
-  if (esGerenciaOSupervisor(user)) return true;
+  if (tieneAccionSupervisor(user, 'cambiar_sede')) return true;
   const userRow = db.prepare('SELECT custom_role_id FROM users WHERE id = ?').get(user.id);
   if (!userRow || !userRow.custom_role_id) return false;
   if (!tienePermiso(user, 'dashboard')) return false;
@@ -307,8 +330,8 @@ module.exports = {
   tienePermisoConfiguracion,
   tieneAccionConfiguracion,
   requireAccionConfiguracion,
-  esGerenciaOSupervisor,
-  requireGerenciaOSupervisor,
+  tieneAccionSupervisor,
+  requireAccionSupervisor,
   puedeVerTableroVentas,
   requireTableroVentas,
   puedeCambiarSede,

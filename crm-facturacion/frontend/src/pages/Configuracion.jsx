@@ -822,10 +822,19 @@ export default function Configuracion() {
     for (const [nombre, modulos] of faltantes) {
       const permisos = {};
       modulos.forEach((m) => { permisos[m] = true; });
-      await api.post('/roles', {
-        nombre, descripcion: `Rol predeterminado: ${nombre}.`, permisos,
-        es_supervisor: nombre === 'Supervisor',
-      });
+      // El rol "Supervisor" predeterminado arranca con las 7 acciones de
+      // Permisos de Supervisor prendidas (Configuración → Roles → editar
+      // rol) — mismo criterio que antes tenía por su nombre, pero ahora
+      // explícito y editable como cualquier otro rol.
+      const acciones = nombre === 'Supervisor'
+        ? {
+          supervisor: {
+            aprobar_traslados: true, reatribuir_venta: true, cambiar_sede: true, compartir_tablero: true,
+            canales_movimiento: true, ver_todos_planilla_caja: true, sin_turno_caja: true,
+          },
+        }
+        : undefined;
+      await api.post('/roles', { nombre, descripcion: `Rol predeterminado: ${nombre}.`, permisos, acciones });
     }
     const res = await api.get('/roles');
     return res.data;

@@ -1,7 +1,7 @@
 const express = require('express');
 const db = require('../db');
 const { requireAuth, resolveSucursal } = require('../middleware/auth');
-const { requirePermiso, requireAccion, tieneAccion, requireGerenciaOSupervisor } = require('../utils/permisos');
+const { requirePermiso, requireAccion, tieneAccion, requireAccionSupervisor } = require('../utils/permisos');
 const { requireTurnoCajaAbierto } = require('../utils/cajaTurno');
 const { siguienteNumero } = require('../utils/series');
 const { resolverDescuentoPct } = require('../utils/descuentos');
@@ -380,7 +380,7 @@ router.post('/:id/anular', requireAccion('ventas', 'anular_comprobante'), (req, 
 // PUT /api/notas-venta/:id/atribuido-a { atribuido_a_id } — mismo patrón que
 // PUT /api/invoices/:id/atribuido-a: Gerencia o Supervisor corrige, después
 // de emitida, a nombre de quién cuenta esta nota de venta en el Ranking.
-router.put('/:id/atribuido-a', requireGerenciaOSupervisor, (req, res) => {
+router.put('/:id/atribuido-a', requireAccionSupervisor('reatribuir_venta', 'No tienes permiso para reatribuir esta venta.'), (req, res) => {
   const nv = db.prepare('SELECT * FROM notas_venta WHERE id = ? AND sucursal_id = ?').get(req.params.id, req.sucursalId);
   if (!nv) return res.status(404).json({ error: 'Nota de venta interna no encontrada.' });
   if (nv.estado === 'anulado') {
