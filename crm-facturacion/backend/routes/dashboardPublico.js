@@ -2,12 +2,15 @@
 // Ventas (ver routes/tablero.js: POST/GET/DELETE /tablero/link-publico).
 // Igual que routes/pagoPublico.js, la empresa (RUC) va en la URL porque acá
 // no hay JWT del que sacarla. Muestra TODOS los totales agregados (por sede,
-// marca, línea y producto) — nunca el Ranking Personal con nombres de
-// empleados, que sigue siendo interno.
+// marca, línea y producto) y, a pedido, también el Ranking de Entrenadores y
+// de Supervisores (con nombre) — Gerencia decide compartir este link, así
+// que asume que quiere mostrar esos rankings hacia afuera. El Ranking de
+// Vendedores no se pidió y se deja fuera por ahora.
 const express = require('express');
 const db = require('../db');
 const tenantRegistry = require('../tenantRegistry');
 const { resolveTenantDb } = require('../utils/tenant');
+const { calcularRankingPersonal } = require('../utils/rankingPersonal');
 
 const router = express.Router();
 
@@ -173,6 +176,9 @@ router.get('/:ruc/:token', (req, res) => {
     const sedesDisponibles = db.prepare('SELECT id, nombre FROM sucursales WHERE activo = 1 ORDER BY nombre ASC').all();
     const sedeActual = sucursalId === null ? null : db.prepare('SELECT nombre FROM sucursales WHERE id = ?').get(sucursalId);
 
+    const rankingTrainers = calcularRankingPersonal('trainer', anio, mes, sucursalId);
+    const rankingSupervisores = calcularRankingPersonal('supervisor', anio, mes, sucursalId);
+
     res.json({
       empresa: {
         nombre: empresa?.nombre_comercial || empresa?.razon_social || 'Empresa',
@@ -190,6 +196,8 @@ router.get('/:ruc/:token', (req, res) => {
       marca,
       lineas,
       productos,
+      ranking_trainers: rankingTrainers,
+      ranking_supervisores: rankingSupervisores,
     });
   });
 });
