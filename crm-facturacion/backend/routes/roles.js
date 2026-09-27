@@ -34,7 +34,7 @@ function conPermisos(role) {
     });
     return { modulo: m.key, label: m.label, habilitado: !!porModulo[m.key], acciones };
   });
-  return { ...role, permisos };
+  return { ...role, es_supervisor: !!role.es_supervisor, permisos };
 }
 
 // GET /api/roles?q=&estado=
@@ -88,11 +88,11 @@ function guardarAcciones(roleId, acciones) {
 }
 
 router.post('/', (req, res) => {
-  const { nombre, descripcion, permisos, acciones } = req.body || {};
+  const { nombre, descripcion, permisos, acciones, es_supervisor } = req.body || {};
   if (!nombre) return res.status(400).json({ error: 'nombre es requerido.' });
   const info = db.prepare(
-    'INSERT INTO roles (nombre, descripcion, created_by) VALUES (?, ?, ?)'
-  ).run(nombre, descripcion || null, req.user?.id || null);
+    'INSERT INTO roles (nombre, descripcion, es_supervisor, created_by) VALUES (?, ?, ?, ?)'
+  ).run(nombre, descripcion || null, es_supervisor ? 1 : 0, req.user?.id || null);
   guardarPermisos(info.lastInsertRowid, permisos);
   guardarAcciones(info.lastInsertRowid, acciones);
   const role = db.prepare('SELECT * FROM roles WHERE id = ?').get(info.lastInsertRowid);
@@ -102,9 +102,10 @@ router.post('/', (req, res) => {
 router.put('/:id', (req, res) => {
   const existing = db.prepare('SELECT * FROM roles WHERE id = ?').get(req.params.id);
   if (!existing) return res.status(404).json({ error: 'Rol no encontrado.' });
-  const { nombre, descripcion, permisos, acciones } = req.body || {};
+  const { nombre, descripcion, permisos, acciones, es_supervisor } = req.body || {};
   if (!nombre) return res.status(400).json({ error: 'nombre es requerido.' });
-  db.prepare('UPDATE roles SET nombre = ?, descripcion = ? WHERE id = ?').run(nombre, descripcion || null, req.params.id);
+  db.prepare('UPDATE roles SET nombre = ?, descripcion = ?, es_supervisor = ? WHERE id = ?')
+    .run(nombre, descripcion || null, es_supervisor ? 1 : 0, req.params.id);
   if (permisos) guardarPermisos(req.params.id, permisos);
   if (acciones) guardarAcciones(req.params.id, acciones);
   const role = db.prepare('SELECT * FROM roles WHERE id = ?').get(req.params.id);

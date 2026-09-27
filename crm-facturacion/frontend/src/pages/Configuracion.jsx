@@ -822,7 +822,10 @@ export default function Configuracion() {
     for (const [nombre, modulos] of faltantes) {
       const permisos = {};
       modulos.forEach((m) => { permisos[m] = true; });
-      await api.post('/roles', { nombre, descripcion: `Rol predeterminado: ${nombre}.`, permisos });
+      await api.post('/roles', {
+        nombre, descripcion: `Rol predeterminado: ${nombre}.`, permisos,
+        es_supervisor: nombre === 'Supervisor',
+      });
     }
     const res = await api.get('/roles');
     return res.data;
@@ -2645,7 +2648,14 @@ export default function Configuracion() {
                 <tbody>
                   {roles.map((r) => (
                     <tr key={r.id}>
-                      <td>{r.nombre}</td>
+                      <td>
+                        {r.nombre}
+                        {r.es_supervisor && (
+                          <span className="badge badge-good" style={{ marginLeft: 8 }} title="Tiene permisos de Supervisor">
+                            Supervisor
+                          </span>
+                        )}
+                      </td>
                       <td>{r.descripcion || '—'}</td>
                       <td>
                         <span className={'badge ' + (r.activo ? 'badge-good' : 'badge-critical')}>

@@ -751,6 +751,20 @@ CREATE TABLE IF NOT EXISTS role_acciones (
 );
 `);
 
+  // "Permisos de Supervisor" (Configuración → Roles → toggle explícito):
+  // antes, funciones como aprobar traslados o cambiar de sede se activaban
+  // solo si un rol se llamaba literalmente "Supervisor" (ver
+  // utils/permisos.js:esGerenciaOSupervisor). Ahora es un toggle explícito
+  // por rol, para poder dárselo a cualquier rol con el nombre que sea — la
+  // migración corre una sola vez (guardada por si la columna ya existe) y,
+  // justo al crearla, prende el toggle para los roles que YA se llamaban
+  // "Supervisor" para no quitarles el acceso de golpe.
+  const rolesColumns = db.prepare("PRAGMA table_info(roles)").all().map((c) => c.name);
+  if (!rolesColumns.includes('es_supervisor')) {
+    db.exec('ALTER TABLE roles ADD COLUMN es_supervisor INTEGER NOT NULL DEFAULT 0');
+    db.prepare("UPDATE roles SET es_supervisor = 1 WHERE nombre = 'Supervisor'").run();
+  }
+
   const userColumns = db.prepare("PRAGMA table_info(users)").all().map((c) => c.name);
   const USER_NEW_COLUMNS = [
     ['activo', 'INTEGER NOT NULL DEFAULT 1'],
