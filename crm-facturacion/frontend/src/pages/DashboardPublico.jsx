@@ -1,7 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Circle, Triangle, Diamond } from 'lucide-react';
+import { Circle, Triangle, Diamond, Camera } from 'lucide-react';
 import api from '../api';
+import { useToast } from '../context/ToastContext';
+import { capturarPanelComoImagen } from '../utils/capturarImagen';
 
 const MESES = [
   'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
@@ -122,6 +124,8 @@ function TablaRanking({ titulo, color, filas, conTurno }) {
 // Supervisores, y deja elegir año/mes/sede.
 export default function DashboardPublico() {
   const { ruc, token } = useParams();
+  const toast = useToast();
+  const panelRef = useRef(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [datos, setDatos] = useState(null);
@@ -162,13 +166,15 @@ export default function DashboardPublico() {
 
   return (
     <div className="pago-publico-page" style={{ alignItems: 'flex-start' }}>
-      <div className="pago-publico-card" style={{ maxWidth: 680, textAlign: 'left' }}>
+      <div className="pago-publico-card" style={{ maxWidth: 680, textAlign: 'left' }} ref={panelRef}>
         {datos.empresa.logo_data_url && (
           <img src={datos.empresa.logo_data_url} alt="Logo" className="pago-publico-logo" style={{ margin: '0 0 12px' }} />
         )}
         <p className="pago-publico-eyebrow">Dashboard de ventas · {datos.alcance}</p>
         <h1 style={{ marginBottom: 12 }}>{datos.empresa.nombre}</h1>
 
+        {/* Excluida de la captura (ver ignoreElements más abajo) — son los
+            controles para elegir qué mirar, no parte del reporte en sí. */}
         <div className="filter-panel" style={{ margin: '0 0 16px' }}>
           <div className="filter-field">
             <label>Año</label>
@@ -193,6 +199,19 @@ export default function DashboardPublico() {
               </select>
             </div>
           )}
+          <div className="filter-field">
+            <label>&nbsp;</label>
+            <button
+              type="button"
+              className="btn-primary"
+              style={{ width: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', background: color, borderColor: color }}
+              onClick={() => capturarPanelComoImagen(panelRef, 'dashboard-publico.png', toast, {
+                ignoreElements: (el) => el.classList?.contains('filter-panel'),
+              })}
+            >
+              <Camera size={16} /> Capturar
+            </button>
+          </div>
         </div>
 
         <TablaRanking titulo="Ranking Entrenadores" color={color} filas={datos.ranking_trainers} conTurno />
