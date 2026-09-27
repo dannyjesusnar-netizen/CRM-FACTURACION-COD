@@ -1,7 +1,7 @@
 const express = require('express');
 const db = require('../db');
 const { requireAuth, resolveSucursal } = require('../middleware/auth');
-const { requirePermiso, requireAlgunPermiso, requireAccion, puedeCambiarSede } = require('../utils/permisos');
+const { requirePermiso, requireAlgunPermiso, requireAccion, puedeCambiarSede, esGerenciaOSupervisor } = require('../utils/permisos');
 const { buildResumen } = require('../utils/cajaCalculos');
 const { hoyPeru } = require('../utils/fechas');
 
@@ -308,7 +308,13 @@ router.get('/ventas-detalle', requireAlgunPermiso(['ventas', 'reportes']), (req,
 // misma granularidad que ya ofrece Caja y Bancos.
 router.get('/cierre-caja', requireAlgunPermiso(['caja', 'reportes']), (req, res) => {
   const fecha = req.query.fecha || hoyPeru();
-  const empleadoId = req.query.empleado_id ? Number(req.query.empleado_id) : null;
+  // Un vendedor/cajero solo puede ver SU propio cierre — nunca el de otro
+  // empleado ni el de "todos" (sin importar lo que mande empleado_id).
+  // Gerencia y Supervisor sí pueden elegir cualquier empleado o dejarlo
+  // vacío para ver el total de la sede.
+  const empleadoId = esGerenciaOSupervisor(req.user)
+    ? (req.query.empleado_id ? Number(req.query.empleado_id) : null)
+    : req.user.id;
   const empleadoFiltro = empleadoId ? 'AND created_by = ?' : '';
   const baseParams = empleadoId ? [fecha, req.sucursalId, empleadoId] : [fecha, req.sucursalId];
 
