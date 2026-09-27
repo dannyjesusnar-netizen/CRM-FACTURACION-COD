@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
+import { Circle, Triangle, Diamond } from 'lucide-react';
 import api from '../api';
 
 const MESES = [
@@ -9,6 +10,26 @@ const MESES = [
 
 function money(n) {
   return `S/ ${Number(n || 0).toFixed(2)}`;
+}
+
+// Mismo criterio que Dashboard.jsx: rombo rojo (<80%), triángulo ámbar
+// (80%–99.99%), círculo verde (>=100%).
+function pctBadge(pct) {
+  if (pct === null || pct === undefined) return <span className="badge badge-neutral">—</span>;
+  const valor = Number(pct);
+  if (valor >= 100) {
+    return <span className="pct-symbol pct-good"><Circle size={12} fill="currentColor" strokeWidth={0} />{valor.toFixed(2)}%</span>;
+  }
+  if (valor >= 80) {
+    return <span className="pct-symbol pct-warning"><Triangle size={12} fill="currentColor" strokeWidth={0} />{valor.toFixed(2)}%</span>;
+  }
+  return <span className="pct-symbol pct-critical"><Diamond size={12} fill="currentColor" strokeWidth={0} />{valor.toFixed(2)}%</span>;
+}
+
+function totalesRanking(rows) {
+  const venta = rows.reduce((acc, r) => acc + r.venta, 0);
+  const meta = rows.reduce((acc, r) => acc + r.meta, 0);
+  return { venta, meta, porcentaje: meta > 0 ? (venta / meta) * 100 : null };
 }
 
 // Una tabla "categoría, cantidad, venta, %" — mismo formato que usan Total
@@ -41,10 +62,64 @@ function TablaConPorcentaje({ titulo, color, columnaEtiqueta, filas, getEtiqueta
   );
 }
 
+// Ranking de Entrenadores/Supervisores — mismo formato que el Dashboard
+// interno (nombre, sede, turno solo para Entrenadores, venta, meta, %).
+function TablaRanking({ titulo, color, filas, conTurno }) {
+  const columnas = conTurno ? 6 : 5;
+  return (
+    <div className="panel" style={{ marginBottom: 16 }}>
+      <div className="panel-banda" style={{ background: color }}>
+        <h3>{titulo}</h3>
+      </div>
+      <table className="data-table">
+        <thead>
+          <tr>
+            <th>Nombre</th><th>Sede</th>
+            {conTurno && <th>Turno</th>}
+            <th style={{ textAlign: 'right' }}>Venta</th>
+            <th style={{ textAlign: 'right' }}>Meta</th>
+            <th>%</th>
+          </tr>
+        </thead>
+        <tbody>
+          {filas.map((r) => (
+            <tr key={r.user_id} style={r.faltante ? { color: 'var(--ink-muted)', fontStyle: 'italic' } : undefined}>
+              <td>{r.nombre}</td>
+              <td>{r.sede || '—'}</td>
+              {conTurno && <td>{r.turno === 'manana' ? 'Mañana' : r.turno === 'tarde' ? 'Tarde' : '—'}</td>}
+              <td style={{ textAlign: 'right' }}>{money(r.venta)}</td>
+              <td style={{ textAlign: 'right' }}>{money(r.meta)}</td>
+              <td>{pctBadge(r.porcentaje)}</td>
+            </tr>
+          ))}
+          {filas.length === 0 && (
+            <tr><td colSpan={columnas} className="empty-row">Sin datos en este período.</td></tr>
+          )}
+        </tbody>
+        {filas.length > 0 && (() => {
+          const t = totalesRanking(filas);
+          return (
+            <tfoot>
+              <tr className="totals-footer">
+                <td>Total</td>
+                <td></td>
+                {conTurno && <td></td>}
+                <td style={{ textAlign: 'right' }}>{money(t.venta)}</td>
+                <td style={{ textAlign: 'right' }}>{money(t.meta)}</td>
+                <td>{pctBadge(t.porcentaje)}</td>
+              </tr>
+            </tfoot>
+          );
+        })()}
+      </table>
+    </div>
+  );
+}
+
 // Página pública (sin login) del link "Compartir dashboard" del Tablero de
 // Ventas — ver routes/dashboardPublico.js. Muestra todos los totales
-// agregados (sede, marca, línea, producto) y deja elegir año/mes/sede, pero
-// nunca nombres de empleados (Ranking Personal sigue siendo interno).
+// agregados (sede, marca, línea, producto), el Ranking de Entrenadores y de
+// Supervisores, y deja elegir año/mes/sede.
 export default function DashboardPublico() {
   const { ruc, token } = useParams();
   const [loading, setLoading] = useState(true);
@@ -119,6 +194,9 @@ export default function DashboardPublico() {
             </div>
           )}
         </div>
+
+        <TablaRanking titulo="Ranking Entrenadores" color={color} filas={datos.ranking_trainers} conTurno />
+        <TablaRanking titulo="Ranking Supervisores" color={color} filas={datos.ranking_supervisores} />
 
         <div className="panel" style={{ marginBottom: 16 }}>
           <div className="panel-banda" style={{ background: color }}>
