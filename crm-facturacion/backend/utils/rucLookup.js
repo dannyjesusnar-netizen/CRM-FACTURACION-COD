@@ -88,20 +88,24 @@ async function consultarDni(dni) {
   if (!res.existe) return { verificado: true, existe: false };
 
   const data = res.data;
+  // Nombres y apellidos por separado -- para formularios que los piden en
+  // campos distintos (alta de empleados). Si el proveedor solo da el nombre
+  // completo armado, se deja nombres/apellidos sin dato (el llamador decide
+  // qué hacer, nunca se parte a la fuerza un nombre completo compuesto).
+  const nombres = data?.first_name || data?.nombres || null;
+  const apellidoPaterno = data?.first_last_name || data?.apellidoPaterno || data?.apellido_paterno || null;
+  const apellidoMaterno = data?.second_last_name || data?.apellidoMaterno || data?.apellido_materno || null;
+  const apellidos = [apellidoPaterno, apellidoMaterno].filter(Boolean).join(' ').trim() || null;
   // El nombre completo puede venir armado en un solo campo o en partes,
   // con distintas convenciones de nombre de campo según el proveedor -- se
   // arma a mano si hace falta, en vez de asumir un solo formato.
   const nombreCompleto = data?.full_name || data?.nombreCompleto || data?.nombre_completo
-    || [
-      data?.first_name || data?.nombres,
-      data?.first_last_name || data?.apellidoPaterno || data?.apellido_paterno,
-      data?.second_last_name || data?.apellidoMaterno || data?.apellido_materno,
-    ].filter(Boolean).join(' ').trim();
+    || [nombres, apellidoPaterno, apellidoMaterno].filter(Boolean).join(' ').trim();
   if (!data || !nombreCompleto) {
     console.error('[rucLookup] /reniec/dni: respuesta 200 sin campo de nombre reconocido. JSON recibido:', JSON.stringify(data).slice(0, 500));
     return { verificado: true, existe: false };
   }
-  return { verificado: true, existe: true, nombreCompleto };
+  return { verificado: true, existe: true, nombreCompleto, nombres, apellidos };
 }
 
 module.exports = { consultarRuc, consultarDni };
