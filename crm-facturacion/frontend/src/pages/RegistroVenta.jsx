@@ -8,6 +8,7 @@ import ProductSearchBar from '../components/ProductSearchBar';
 import ClientPicker from '../components/ClientPicker';
 import MetodoPagoQr from '../components/MetodoPagoQr';
 import ComboGrupoPicker from '../components/ComboGrupoPicker';
+import ComboSearchBar from '../components/ComboSearchBar';
 
 const TITULOS = { factura: 'Factura', boleta: 'Boleta', cotizacion: 'Cotización' };
 
@@ -418,17 +419,8 @@ export default function RegistroVenta() {
           </div>
 
           {combosActivos.length > 0 && (
-            <div className="venta-fields-row" style={{ flexWrap: 'wrap', gap: 8 }}>
-              {combosActivos.map((c) => (
-                <button
-                  type="button" key={c.id} className="ventas-action-btn" onClick={() => handleComboClick(c)}
-                  title={c.combo_modo === 'grupo'
-                    ? `Elige ${c.cantidad_requerida} unidades entre: ${c.items.map((it) => it.nombre).join(', ')}`
-                    : c.items.map((it) => `${it.cantidad} x ${it.nombre}`).join(', ')}
-                >
-                  🏷 Agregar combo: {c.nombre} — S/ {Number(c.precio_combo).toFixed(2)}
-                </button>
-              ))}
+            <div className="venta-fields-row">
+              <ComboSearchBar combos={combosActivos} onSelect={handleComboClick} placeholder="Buscar combo/promo por nombre..." />
             </div>
           )}
 
