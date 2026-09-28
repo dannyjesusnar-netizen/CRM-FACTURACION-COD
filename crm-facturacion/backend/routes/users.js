@@ -5,6 +5,7 @@ const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { requireAccionConfiguracion } = require('../utils/permisos');
 const { passwordError } = require('../utils/password');
+const { consultarDni } = require('../utils/rucLookup');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -76,6 +77,21 @@ router.get('/', (req, res) => {
   sql += ' ORDER BY u.nombres ASC, u.full_name ASC';
   const rows = db.prepare(sql).all(...params);
   res.json(rows.map(sinPassword));
+});
+
+// GET /api/users/consultar-dni?dni=XXXXXXXX -> autocompletar nombres y
+// apellidos al registrar un empleado nuevo (o un registro operativo). Solo
+// consulta RENIEC para un DNI de 8 dígitos -- un Carnet de Extranjería (9
+// dígitos) no tiene fuente pública para autocompletar, se completa a mano.
+// Nunca falla la petición por un problema del proveedor externo.
+router.get('/consultar-dni', async (req, res) => {
+  const dni = (req.query.dni || '').trim();
+  if (!/^\d{8}$/.test(dni)) return res.json({ encontrado: false });
+  const info = await consultarDni(dni);
+  if (info.verificado && info.existe) {
+    return res.json({ encontrado: true, nombres: info.nombres || undefined, apellidos: info.apellidos || undefined, nombreCompleto: info.nombreCompleto });
+  }
+  return res.json({ encontrado: false });
 });
 
 function sucursalIdOrError(sucursalId) {

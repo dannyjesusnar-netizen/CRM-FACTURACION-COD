@@ -17,6 +17,7 @@ export default function Clients() {
   const [seleccionDuplicados, setSeleccionDuplicados] = useState({});
   const [showDuplicadosModal, setShowDuplicadosModal] = useState(false);
   const [fusionando, setFusionando] = useState(false);
+  const [buscandoDoc, setBuscandoDoc] = useState(false);
 
   function load(query = '') {
     api.get('/clients', { params: query ? { q: query } : {} }).then((res) => setClients(res.data));
@@ -34,6 +35,34 @@ export default function Clients() {
     api.get('/sucursales').then((res) => setSucursales(res.data));
     loadDuplicados();
   }, []);
+
+  // Autocompletar nombre/dirección apenas se completa un DNI (8 dígitos) o
+  // RUC (11 dígitos) válido, igual que en el Cliente Nuevo de una venta —
+  // solo al crear (nunca pisa un cliente que ya se está editando). Sin API
+  // key configurada o si el proveedor falla, /consultar-documento responde
+  // encontrado:false y este efecto no hace nada.
+  useEffect(() => {
+    if (!showForm || editingId) return;
+    const tipo = form.tipo_documento;
+    const numero = form.numero_documento.trim();
+    const largoValido = (tipo === 'DNI' && numero.length === 8) || (tipo === 'RUC' && numero.length === 11);
+    if (!largoValido) return;
+    let cancelado = false;
+    setBuscandoDoc(true);
+    api.get('/clients/consultar-documento', { params: { tipo_documento: tipo, numero_documento: numero } })
+      .then((res) => {
+        if (cancelado || !res.data.encontrado) return;
+        setForm((f) => (
+          f.numero_documento.trim() === numero && f.tipo_documento === tipo
+            ? { ...f, nombre: f.nombre.trim() ? f.nombre : res.data.nombre, direccion: f.direccion.trim() ? f.direccion : (res.data.direccion || f.direccion) }
+            : f
+        ));
+      })
+      .catch(() => {})
+      .finally(() => { if (!cancelado) setBuscandoDoc(false); });
+    return () => { cancelado = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.tipo_documento, form.numero_documento, showForm, editingId]);
 
   function handleSearch(e) {
     e.preventDefault();
@@ -195,7 +224,7 @@ export default function Clients() {
                   <input required value={form.numero_documento} onChange={(e) => setForm({ ...form, numero_documento: e.target.value })} />
                 </div>
               </div>
-              <label>Nombre / Razón social</label>
+              <label>Nombre / Razón social{buscandoDoc ? ' — buscando...' : ''}</label>
               <input required value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} />
               <label>Dirección</label>
               <input value={form.direccion} onChange={(e) => setForm({ ...form, direccion: e.target.value })} />
