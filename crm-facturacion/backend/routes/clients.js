@@ -16,17 +16,23 @@ function sucursalIdOrError(sucursalId) {
   return { value: suc.id };
 }
 
+// estado: 'activo' (default -- así el buscador de clientes al vender nunca
+// ofrece uno desactivado sin que el llamador tenga que filtrarlo aparte),
+// 'inactivo' o 'todos'.
 router.get('/', (req, res) => {
   const q = (req.query.q || '').trim();
+  const estado = req.query.estado || 'activo';
   const base = `SELECT c.*, s.nombre AS sucursal_nombre FROM clients c LEFT JOIN sucursales s ON s.id = c.sucursal_id`;
-  let rows;
+  const condiciones = [];
+  const params = [];
+  if (estado === 'activo') condiciones.push('c.activo = 1');
+  else if (estado === 'inactivo') condiciones.push('c.activo = 0');
   if (q) {
-    rows = db.prepare(
-      `${base} WHERE c.nombre LIKE ? OR c.numero_documento LIKE ? ORDER BY c.nombre ASC`
-    ).all(`%${q}%`, `%${q}%`);
-  } else {
-    rows = db.prepare(`${base} ORDER BY c.nombre ASC`).all();
+    condiciones.push('(c.nombre LIKE ? OR c.numero_documento LIKE ?)');
+    params.push(`%${q}%`, `%${q}%`);
   }
+  const where = condiciones.length ? ` WHERE ${condiciones.join(' AND ')}` : '';
+  const rows = db.prepare(`${base}${where} ORDER BY c.nombre ASC`).all(...params);
   res.json(rows);
 });
 
@@ -285,12 +291,28 @@ router.post('/duplicados-ce/fusionar', requireAccion('clientes', 'eliminar'), (r
 router.delete('/:id', requireAccion('clientes', 'eliminar'), (req, res) => {
   const existing = db.prepare('SELECT * FROM clients WHERE id = ?').get(req.params.id);
   if (!existing) return res.status(404).json({ error: 'Cliente no encontrado.' });
+  // Cuenta CUALQUIER comprobante, esté anulado o no: un comprobante nunca se
+  // borra de los registros (aunque esté anulado, ver /:id/anular en
+  // invoices.js), así que borrar el cliente lo dejaría huérfano. Para ese
+  // caso existe /:id/estado -- desactivar en vez de eliminar.
   const used = db.prepare('SELECT COUNT(*) AS n FROM invoices WHERE client_id = ?').get(req.params.id).n;
   if (used > 0) {
-    return res.status(409).json({ error: 'No se puede eliminar: el cliente tiene comprobantes asociados.' });
+    return res.status(409).json({ error: 'No se puede eliminar: el cliente tiene comprobantes asociados (aunque estén anulados). Puedes desactivarlo en su lugar.' });
   }
   db.prepare('DELETE FROM clients WHERE id = ?').run(req.params.id);
   res.json({ ok: true });
+});
+
+// PUT /api/clients/:id/estado { activo: true|false } -- alternativa a
+// eliminar para un cliente que ya tiene comprobantes asociados (ver arriba):
+// lo oculta de las búsquedas activas (Ventas, Notas de venta, Guías, y la
+// propia lista de Clientes por defecto) sin perder su historial.
+router.put('/:id/estado', requireAccion('clientes', 'eliminar'), (req, res) => {
+  const existing = db.prepare('SELECT * FROM clients WHERE id = ?').get(req.params.id);
+  if (!existing) return res.status(404).json({ error: 'Cliente no encontrado.' });
+  const { activo } = req.body || {};
+  db.prepare('UPDATE clients SET activo = ? WHERE id = ?').run(activo ? 1 : 0, req.params.id);
+  res.json(db.prepare('SELECT * FROM clients WHERE id = ?').get(req.params.id));
 });
 
 module.exports = router;
