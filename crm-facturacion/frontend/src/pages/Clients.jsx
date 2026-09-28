@@ -9,6 +9,7 @@ export default function Clients() {
   const [clients, setClients] = useState([]);
   const [sucursales, setSucursales] = useState([]);
   const [q, setQ] = useState('');
+  const [estado, setEstado] = useState('activo');
   const [form, setForm] = useState(EMPTY_FORM);
   const [editingId, setEditingId] = useState(null);
   const [showForm, setShowForm] = useState(false);
@@ -19,8 +20,10 @@ export default function Clients() {
   const [fusionando, setFusionando] = useState(false);
   const [buscandoDoc, setBuscandoDoc] = useState(false);
 
-  function load(query = '') {
-    api.get('/clients', { params: query ? { q: query } : {} }).then((res) => setClients(res.data));
+  function load(query = q, estadoFiltro = estado) {
+    const params = { estado: estadoFiltro };
+    if (query) params.q = query;
+    api.get('/clients', { params }).then((res) => setClients(res.data));
   }
 
   function loadDuplicados() {
@@ -66,7 +69,12 @@ export default function Clients() {
 
   function handleSearch(e) {
     e.preventDefault();
-    load(q);
+    load(q, estado);
+  }
+
+  function handleEstadoChange(nuevoEstado) {
+    setEstado(nuevoEstado);
+    load(q, nuevoEstado);
   }
 
   function openNew() {
@@ -124,6 +132,21 @@ export default function Clients() {
     }
   }
 
+  // Alternativa a eliminar para un cliente que ya tiene comprobantes
+  // asociados (aunque estén anulados) -- lo oculta de las búsquedas activas
+  // sin perder su historial.
+  async function handleToggleEstado(c) {
+    const accion = c.activo ? 'desactivar' : 'activar';
+    if (!window.confirm(`¿Seguro que quieres ${accion} a ${c.nombre}?`)) return;
+    try {
+      await api.put(`/clients/${c.id}/estado`, { activo: !c.activo });
+      toast.success(`Cliente ${c.activo ? 'desactivado' : 'activado'}.`);
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'No se pudo cambiar el estado.');
+    }
+  }
+
   function toggleSeleccionDuplicado(legacyId) {
     setSeleccionDuplicados((prev) => ({ ...prev, [legacyId]: !prev[legacyId] }));
   }
@@ -167,6 +190,11 @@ export default function Clients() {
 
       <form className="search-bar" onSubmit={handleSearch}>
         <input placeholder="Buscar por nombre o documento..." value={q} onChange={(e) => setQ(e.target.value)} />
+        <select value={estado} onChange={(e) => handleEstadoChange(e.target.value)}>
+          <option value="activo">Activos</option>
+          <option value="inactivo">Inactivos</option>
+          <option value="todos">Todos</option>
+        </select>
         <button type="submit" className="btn-secondary">Buscar</button>
       </form>
 
@@ -180,6 +208,7 @@ export default function Clients() {
               <th>Email</th>
               <th>Sede</th>
               <th>Turno</th>
+              <th>Estado</th>
               <th></th>
             </tr>
           </thead>
@@ -192,14 +221,18 @@ export default function Clients() {
                 <td>{c.email || '—'}</td>
                 <td>{c.sucursal_nombre || '—'}</td>
                 <td>{c.turno || '—'}</td>
+                <td>{c.activo ? 'Activo' : 'Inactivo'}</td>
                 <td className="row-actions">
                   <button className="btn-link" onClick={() => openEdit(c)}>Editar</button>
+                  <button className={'btn-link' + (c.activo ? ' danger' : '')} onClick={() => handleToggleEstado(c)}>
+                    {c.activo ? 'Desactivar' : 'Activar'}
+                  </button>
                   <button className="btn-link danger" onClick={() => handleDelete(c.id)}>Eliminar</button>
                 </td>
               </tr>
             ))}
             {clients.length === 0 && (
-              <tr><td colSpan={7} className="empty-row">No hay clientes registrados.</td></tr>
+              <tr><td colSpan={8} className="empty-row">No hay clientes registrados.</td></tr>
             )}
           </tbody>
         </table>

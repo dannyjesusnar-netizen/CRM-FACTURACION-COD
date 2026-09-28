@@ -626,6 +626,9 @@ CREATE TABLE IF NOT EXISTS qr_unico_medios (
   if (!clientColumns.includes('contacto')) {
     db.exec('ALTER TABLE clients ADD COLUMN contacto TEXT');
   }
+  if (!clientColumns.includes('activo')) {
+    db.exec('ALTER TABLE clients ADD COLUMN activo INTEGER NOT NULL DEFAULT 1');
+  }
   const productColumns = db.prepare("PRAGMA table_info(products)").all().map((c) => c.name);
   if (!productColumns.includes('categoria')) {
     db.exec("ALTER TABLE products ADD COLUMN categoria TEXT DEFAULT 'General'");
