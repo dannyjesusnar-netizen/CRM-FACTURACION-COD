@@ -58,6 +58,35 @@ router.get('/consultar-documento', async (req, res) => {
   return res.json({ encontrado: false });
 });
 
+// GET /api/clients/duplicados-ce
+// Detecta clientes duplicados por Carnet de Extranjería: mismo
+// numero_documento, una fila con tipo_documento = 'CE' (el código correcto,
+// catálogo SUNAT) y otra con un valor viejo no estandarizado (ej. "CARNET
+// EXT"), de antes de que "CE" existiera como opción en el formulario. No
+// modifica nada -- solo lista los pares para que Gerencia los revise antes
+// de fusionar. Va antes de /:id para no chocar con esa ruta.
+router.get('/duplicados-ce', requireAccion('clientes', 'eliminar'), (req, res) => {
+  const pares = db.prepare(`
+    SELECT
+      ce.id AS ce_id, ce.tipo_documento AS ce_tipo_documento, ce.nombre AS ce_nombre,
+      ce.numero_documento, ce.telefono AS ce_telefono, ce.email AS ce_email,
+      legacy.id AS legacy_id, legacy.tipo_documento AS legacy_tipo_documento, legacy.nombre AS legacy_nombre,
+      legacy.telefono AS legacy_telefono, legacy.email AS legacy_email,
+      (SELECT COUNT(*) FROM invoices WHERE client_id = legacy.id) AS legacy_comprobantes,
+      (SELECT COUNT(*) FROM cotizaciones WHERE client_id = legacy.id) AS legacy_cotizaciones,
+      (SELECT COUNT(*) FROM guias_remitentes WHERE client_id = legacy.id) AS legacy_guias,
+      (SELECT COUNT(*) FROM notas_venta WHERE client_id = legacy.id) AS legacy_notas_venta
+    FROM clients ce
+    JOIN clients legacy
+      ON legacy.numero_documento = ce.numero_documento
+     AND legacy.id != ce.id
+    WHERE ce.tipo_documento = 'CE'
+      AND legacy.tipo_documento NOT IN ('DNI', 'RUC', 'CE')
+    ORDER BY ce.nombre ASC
+  `).all();
+  res.json(pares);
+});
+
 router.get('/:id', (req, res) => {
   const row = db.prepare(
     `SELECT c.*, s.nombre AS sucursal_nombre FROM clients c LEFT JOIN sucursales s ON s.id = c.sucursal_id WHERE c.id = ?`
@@ -195,6 +224,62 @@ router.post('/carga-masiva', requireAccion('clientes', 'crear_editar'), (req, re
   });
 
   res.json(resultado);
+});
+
+// POST /api/clients/duplicados-ce/fusionar { pares: [{ ce_id, legacy_id }] }
+// Fusiona cada par: conserva la fila "CE" (rellenando con los datos de la
+// fila vieja los campos que tenga vacíos), reasigna hacia ella cualquier
+// comprobante/cotización/guía/nota de venta que apunte a la fila vieja, y
+// recién entonces la borra. Todo o nada por par -- si un par ya no existe
+// tal cual (por ejemplo porque se fusionó en otra pestaña), se informa en
+// omitidos sin afectar al resto.
+router.post('/duplicados-ce/fusionar', requireAccion('clientes', 'eliminar'), (req, res) => {
+  const { pares } = req.body || {};
+  if (!Array.isArray(pares) || pares.length === 0) {
+    return res.status(400).json({ error: 'pares es requerido y debe tener al menos un elemento.' });
+  }
+
+  const getCliente = db.prepare('SELECT * FROM clients WHERE id = ?');
+  const actualizarCliente = db.prepare(
+    'UPDATE clients SET direccion = ?, telefono = ?, email = ?, notas = ? WHERE id = ?'
+  );
+  const tablasRelacionadas = ['invoices', 'cotizaciones', 'guias_remitentes', 'notas_venta'];
+  const reasignarTablas = tablasRelacionadas.map((tabla) => db.prepare(`UPDATE ${tabla} SET client_id = ? WHERE client_id = ?`));
+  const borrarCliente = db.prepare('DELETE FROM clients WHERE id = ?');
+
+  const fusionarPar = db.transaction((ceId, legacyId) => {
+    const ce = getCliente.get(ceId);
+    const legacy = getCliente.get(legacyId);
+    if (!ce || !legacy) throw new Error('NOT_FOUND');
+    if (ce.tipo_documento !== 'CE' || ce.numero_documento !== legacy.numero_documento) {
+      throw new Error('NOT_MATCHING');
+    }
+    actualizarCliente.run(
+      ce.direccion || legacy.direccion || null,
+      ce.telefono || legacy.telefono || null,
+      ce.email || legacy.email || null,
+      ce.notas || legacy.notas || null,
+      ceId
+    );
+    for (const reasignar of reasignarTablas) reasignar.run(ceId, legacyId);
+    borrarCliente.run(legacyId);
+  });
+
+  const fusionados = [];
+  const omitidos = [];
+  for (const par of pares) {
+    const ceId = Number(par && par.ce_id);
+    const legacyId = Number(par && par.legacy_id);
+    if (!ceId || !legacyId) { omitidos.push({ ...par, motivo: 'Par inválido.' }); continue; }
+    try {
+      fusionarPar(ceId, legacyId);
+      fusionados.push({ ce_id: ceId, legacy_id: legacyId });
+    } catch (err) {
+      omitidos.push({ ce_id: ceId, legacy_id: legacyId, motivo: 'Ya no existe o no coincide -- probablemente ya fue fusionado.' });
+    }
+  }
+
+  res.json({ fusionados, omitidos });
 });
 
 router.delete('/:id', requireAccion('clientes', 'eliminar'), (req, res) => {

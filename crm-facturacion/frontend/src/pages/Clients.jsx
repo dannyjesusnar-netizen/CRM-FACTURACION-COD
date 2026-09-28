@@ -13,14 +13,26 @@ export default function Clients() {
   const [editingId, setEditingId] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState('');
+  const [duplicados, setDuplicados] = useState([]);
+  const [seleccionDuplicados, setSeleccionDuplicados] = useState({});
+  const [showDuplicadosModal, setShowDuplicadosModal] = useState(false);
+  const [fusionando, setFusionando] = useState(false);
 
   function load(query = '') {
     api.get('/clients', { params: query ? { q: query } : {} }).then((res) => setClients(res.data));
   }
 
+  function loadDuplicados() {
+    api.get('/clients/duplicados-ce').then((res) => {
+      setDuplicados(res.data);
+      setSeleccionDuplicados(Object.fromEntries(res.data.map((d) => [d.legacy_id, true])));
+    }).catch(() => {});
+  }
+
   useEffect(() => {
     load();
     api.get('/sucursales').then((res) => setSucursales(res.data));
+    loadDuplicados();
   }, []);
 
   function handleSearch(e) {
@@ -83,12 +95,46 @@ export default function Clients() {
     }
   }
 
+  function toggleSeleccionDuplicado(legacyId) {
+    setSeleccionDuplicados((prev) => ({ ...prev, [legacyId]: !prev[legacyId] }));
+  }
+
+  async function handleFusionarDuplicados() {
+    const pares = duplicados
+      .filter((d) => seleccionDuplicados[d.legacy_id])
+      .map((d) => ({ ce_id: d.ce_id, legacy_id: d.legacy_id }));
+    if (pares.length === 0) return;
+    setFusionando(true);
+    try {
+      const res = await api.post('/clients/duplicados-ce/fusionar', { pares });
+      const { fusionados, omitidos } = res.data;
+      if (fusionados.length > 0) toast.success(`${fusionados.length} cliente(s) duplicado(s) fusionado(s).`);
+      if (omitidos.length > 0) toast.error(`${omitidos.length} par(es) no se pudieron fusionar (probablemente ya estaban fusionados).`);
+      setShowDuplicadosModal(false);
+      load(q);
+      loadDuplicados();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'No se pudo fusionar los duplicados.');
+    } finally {
+      setFusionando(false);
+    }
+  }
+
   return (
     <div>
       <div className="page-header">
         <h1 className="page-title">Clientes</h1>
         <button className="btn-primary" onClick={openNew}>+ Nuevo cliente</button>
       </div>
+
+      {duplicados.length > 0 && (
+        <div className="panel" style={{ background: '#fff7e6', borderColor: '#f0b429', marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px' }}>
+          <span>
+            Se detectaron <strong>{duplicados.length}</strong> cliente(s) duplicado(s) por Carnet de Extranjería (mismo número de documento, registrado dos veces con distinto tipo).
+          </span>
+          <button className="btn-secondary" onClick={() => setShowDuplicadosModal(true)}>Revisar y fusionar</button>
+        </div>
+      )}
 
       <form className="search-bar" onSubmit={handleSearch}>
         <input placeholder="Buscar por nombre o documento..." value={q} onChange={(e) => setQ(e.target.value)} />
@@ -196,6 +242,52 @@ export default function Clients() {
                 <button type="submit" className="btn-primary">Guardar</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {showDuplicadosModal && (
+        <div className="modal-overlay" onClick={() => setShowDuplicadosModal(false)}>
+          <div className="modal modal-lg" onClick={(e) => e.stopPropagation()}>
+            <h2>Fusionar clientes duplicados</h2>
+            <p style={{ color: '#666', marginTop: -8 }}>
+              Se conserva siempre el registro con tipo <strong>CE</strong>. El registro viejo se borra y sus ventas/comprobantes pasan a quedar bajo el registro que se conserva.
+            </p>
+            <div style={{ maxHeight: 420, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {duplicados.map((d) => (
+                <label key={d.legacy_id} style={{ display: 'flex', gap: 12, alignItems: 'flex-start', border: '1px solid #eee', borderRadius: 8, padding: 12, cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={!!seleccionDuplicados[d.legacy_id]}
+                    onChange={() => toggleSeleccionDuplicado(d.legacy_id)}
+                    style={{ marginTop: 4 }}
+                  />
+                  <div>
+                    <div><strong>{d.ce_nombre}</strong> — Documento {d.numero_documento}</div>
+                    <div style={{ fontSize: 13, color: '#666' }}>
+                      Se conserva: CE {d.numero_documento} (id {d.ce_id}) · {d.ce_telefono || '—'} · {d.ce_email || '—'}
+                    </div>
+                    <div style={{ fontSize: 13, color: '#666' }}>
+                      Se elimina: {d.legacy_tipo_documento} {d.numero_documento} (id {d.legacy_id}) · {d.legacy_nombre}
+                      {(d.legacy_comprobantes + d.legacy_cotizaciones + d.legacy_guias + d.legacy_notas_venta) > 0 && (
+                        <> — tiene {d.legacy_comprobantes} comprobante(s), {d.legacy_cotizaciones} cotización(es), {d.legacy_guias} guía(s), {d.legacy_notas_venta} nota(s) de venta que se reasignarán.</>
+                      )}
+                    </div>
+                  </div>
+                </label>
+              ))}
+            </div>
+            <div className="modal-actions">
+              <button type="button" className="btn-secondary" onClick={() => setShowDuplicadosModal(false)}>Cancelar</button>
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={fusionando || Object.values(seleccionDuplicados).every((v) => !v)}
+                onClick={handleFusionarDuplicados}
+              >
+                {fusionando ? 'Fusionando...' : 'Fusionar seleccionados'}
+              </button>
+            </div>
           </div>
         </div>
       )}
