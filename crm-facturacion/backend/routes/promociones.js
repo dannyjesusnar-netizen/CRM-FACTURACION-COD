@@ -77,6 +77,26 @@ function validarCombo(body) {
   return null;
 }
 
+// Combo "por grupo": a diferencia del combo fijo, acá items es solo la
+// LISTA de productos intercambiables (sin cantidad — la cantidad la elige
+// el vendedor al momento de vender, ver ComboGrupoPicker.jsx), y
+// cantidad_requerida es cuántas unidades en total hay que llevar (de
+// cualquier mezcla de esos productos) para pagar precio_combo.
+function validarComboGrupo(body) {
+  const { items, precio_combo, cantidad_requerida } = body;
+  if (!Array.isArray(items) || items.length < 1) return 'Agrega al menos un producto al grupo del combo.';
+  for (const it of items) {
+    if (!it.product_id) return 'Cada producto del grupo necesita estar seleccionado.';
+    const producto = db.prepare('SELECT id, activo FROM products WHERE id = ?').get(it.product_id);
+    if (!producto || !producto.activo) return 'Uno de los productos del grupo no existe o está desactivado.';
+  }
+  const ids = items.map((it) => it.product_id);
+  if (new Set(ids).size !== ids.length) return 'No repitas el mismo producto dentro del grupo.';
+  if (!(Number(cantidad_requerida) >= 2)) return 'La cantidad requerida del combo debe ser 2 o más.';
+  if (!(Number(precio_combo) > 0)) return 'Ingresa el precio del combo (mayor a 0).';
+  return null;
+}
+
 // POST /api/promociones { nombre, tipo, sucursal_id?, fecha_inicio, fecha_fin,
 //   product_id, tipo_descuento, precio_promocional?, descuento_pct? }  (oferta)
 //   o { ..., items: [{product_id, cantidad}], precio_combo }          (combo)
@@ -106,13 +126,32 @@ router.post('/', requireAccion('inventario', 'productos'), (req, res) => {
     return res.status(201).json(conDetalle(db.prepare('SELECT * FROM promociones WHERE id = ?').get(info.lastInsertRowid)));
   }
 
+  const comboModo = req.body.combo_modo === 'grupo' ? 'grupo' : 'fijo';
+
+  if (comboModo === 'grupo') {
+    const errorGrupo = validarComboGrupo(req.body);
+    if (errorGrupo) return res.status(400).json({ error: errorGrupo });
+    const { items, precio_combo, cantidad_requerida } = req.body;
+    const crearGrupo = db.transaction(() => {
+      const info = db.prepare(
+        `INSERT INTO promociones (nombre, tipo, sucursal_id, fecha_inicio, fecha_fin, precio_combo, combo_modo, cantidad_requerida)
+         VALUES (?, 'combo', ?, ?, ?, ?, 'grupo', ?)`
+      ).run(nombre, sucursal_id || null, fecha_inicio, fecha_fin, round2(Number(precio_combo)), Number(cantidad_requerida));
+      const insertItem = db.prepare('INSERT INTO promocion_items (promocion_id, product_id) VALUES (?, ?)');
+      for (const it of items) insertItem.run(info.lastInsertRowid, it.product_id);
+      return info.lastInsertRowid;
+    });
+    const idGrupo = crearGrupo();
+    return res.status(201).json(conDetalle(db.prepare('SELECT * FROM promociones WHERE id = ?').get(idGrupo)));
+  }
+
   const errorCombo = validarCombo(req.body);
   if (errorCombo) return res.status(400).json({ error: errorCombo });
   const { items, precio_combo } = req.body;
   const crear = db.transaction(() => {
     const info = db.prepare(
-      `INSERT INTO promociones (nombre, tipo, sucursal_id, fecha_inicio, fecha_fin, precio_combo)
-       VALUES (?, 'combo', ?, ?, ?, ?)`
+      `INSERT INTO promociones (nombre, tipo, sucursal_id, fecha_inicio, fecha_fin, precio_combo, combo_modo)
+       VALUES (?, 'combo', ?, ?, ?, ?, 'fijo')`
     ).run(nombre, sucursal_id || null, fecha_inicio, fecha_fin, round2(Number(precio_combo)));
     const insertItem = db.prepare('INSERT INTO promocion_items (promocion_id, product_id, cantidad) VALUES (?, ?, ?)');
     for (const it of items) insertItem.run(info.lastInsertRowid, it.product_id, Number(it.cantidad));
@@ -149,6 +188,25 @@ router.put('/:id', requireAccion('inventario', 'productos'), (req, res) => {
       tipo_descuento === 'porcentaje' ? round2(Number(descuento_pct)) : null,
       req.params.id
     );
+    return res.json(conDetalle(db.prepare('SELECT * FROM promociones WHERE id = ?').get(req.params.id)));
+  }
+
+  // El modo del combo (fijo/grupo) tampoco se puede cambiar al editar,
+  // mismo criterio que el tipo oferta/combo — se crea uno nuevo si hace falta.
+  if (existente.combo_modo === 'grupo') {
+    const errorGrupo = validarComboGrupo(req.body);
+    if (errorGrupo) return res.status(400).json({ error: errorGrupo });
+    const { items, precio_combo, cantidad_requerida } = req.body;
+    const actualizarGrupo = db.transaction(() => {
+      db.prepare(
+        `UPDATE promociones SET nombre = ?, sucursal_id = ?, fecha_inicio = ?, fecha_fin = ?,
+           precio_combo = ?, cantidad_requerida = ? WHERE id = ?`
+      ).run(nombre, sucursal_id || null, fecha_inicio, fecha_fin, round2(Number(precio_combo)), Number(cantidad_requerida), req.params.id);
+      db.prepare('DELETE FROM promocion_items WHERE promocion_id = ?').run(req.params.id);
+      const insertItem = db.prepare('INSERT INTO promocion_items (promocion_id, product_id) VALUES (?, ?)');
+      for (const it of items) insertItem.run(req.params.id, it.product_id);
+    });
+    actualizarGrupo();
     return res.json(conDetalle(db.prepare('SELECT * FROM promociones WHERE id = ?').get(req.params.id)));
   }
 

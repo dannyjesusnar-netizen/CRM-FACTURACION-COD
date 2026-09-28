@@ -1415,6 +1415,24 @@ CREATE TABLE IF NOT EXISTS promocion_items (
   cantidad REAL NOT NULL DEFAULT 1
 );
 `);
+
+  // Combo "por grupo": en vez de una lista fija de productos+cantidades
+  // exactas (combo_modo='fijo', el original), el combo define un GRUPO de
+  // productos intercambiables (ej. los 9 sabores de una proteína) más una
+  // cantidad_requerida total — al vender, el vendedor elige cuáles y
+  // cuántas unidades de esos sabores completan la cantidad_requerida, en
+  // cualquier mezcla, y todas quedan al mismo precio_combo total. Evita
+  // tener que crear un combo por cada combinación posible de sabores. Ver
+  // utils/promociones.js (conDetalle/resolverDescuentoItemPct) y
+  // routes/promociones.js (validarComboGrupo).
+  const promocionesColumns = db.prepare("PRAGMA table_info(promociones)").all().map((c) => c.name);
+  if (!promocionesColumns.includes('combo_modo')) {
+    db.exec("ALTER TABLE promociones ADD COLUMN combo_modo TEXT NOT NULL DEFAULT 'fijo'");
+  }
+  if (!promocionesColumns.includes('cantidad_requerida')) {
+    db.exec('ALTER TABLE promociones ADD COLUMN cantidad_requerida INTEGER');
+  }
+
   const invoiceItemColumnsPromo = db.prepare("PRAGMA table_info(invoice_items)").all().map((c) => c.name);
   if (!invoiceItemColumnsPromo.includes('promocion_id')) {
     db.exec('ALTER TABLE invoice_items ADD COLUMN promocion_id INTEGER REFERENCES promociones(id)');

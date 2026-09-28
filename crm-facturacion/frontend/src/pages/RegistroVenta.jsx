@@ -7,6 +7,7 @@ import { useAuth } from '../context/AuthContext';
 import ProductSearchBar from '../components/ProductSearchBar';
 import ClientPicker from '../components/ClientPicker';
 import MetodoPagoQr from '../components/MetodoPagoQr';
+import ComboGrupoPicker from '../components/ComboGrupoPicker';
 
 const TITULOS = { factura: 'Factura', boleta: 'Boleta', cotizacion: 'Cotización' };
 
@@ -61,6 +62,9 @@ export default function RegistroVenta() {
   // buscador; los combos necesitan un clic explícito (agregan varias líneas
   // a la vez) — ver addProducto/addCombo más abajo.
   const [promosActivas, setPromosActivas] = useState([]);
+  // Combo "por grupo" (varios sabores intercambiables) en elección — abre
+  // ComboGrupoPicker en vez de agregar directo, ver addCombo.
+  const [comboGrupoAbierto, setComboGrupoAbierto] = useState(null);
 
   // Vista previa: se genera el PDF real (el mismo diseño del comprobante
   // emitido) antes de confirmar — así "Enter"/"Emitir" ya no dispara la
@@ -174,6 +178,21 @@ export default function RegistroVenta() {
       })),
     ]);
     toast.success(`Combo agregado: ${promo.nombre}`);
+  }
+
+  // Combo por grupo (varios sabores intercambiables, ver
+  // ComboGrupoPicker.jsx): en vez de agregar directo como el combo fijo,
+  // abre el selector para elegir qué productos del grupo completan la
+  // cantidad requerida.
+  function handleComboClick(promo) {
+    if (promo.combo_modo === 'grupo') { setComboGrupoAbierto(promo); return; }
+    addCombo(promo);
+  }
+
+  function agregarLineasComboGrupo(lineas) {
+    setItems((prev) => [...prev, ...lineas]);
+    toast.success(`Combo agregado: ${comboGrupoAbierto.nombre}`);
+    setComboGrupoAbierto(null);
   }
 
   function updateItem(idx, patch) {
@@ -401,11 +420,24 @@ export default function RegistroVenta() {
           {combosActivos.length > 0 && (
             <div className="venta-fields-row" style={{ flexWrap: 'wrap', gap: 8 }}>
               {combosActivos.map((c) => (
-                <button type="button" key={c.id} className="ventas-action-btn" onClick={() => addCombo(c)} title={c.items.map((it) => `${it.cantidad} x ${it.nombre}`).join(', ')}>
+                <button
+                  type="button" key={c.id} className="ventas-action-btn" onClick={() => handleComboClick(c)}
+                  title={c.combo_modo === 'grupo'
+                    ? `Elige ${c.cantidad_requerida} unidades entre: ${c.items.map((it) => it.nombre).join(', ')}`
+                    : c.items.map((it) => `${it.cantidad} x ${it.nombre}`).join(', ')}
+                >
                   🏷 Agregar combo: {c.nombre} — S/ {Number(c.precio_combo).toFixed(2)}
                 </button>
               ))}
             </div>
+          )}
+
+          {comboGrupoAbierto && (
+            <ComboGrupoPicker
+              promo={comboGrupoAbierto}
+              onConfirm={agregarLineasComboGrupo}
+              onClose={() => setComboGrupoAbierto(null)}
+            />
           )}
 
           <div className="table-scroll">

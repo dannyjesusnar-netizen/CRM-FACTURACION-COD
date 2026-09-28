@@ -24,6 +24,17 @@ function emptyComboForm() {
   };
 }
 
+// Combo "por grupo": items es solo la lista de productos intercambiables
+// (sin cantidad cada uno — eso lo elige el vendedor al vender, ver
+// ComboGrupoPicker.jsx), más cantidad_requerida (cuántas unidades en total,
+// de cualquier mezcla de esos productos) para pagar precio_combo.
+function emptyComboGrupoForm() {
+  return {
+    nombre: '', sucursal_id: '', fecha_inicio: todayStr(), fecha_fin: todayStr(),
+    items: [], precio_combo: '', cantidad_requerida: 2,
+  };
+}
+
 function vigenciaEstado(promo) {
   const hoy = todayStr();
   if (!promo.activo) return { label: 'Desactivada', clase: 'badge-neutral' };
@@ -42,9 +53,11 @@ export default function Promociones() {
   const [showTipoModal, setShowTipoModal] = useState(false);
   const [showOfertaForm, setShowOfertaForm] = useState(false);
   const [showComboForm, setShowComboForm] = useState(false);
+  const [showComboGrupoForm, setShowComboGrupoForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [ofertaForm, setOfertaForm] = useState(emptyOfertaForm());
   const [comboForm, setComboForm] = useState(emptyComboForm());
+  const [comboGrupoForm, setComboGrupoForm] = useState(emptyComboGrupoForm());
   const [errorForm, setErrorForm] = useState('');
   const [guardando, setGuardando] = useState(false);
 
@@ -73,6 +86,14 @@ export default function Promociones() {
     setShowComboForm(true);
   }
 
+  function openNuevoComboGrupo() {
+    setEditingId(null);
+    setComboGrupoForm(emptyComboGrupoForm());
+    setErrorForm('');
+    setShowTipoModal(false);
+    setShowComboGrupoForm(true);
+  }
+
   function openEdit(promo) {
     setEditingId(promo.id);
     setErrorForm('');
@@ -83,6 +104,13 @@ export default function Promociones() {
         tipo_descuento: promo.tipo_descuento, precio_promocional: promo.precio_promocional ?? '', descuento_pct: promo.descuento_pct ?? '',
       });
       setShowOfertaForm(true);
+    } else if (promo.combo_modo === 'grupo') {
+      setComboGrupoForm({
+        nombre: promo.nombre, sucursal_id: promo.sucursal_id || '', fecha_inicio: promo.fecha_inicio, fecha_fin: promo.fecha_fin,
+        items: promo.items.map((it) => ({ product_id: it.product_id, nombre: it.nombre, precio_unitario: it.precio_unitario })),
+        precio_combo: promo.precio_combo, cantidad_requerida: promo.cantidad_requerida,
+      });
+      setShowComboGrupoForm(true);
     } else {
       setComboForm({
         nombre: promo.nombre, sucursal_id: promo.sucursal_id || '', fecha_inicio: promo.fecha_inicio, fecha_fin: promo.fecha_fin,
@@ -192,6 +220,52 @@ export default function Promociones() {
     ? Math.max(0, (1 - Number(comboForm.precio_combo) / totalTeoricoCombo) * 100)
     : 0;
 
+  // Combo por grupo: no repite si el producto ya está (no tiene sentido
+  // "cantidad" acá — cada sabor entra una sola vez a la lista de
+  // intercambiables, la cantidad la elige el vendedor al vender).
+  function addProductoComboGrupo(p) {
+    setComboGrupoForm((f) => {
+      if (f.items.some((it) => it.product_id === p.id)) {
+        toast.error('Ese producto ya está en el grupo.');
+        return f;
+      }
+      return { ...f, items: [...f.items, { product_id: p.id, nombre: p.nombre, precio_unitario: p.precio_unitario }] };
+    });
+  }
+
+  function removeItemComboGrupo(idx) {
+    setComboGrupoForm((f) => ({ ...f, items: f.items.filter((_, i) => i !== idx) }));
+  }
+
+  async function handleSubmitComboGrupo(e) {
+    e.preventDefault();
+    setErrorForm('');
+    if (comboGrupoForm.items.length < 1) { setErrorForm('Agrega al menos un producto al grupo del combo.'); return; }
+    if (!(Number(comboGrupoForm.cantidad_requerida) >= 2)) { setErrorForm('La cantidad requerida debe ser 2 o más.'); return; }
+    setGuardando(true);
+    try {
+      const payload = {
+        nombre: comboGrupoForm.nombre, tipo: 'combo', combo_modo: 'grupo', sucursal_id: comboGrupoForm.sucursal_id || null,
+        fecha_inicio: comboGrupoForm.fecha_inicio, fecha_fin: comboGrupoForm.fecha_fin,
+        items: comboGrupoForm.items.map((it) => ({ product_id: it.product_id })),
+        precio_combo: comboGrupoForm.precio_combo, cantidad_requerida: comboGrupoForm.cantidad_requerida,
+      };
+      if (editingId) await api.put(`/promociones/${editingId}`, payload);
+      else await api.post('/promociones', payload);
+      toast.success(editingId ? 'Combo actualizado.' : 'Combo creado.');
+      setShowComboGrupoForm(false);
+      load();
+    } catch (err) {
+      setErrorForm(err.response?.data?.error || 'No se pudo guardar el combo.');
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  const precioUnitarioComboGrupo = Number(comboGrupoForm.cantidad_requerida) > 0 && comboGrupoForm.precio_combo
+    ? round2(Number(comboGrupoForm.precio_combo) / Number(comboGrupoForm.cantidad_requerida))
+    : 0;
+
   const precioConOferta = ofertaForm.tipo_descuento === 'precio_fijo'
     ? Number(ofertaForm.precio_promocional || 0)
     : round2(ofertaForm.producto_precio * (1 - Number(ofertaForm.descuento_pct || 0) / 100));
@@ -237,8 +311,14 @@ export default function Promociones() {
                 return (
                   <tr key={p.id}>
                     <td>{p.nombre}</td>
-                    <td>{p.tipo === 'oferta' ? 'Oferta' : 'Combo'}</td>
-                    <td>{p.tipo === 'oferta' ? p.producto?.nombre : `${p.items.length} productos`}</td>
+                    <td>{p.tipo === 'oferta' ? 'Oferta' : (p.combo_modo === 'grupo' ? 'Combo (grupo)' : 'Combo')}</td>
+                    <td>
+                      {p.tipo === 'oferta'
+                        ? p.producto?.nombre
+                        : p.combo_modo === 'grupo'
+                          ? `${p.items.length} producto${p.items.length === 1 ? '' : 's'} — ${p.cantidad_requerida} unidades`
+                          : `${p.items.length} productos`}
+                    </td>
                     <td>{p.sede_nombre || 'Todas las sedes'}</td>
                     <td>{p.fecha_inicio} → {p.fecha_fin}</td>
                     <td style={{ textAlign: 'right' }}>{p.descuento_pct_aplicado.toFixed(2)}%</td>
@@ -265,16 +345,20 @@ export default function Promociones() {
 
       {showTipoModal && (
         <div className="modal-overlay" onClick={() => setShowTipoModal(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
+          <div className="modal modal-lg" onClick={(e) => e.stopPropagation()}>
             <h2>¿Qué tipo de promoción quieres crear?</h2>
-            <div className="form-row" style={{ marginTop: 12 }}>
-              <button type="button" className="ventas-action-btn" style={{ height: 90, textAlign: 'left', whiteSpace: 'normal' }} onClick={openNuevaOferta}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginTop: 12 }}>
+              <button type="button" className="ventas-action-btn" style={{ height: 100, textAlign: 'left', whiteSpace: 'normal' }} onClick={openNuevaOferta}>
                 <strong>Oferta simple</strong><br />
                 <span style={{ fontSize: 12, fontWeight: 400 }}>Precio o % especial en un producto de tu inventario.</span>
               </button>
-              <button type="button" className="ventas-action-btn" style={{ height: 90, textAlign: 'left', whiteSpace: 'normal' }} onClick={openNuevoCombo}>
+              <button type="button" className="ventas-action-btn" style={{ height: 100, textAlign: 'left', whiteSpace: 'normal' }} onClick={openNuevoCombo}>
                 <strong>Combo</strong><br />
                 <span style={{ fontSize: 12, fontWeight: 400 }}>2 o más productos existentes vendidos juntos a precio especial.</span>
+              </button>
+              <button type="button" className="ventas-action-btn" style={{ height: 100, textAlign: 'left', whiteSpace: 'normal' }} onClick={openNuevoComboGrupo}>
+                <strong>Combo por grupo</strong><br />
+                <span style={{ fontSize: 12, fontWeight: 400 }}>"2 unidades a S/X" entre varios sabores/variantes intercambiables, sin crear un combo por cada mezcla.</span>
               </button>
             </div>
             <div className="modal-actions">
@@ -429,6 +513,93 @@ export default function Promociones() {
               {errorForm && <div className="form-error">{errorForm}</div>}
               <div className="modal-actions">
                 <button type="button" className="btn-secondary" onClick={() => setShowComboForm(false)}>Cancelar</button>
+                <button type="submit" className="btn-primary" disabled={guardando}>{editingId ? 'Guardar cambios' : 'Crear combo'}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showComboGrupoForm && (
+        <div className="modal-overlay" onClick={() => setShowComboGrupoForm(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h2>{editingId ? 'Editar combo por grupo' : 'Nuevo combo por grupo'}</h2>
+            <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -4 }}>
+              Un solo combo para varios sabores/variantes intercambiables — al vender, se elige cuáles y cuántas
+              unidades de cada uno completan la cantidad requerida, en cualquier mezcla.
+            </p>
+            <form onSubmit={handleSubmitComboGrupo}>
+              <label>Nombre de la promoción *</label>
+              <input required value={comboGrupoForm.nombre} onChange={(e) => setComboGrupoForm({ ...comboGrupoForm, nombre: e.target.value })} placeholder="Ej. 2x1 Whey Protein (todos los sabores)" />
+
+              <label>Agregar productos intercambiables del grupo *</label>
+              <ProductSearchBar onSelect={addProductoComboGrupo} placeholder="Busca y agrega cada sabor/variante por nombre o código.." />
+
+              {comboGrupoForm.items.length > 0 && (
+                <table className="data-table" style={{ marginTop: 8 }}>
+                  <thead>
+                    <tr><th>Producto</th><th style={{ textAlign: 'right' }}>Precio</th><th style={{ textAlign: 'right' }}>% dcto. si se elige este</th><th></th></tr>
+                  </thead>
+                  <tbody>
+                    {comboGrupoForm.items.map((it, idx) => {
+                      const pct = it.precio_unitario > 0 && precioUnitarioComboGrupo > 0
+                        ? Math.max(0, (1 - precioUnitarioComboGrupo / it.precio_unitario) * 100)
+                        : 0;
+                      return (
+                        <tr key={it.product_id}>
+                          <td>{it.nombre}</td>
+                          <td style={{ textAlign: 'right' }}>S/ {Number(it.precio_unitario).toFixed(2)}</td>
+                          <td style={{ textAlign: 'right' }}>{pct.toFixed(2)}%</td>
+                          <td><button type="button" className="btn-link danger" onClick={() => removeItemComboGrupo(idx)}>x</button></td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+
+              <div className="form-row" style={{ marginTop: 12 }}>
+                <div>
+                  <label>Cantidad requerida (unidades) *</label>
+                  <input required type="number" min="2" step="1" value={comboGrupoForm.cantidad_requerida}
+                    onChange={(e) => setComboGrupoForm({ ...comboGrupoForm, cantidad_requerida: e.target.value })} />
+                </div>
+                <div>
+                  <label>Precio del combo (S/, por esas unidades) *</label>
+                  <input required type="number" min="0.01" step="0.01" value={comboGrupoForm.precio_combo}
+                    onChange={(e) => setComboGrupoForm({ ...comboGrupoForm, precio_combo: e.target.value })} />
+                </div>
+              </div>
+              {precioUnitarioComboGrupo > 0 && (
+                <p style={{ fontSize: 12, color: 'var(--ink-muted)' }}>
+                  Cada unidad dentro del combo queda a <strong>S/ {precioUnitarioComboGrupo.toFixed(2)}</strong> —
+                  elige {comboGrupoForm.cantidad_requerida || 0} unidades entre los productos de arriba, en cualquier mezcla.
+                </p>
+              )}
+
+              <div className="form-row">
+                <div>
+                  <label>Sede</label>
+                  <select value={comboGrupoForm.sucursal_id} onChange={(e) => setComboGrupoForm({ ...comboGrupoForm, sucursal_id: e.target.value })}>
+                    <option value="">Todas las sedes</option>
+                    {sucursales.filter((s) => s.activo).map((s) => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="form-row">
+                <div>
+                  <label>Vigencia desde *</label>
+                  <input required type="date" value={comboGrupoForm.fecha_inicio} onChange={(e) => setComboGrupoForm({ ...comboGrupoForm, fecha_inicio: e.target.value })} />
+                </div>
+                <div>
+                  <label>Vigencia hasta *</label>
+                  <input required type="date" value={comboGrupoForm.fecha_fin} min={comboGrupoForm.fecha_inicio} onChange={(e) => setComboGrupoForm({ ...comboGrupoForm, fecha_fin: e.target.value })} />
+                </div>
+              </div>
+
+              {errorForm && <div className="form-error">{errorForm}</div>}
+              <div className="modal-actions">
+                <button type="button" className="btn-secondary" onClick={() => setShowComboGrupoForm(false)}>Cancelar</button>
                 <button type="submit" className="btn-primary" disabled={guardando}>{editingId ? 'Guardar cambios' : 'Crear combo'}</button>
               </div>
             </form>

@@ -24,11 +24,43 @@ function conDetalle(promo) {
     }
     return { ...promo, producto, descuento_pct_aplicado: descuentoAplicado };
   }
+
   const items = db.prepare(
     `SELECT pi.product_id, pi.cantidad, p.nombre, p.codigo, p.precio_unitario, p.unidad, p.afectacion_igv, p.precio_compra
      FROM promocion_items pi JOIN products p ON p.id = pi.product_id
      WHERE pi.promocion_id = ? ORDER BY pi.id ASC`
   ).all(promo.id);
+
+  if (promo.combo_modo === 'grupo') {
+    // Combo por grupo: precio_combo es el total por cantidad_requerida
+    // unidades, en CUALQUIER mezcla de los productos del grupo — no hay un
+    // % único, cada producto tiene el suyo (contra su propio precio) para
+    // que la línea de esa unidad quede exactamente en precioUnitarioCombo,
+    // sin importar cuál del grupo se eligió (ver resolverDescuentoItemPct).
+    const precioUnitarioCombo = promo.cantidad_requerida > 0
+      ? round2(promo.precio_combo / promo.cantidad_requerida)
+      : 0;
+    const itemsConPct = items.map((it) => ({
+      ...it,
+      descuento_pct_aplicado: it.precio_unitario > 0
+        ? round2(Math.max(0, Math.min(100, (1 - precioUnitarioCombo / it.precio_unitario) * 100)))
+        : 0,
+    }));
+    // Promedio de precio del grupo, solo para tener un % representativo a
+    // nivel de la promoción completa (listado de Promociones) — el % real
+    // que se cobra es siempre el de itemsConPct, por producto.
+    const precioPromedio = items.length > 0
+      ? items.reduce((s, it) => s + it.precio_unitario, 0) / items.length
+      : 0;
+    const descuentoPromedio = precioPromedio > 0
+      ? round2(Math.max(0, Math.min(100, (1 - precioUnitarioCombo / precioPromedio) * 100)))
+      : 0;
+    return {
+      ...promo, items: itemsConPct, precio_unitario_combo: precioUnitarioCombo,
+      descuento_pct_aplicado: descuentoPromedio,
+    };
+  }
+
   const totalTeorico = round2(items.reduce((s, it) => s + it.cantidad * it.precio_unitario, 0));
   const descuentoAplicado = totalTeorico > 0
     ? round2(Math.max(0, Math.min(100, (1 - promo.precio_combo / totalTeorico) * 100)))
@@ -68,6 +100,15 @@ function resolverDescuentoItemPct(promocionId, sucursalId, productId) {
     const err = new Error('La oferta seleccionada no corresponde a este producto.');
     err.status = 400;
     throw err;
+  }
+  if (promo.tipo === 'combo' && promo.combo_modo === 'grupo') {
+    const item = promo.items.find((it) => Number(it.product_id) === Number(productId));
+    if (!item) {
+      const err = new Error('Ese producto no pertenece al grupo de este combo.');
+      err.status = 400;
+      throw err;
+    }
+    return item.descuento_pct_aplicado;
   }
   return promo.descuento_pct_aplicado;
 }
