@@ -18,6 +18,7 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { descargarComoExcel } from '../utils/excelImport';
 import { capturarPanelComoImagen } from '../utils/capturarImagen';
+import { hoyPeru } from '../utils/fechas';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Tooltip, Legend, Filler);
 
@@ -149,6 +150,7 @@ export default function Dashboard() {
   const totalProductoRef = useRef(null);
   const resumenSedesRef = useRef(null);
   const ventasTotalesRef = useRef(null);
+  const ventasDiaPorSedeRef = useRef(null);
 
   async function guardarColorTablero(nuevoColor) {
     if (!empresa) return;
@@ -235,6 +237,8 @@ export default function Dashboard() {
   const [totalProducto, setTotalProducto] = useState([]);
   const [resumenSedes, setResumenSedes] = useState({ sedes: [], total: null, ventas_totales: 0 });
   const [tableroLoading, setTableroLoading] = useState(false);
+  const [ventasDiaFecha, setVentasDiaFecha] = useState(hoyPeru());
+  const [ventasDiaPorSede, setVentasDiaPorSede] = useState({ sedes: [], total: { venta: 0 } });
 
   useEffect(() => {
     Promise.all([
@@ -275,6 +279,12 @@ export default function Dashboard() {
       setResumenSedes(sedes.data);
     }).finally(() => setTableroLoading(false));
   }, [puedeVerTablero, tableroAnio, tableroMes, tableroSedeId]);
+
+  useEffect(() => {
+    if (!puedeVerTablero) return;
+    api.get('/tablero/ventas-dia-por-sede', { params: { fecha: ventasDiaFecha, sucursal_id: tableroSedeId || undefined } })
+      .then((res) => setVentasDiaPorSede(res.data));
+  }, [puedeVerTablero, ventasDiaFecha, tableroSedeId]);
 
   const lineData = {
     labels: ventasPorDia.map((r) => r.dia.slice(5)),
@@ -807,6 +817,52 @@ export default function Dashboard() {
                       : 'todas las sedes'}
                   </div>
                 </div>
+              </div>
+
+              <div className="panel" ref={ventasDiaPorSedeRef} style={{ marginTop: 20 }}>
+                <PanelHeader
+                  color={colorTablero}
+                  onCopiar={() => copiarPanelComoImagen(ventasDiaPorSedeRef, 'ventas-dia-por-sede.png', toast)}
+                  onDescargarExcel={() => descargarPanelComoExcel(
+                    'ventas-dia-por-sede.xlsx',
+                    ['Sede', 'Venta'],
+                    [
+                      ...ventasDiaPorSede.sedes.map((s) => [s.sede, s.venta]),
+                      ['Total', ventasDiaPorSede.total.venta],
+                    ],
+                    toast
+                  )}
+                >
+                  Ventas del día por sede
+                  <input
+                    type="date"
+                    value={ventasDiaFecha}
+                    onChange={(e) => setVentasDiaFecha(e.target.value)}
+                    style={{ marginLeft: 12, width: 'auto', fontSize: 13 }}
+                  />
+                </PanelHeader>
+                <table className="data-table">
+                  <thead>
+                    <tr><th>Sede</th><th style={{ textAlign: 'right' }}>Venta</th></tr>
+                  </thead>
+                  <tbody>
+                    {ventasDiaPorSede.sedes.map((s) => (
+                      <tr key={s.sucursal_id}>
+                        <td>{s.sede}</td>
+                        <td style={{ textAlign: 'right' }}>{money(s.venta)}</td>
+                      </tr>
+                    ))}
+                    {ventasDiaPorSede.sedes.length === 0 && (
+                      <tr><td colSpan={2} className="empty-row">Sin sedes activas.</td></tr>
+                    )}
+                  </tbody>
+                  <tfoot>
+                    <tr className="totals-footer">
+                      <td>Total</td>
+                      <td style={{ textAlign: 'right' }}>{money(ventasDiaPorSede.total.venta)}</td>
+                    </tr>
+                  </tfoot>
+                </table>
               </div>
             </>
           )}
