@@ -182,7 +182,11 @@ export default function Caja() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap' }}>
           {data && (
             <div className="caja-total-general" style={{ paddingRight: 20, borderRight: '1px solid var(--border)' }}>
-              <span>{esRango ? 'Total del período' : 'Total del día'}</span>
+              <span>
+                {data.puedeVerTodos
+                  ? (esRango ? 'Total del período' : 'Total del día')
+                  : (esRango ? 'Mi total del período' : 'Mi total del día')}
+              </span>
               <strong>S/ {fmt(data.totalGeneral)}</strong>
             </div>
           )}
@@ -217,13 +221,15 @@ export default function Caja() {
           <label>Hasta</label>
           <input type="date" value={hasta} min={fecha} onChange={(e) => setHasta(e.target.value)} />
         </div>
-        <div className="filter-field">
-          <label>Vendedor</label>
-          <select value={empleadoId} onChange={(e) => setEmpleadoId(e.target.value)}>
-            <option value="">Todos los vendedores</option>
-            {empleados.map((e) => <option key={e.id} value={e.id}>{e.full_name}</option>)}
-          </select>
-        </div>
+        {data?.puedeVerTodos && (
+          <div className="filter-field">
+            <label>Vendedor</label>
+            <select value={empleadoId} onChange={(e) => setEmpleadoId(e.target.value)}>
+              <option value="">Todos los vendedores</option>
+              {empleados.map((e) => <option key={e.id} value={e.id}>{e.full_name}</option>)}
+            </select>
+          </div>
+        )}
         <div className="filter-field">
           <label>Moneda</label>
           <select value={moneda} onChange={(e) => setMoneda(e.target.value)}>
