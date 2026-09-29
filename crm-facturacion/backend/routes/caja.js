@@ -1,7 +1,7 @@
 const express = require('express');
 const db = require('../db');
 const { requireAuth, resolveSucursal } = require('../middleware/auth');
-const { requirePermiso, requireAccion } = require('../utils/permisos');
+const { requirePermiso, requireAccion, tieneAccionSupervisor } = require('../utils/permisos');
 const { requireTurnoCajaAbierto } = require('../utils/cajaTurno');
 const { round2, buildResumen } = require('../utils/cajaCalculos');
 const { hoyPeru } = require('../utils/fechas');
@@ -29,7 +29,14 @@ router.get('/', (req, res) => {
   const fecha = req.query.fecha || todayStr();
   const hasta = req.query.hasta && req.query.hasta >= fecha ? req.query.hasta : fecha;
   const moneda = req.query.moneda === 'USD' ? 'USD' : 'PEN';
-  const empleadoId = req.query.empleado_id ? Number(req.query.empleado_id) : null;
+  // Un vendedor/cajero solo puede ver SU propio arqueo -- nunca el de otro
+  // empleado ni el total combinado de "todos" (sin importar lo que mande
+  // empleado_id). Gerencia y Supervisor (con el permiso "Ver la Planilla y
+  // el cierre de caja de todos los empleados") sí pueden elegir cualquier
+  // empleado o dejarlo vacío para ver el total de la sede -- mismo criterio
+  // que ya usa Reportes -> Cierre de Caja.
+  const puedeVerTodos = tieneAccionSupervisor(req.user, 'ver_todos_planilla_caja');
+  const empleadoId = puedeVerTodos ? (req.query.empleado_id ? Number(req.query.empleado_id) : null) : req.user.id;
   const resumen = buildResumen(fecha, hasta, req.sucursalId, { moneda, empleadoId });
 
   let movSql = `SELECT cm.*, u.full_name AS usuario_nombre FROM caja_movimientos cm
@@ -42,15 +49,21 @@ router.get('/', (req, res) => {
   const movimientos = db.prepare(movSql).all(...movParams);
 
   const totalGeneral = round2(resumen.reduce((s, r) => s + r.saldo_final, 0));
-  res.json({ fecha, hasta, moneda, resumen, movimientos, totalGeneral });
+  res.json({ fecha, hasta, moneda, resumen, movimientos, totalGeneral, puedeVerTodos });
 });
 
 // GET /api/caja/empleados -> vendedores visibles en la sede activa, para el
 // filtro "Vendedor". Solo categoria_staff='vendedor' -- Entrenadores y
 // Supervisores no manejan caja, así que nunca aparecen como created_by de
 // un movimiento -- listarlos solo ensucia el filtro con nombres que nunca
-// van a tener nada que mostrar.
+// van a tener nada que mostrar. Un vendedor/cajero sin el permiso "Ver
+// todos" ni siquiera ve esta lista -- solo se ve a sí mismo (mismo criterio
+// que el arqueo en GET /, para que el filtro no exponga a quién más
+// preguntarle).
 router.get('/empleados', (req, res) => {
+  if (!tieneAccionSupervisor(req.user, 'ver_todos_planilla_caja')) {
+    return res.json([{ id: req.user.id, full_name: req.user.full_name }]);
+  }
   const rows = db.prepare(
     `SELECT id, full_name FROM users
      WHERE activo = 1 AND categoria_staff = 'vendedor' AND (sucursal_id IS NULL OR sucursal_id = ?)
