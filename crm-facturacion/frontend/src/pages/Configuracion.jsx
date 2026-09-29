@@ -429,6 +429,8 @@ export default function Configuracion() {
   const [empresa, setEmpresa] = useState(null);
   const [errorEmpresa, setErrorEmpresa] = useState('');
   const [savingEmpresa, setSavingEmpresa] = useState(false);
+  const [miIp, setMiIp] = useState('');
+  const [cargandoMiIp, setCargandoMiIp] = useState(false);
 
   // --- Comprobantes (diseño del PDF) ---
   const [errorComprobantes, setErrorComprobantes] = useState('');
@@ -1108,6 +1110,18 @@ export default function Configuracion() {
       setErrorEmpresa(err.response?.data?.error || 'No se pudo guardar.');
     } finally {
       setSavingEmpresa(false);
+    }
+  }
+
+  async function handleVerMiIp() {
+    setCargandoMiIp(true);
+    try {
+      const res = await api.get('/empresa/mi-ip');
+      setMiIp(res.data.ip);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'No se pudo consultar la IP.');
+    } finally {
+      setCargandoMiIp(false);
     }
   }
 
@@ -1907,6 +1921,18 @@ export default function Configuracion() {
                     )}
                   </div>
                 </div>
+              </div>
+
+              <div className="panel" style={{ maxWidth: 560, marginTop: 20 }}>
+                <h3 style={{ marginTop: 0 }}>IP de salida del servidor</h3>
+                <p style={{ fontSize: 12, color: 'var(--ink-muted)' }}>
+                  Úsala para autorizar este backend en un proveedor externo que exija lista blanca de IPs (por ejemplo,
+                  el proveedor de verificación de RUC/DNI, si su plan lo requiere).
+                </p>
+                <button type="button" className="btn-secondary" onClick={handleVerMiIp} disabled={cargandoMiIp} style={{ width: 'auto' }}>
+                  {cargandoMiIp ? 'Consultando...' : 'Ver IP de salida'}
+                </button>
+                {miIp && <p className="caja-row-auto" style={{ marginTop: 10 }}><strong>{miIp}</strong></p>}
               </div>
             </>
           )}
