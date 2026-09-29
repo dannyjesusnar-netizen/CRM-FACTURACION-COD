@@ -2,17 +2,32 @@ import { useEffect, useState } from 'react';
 import { Bar } from 'react-chartjs-2';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Tooltip, Legend } from 'chart.js';
 import {
-  ShoppingCart, Calculator, User, TrendingUp, Package, BarChart3, Users, Wallet,
+  ShoppingCart, Calculator, User, TrendingUp, Package, BarChart3, Users, Wallet, FileText,
 } from 'lucide-react';
 import api from '../api';
 import { hoyPeru } from '../utils/fechas';
 import { useToast } from '../context/ToastContext';
 import ExportButton from '../components/ExportButton';
 import { exportarTabla } from '../utils/excelImport';
+import ProductSearchBar from '../components/ProductSearchBar';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend);
 
 const COLORS = { blue: '#2a78d6', good: '#0ca30c', critical: '#d03b3b', grid: '#e1e0d9', mutedInk: '#898781' };
+const KARDEX_TIPO_LABEL = {
+  venta: 'Venta', anulacion: 'Anulación', ajuste: 'Ajuste manual',
+  ingreso_lote: 'Ingreso de lote', salida_lote: 'Salida de lote',
+  compra: 'Compra', anulacion_compra: 'Anulación de compra',
+  nota_credito_devolucion: 'Devolución (Nota de crédito)',
+  produccion_consumo: 'Consumo (Producción)', produccion_ingreso: 'Ingreso (Producción)',
+};
+const KARDEX_TIPO_BADGE = {
+  venta: 'badge-critical', anulacion: 'badge-good', ajuste: 'badge-neutral',
+  ingreso_lote: 'badge-good', salida_lote: 'badge-critical',
+  compra: 'badge-good', anulacion_compra: 'badge-critical',
+  nota_credito_devolucion: 'badge-good',
+  produccion_consumo: 'badge-critical', produccion_ingreso: 'badge-good',
+};
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 const CURRENT_YEAR = new Date().getFullYear();
 const YEARS = [CURRENT_YEAR, CURRENT_YEAR - 1, CURRENT_YEAR - 2];
@@ -23,6 +38,7 @@ const SECCIONES = [
   { key: 'vendedor', label: 'Ventas por vendedor', Icon: User },
   { key: 'producto', label: 'Ventas por producto', Icon: ShoppingCart },
   { key: 'inventarios', label: 'Evolución inventarios', Icon: TrendingUp },
+  { key: 'kardex', label: 'Kardex', Icon: FileText },
   { key: 'compras_mes', label: 'Compras por mes', Icon: Package },
   { key: 'ingreso_gastos', label: 'Ingreso vs gastos', Icon: BarChart3 },
   { key: 'top_clientes', label: 'Top clientes', Icon: Users },
@@ -83,6 +99,12 @@ export default function Reports() {
   const [inventariosAnio, setInventariosAnio] = useState(CURRENT_YEAR);
   const [evolucionInventarios, setEvolucionInventarios] = useState([]);
 
+  const [kardexProducto, setKardexProducto] = useState(null);
+  const [kardexDesde, setKardexDesde] = useState('');
+  const [kardexHasta, setKardexHasta] = useState(todayStr());
+  const [kardexData, setKardexData] = useState(null);
+  const [kardexLoading, setKardexLoading] = useState(false);
+
   const [cierreFecha, setCierreFecha] = useState(todayStr());
   const [cierreEmpleadoId, setCierreEmpleadoId] = useState('');
   const [cierreEmpleados, setCierreEmpleados] = useState([]);
@@ -137,6 +159,19 @@ export default function Reports() {
     api.get('/reports/cierre-caja', { params }).then((res) => setCierreCaja(res.data)).catch(() => setCierreCaja(null));
   }, [cierreFecha, cierreEmpleadoId]);
 
+  useEffect(() => {
+    if (!kardexProducto) { setKardexData(null); return; }
+    setKardexLoading(true);
+    const params = { product_id: kardexProducto.id };
+    if (kardexDesde) params.from = kardexDesde;
+    if (kardexHasta) params.to = kardexHasta;
+    api.get('/reports/kardex', { params })
+      .then((res) => setKardexData(res.data))
+      .catch(() => { setKardexData(null); toast.error('No se pudo cargar el kardex.'); })
+      .finally(() => setKardexLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kardexProducto, kardexDesde, kardexHasta]);
+
   const barOptionsV = {
     responsive: true, plugins: { legend: { display: false } },
     scales: { x: { grid: { display: false }, ticks: { color: COLORS.mutedInk } }, y: { grid: { color: COLORS.grid }, ticks: { color: COLORS.mutedInk } } },
@@ -181,6 +216,18 @@ export default function Reports() {
   const productosVisibles = mostrarTodo ? productos : productos.slice(0, 5);
   const totalProductosSoles = productos.reduce((s, p) => s + p.monto_soles, 0);
   const totalProductosDolares = productos.reduce((s, p) => s + p.monto_dolares, 0);
+
+  async function exportKardex(formato) {
+    if (!kardexData) return;
+    const header = ['Fecha', 'Tipo', 'Documento', 'Entrada', 'Salida', 'Saldo', 'Motivo', 'Usuario'];
+    const rows = kardexData.movimientos.map((m) => [
+      m.created_at, KARDEX_TIPO_LABEL[m.tipo] || m.tipo, m.referencia || '',
+      m.cantidad > 0 ? m.cantidad : '', m.cantidad < 0 ? Math.abs(m.cantidad) : '',
+      m.stock_resultante, m.motivo || '', m.usuario_nombre || '',
+    ]);
+    await exportarTabla(`kardex_${kardexData.producto.codigo}`, header, rows, formato);
+    toast.success(`Archivo ${formato === 'excel' ? 'Excel' : 'CSV'} exportado.`);
+  }
 
   async function exportTributario(formato) {
     await exportarTabla(
@@ -419,6 +466,95 @@ export default function Reports() {
                 <Bar data={barDataInventarios} options={barOptionsLegend} height={90} />
               ) : (
                 <p className="empty-row">Sin movimientos de inventario en {inventariosAnio}.</p>
+              )}
+            </>
+          )}
+
+          {seccion === 'kardex' && (
+            <>
+              <div className="report-toolbar">
+                <h3 style={{ margin: 0 }}>
+                  {kardexData ? `Kardex — ${kardexData.producto.codigo} · ${kardexData.producto.nombre}` : 'Kardex'}
+                </h3>
+                {kardexData && <ExportButton onExport={exportKardex} />}
+              </div>
+              <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -6 }}>
+                Historial detallado de entradas y salidas de un producto, con el saldo de stock justo después de cada
+                movimiento — igual criterio que Lotes y Series, pero movimiento por movimiento.
+              </p>
+
+              <div className="filter-panel" style={{ marginBottom: 16 }}>
+                <div className="filter-field grow">
+                  <label>Producto</label>
+                  {kardexProducto ? (
+                    <p className="caja-row-auto" style={{ margin: 0 }}>
+                      <strong>{kardexProducto.codigo} — {kardexProducto.nombre}</strong>{' '}
+                      <button type="button" className="btn-link" onClick={() => setKardexProducto(null)}>Cambiar</button>
+                    </p>
+                  ) : (
+                    <ProductSearchBar
+                      placeholder="Buscar producto por nombre, código o código de barras..."
+                      onSelect={(p) => {
+                        if (p.tipo !== 'producto') { toast.error('Los servicios no tienen kardex de stock.'); return; }
+                        setKardexProducto(p);
+                      }}
+                    />
+                  )}
+                </div>
+                <div className="filter-field">
+                  <label>Desde</label>
+                  <input type="date" value={kardexDesde} onChange={(e) => setKardexDesde(e.target.value)} />
+                </div>
+                <div className="filter-field">
+                  <label>Hasta</label>
+                  <input type="date" value={kardexHasta} onChange={(e) => setKardexHasta(e.target.value)} />
+                </div>
+              </div>
+
+              {!kardexProducto && <p className="empty-row">Busca un producto para ver su kardex.</p>}
+
+              {kardexProducto && kardexLoading && <p className="empty-row">Cargando...</p>}
+
+              {kardexProducto && !kardexLoading && kardexData && (
+                <div className="table-scroll">
+                  <table className="data-table compact">
+                    <thead>
+                      <tr>
+                        <th>Fecha</th><th>Tipo</th><th>Documento</th>
+                        <th style={{ textAlign: 'right' }}>Entrada</th>
+                        <th style={{ textAlign: 'right' }}>Salida</th>
+                        <th style={{ textAlign: 'right' }}>Saldo</th>
+                        <th>Motivo</th><th>Usuario</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr className="totals-footer">
+                        <td colSpan={5}>Saldo inicial</td>
+                        <td style={{ textAlign: 'right' }}>{kardexData.saldo_inicial} {kardexData.producto.unidad}</td>
+                        <td colSpan={2}></td>
+                      </tr>
+                      {kardexData.movimientos.map((m) => (
+                        <tr key={m.id}>
+                          <td>{m.created_at}</td>
+                          <td><span className={'badge ' + (KARDEX_TIPO_BADGE[m.tipo] || 'badge-neutral')}>{KARDEX_TIPO_LABEL[m.tipo] || m.tipo}</span></td>
+                          <td>{m.referencia || '—'}</td>
+                          <td style={{ textAlign: 'right', color: m.cantidad > 0 ? COLORS.good : undefined }}>
+                            {m.cantidad > 0 ? m.cantidad : ''}
+                          </td>
+                          <td style={{ textAlign: 'right', color: m.cantidad < 0 ? COLORS.critical : undefined }}>
+                            {m.cantidad < 0 ? Math.abs(m.cantidad) : ''}
+                          </td>
+                          <td style={{ textAlign: 'right' }}><strong>{m.stock_resultante}</strong></td>
+                          <td>{m.motivo || '—'}</td>
+                          <td>{m.usuario_nombre || '—'}</td>
+                        </tr>
+                      ))}
+                      {kardexData.movimientos.length === 0 && (
+                        <tr><td colSpan={8} className="empty-row">Sin movimientos en el periodo seleccionado.</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               )}
             </>
           )}
