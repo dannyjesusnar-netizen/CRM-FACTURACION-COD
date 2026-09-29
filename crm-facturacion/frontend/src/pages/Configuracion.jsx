@@ -447,7 +447,6 @@ export default function Configuracion() {
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyUserForm());
   const [errorForm, setErrorForm] = useState('');
-  const [buscandoDniForm, setBuscandoDniForm] = useState(false);
 
   // --- Zona de peligro: borrar datos de prueba ---
   const [borrandoDatos, setBorrandoDatos] = useState(false);
@@ -467,7 +466,6 @@ export default function Configuracion() {
   const [editingOperativoId, setEditingOperativoId] = useState(null);
   const [operativoForm, setOperativoForm] = useState(emptyOperativoForm());
   const [errorOperativoForm, setErrorOperativoForm] = useState('');
-  const [buscandoDniOperativo, setBuscandoDniOperativo] = useState(false);
   const [showCargaMasivaOperativos, setShowCargaMasivaOperativos] = useState(false);
   const [cargaOperativosFileName, setCargaOperativosFileName] = useState('');
   const [cargaOperativosRows, setCargaOperativosRows] = useState([]);
@@ -1162,52 +1160,6 @@ export default function Configuracion() {
     reader.onload = () => setEmpresa({ ...empresa, logo_data_url: reader.result });
     reader.readAsDataURL(file);
   }
-
-  // Autocompletar nombres/apellidos apenas se completa un DNI de 8 dígitos
-  // (RENIEC no cubre Carnet de Extranjería, de 9) al dar de alta un
-  // empleado o un registro operativo nuevo -- nunca al editar uno existente
-  // ni pisa lo que la persona ya haya escrito a mano.
-  useEffect(() => {
-    if (!showForm || editingId) return;
-    const dni = form.dni.trim();
-    if (dni.length !== 8) return;
-    let cancelado = false;
-    setBuscandoDniForm(true);
-    api.get('/users/consultar-dni', { params: { dni } })
-      .then((res) => {
-        if (cancelado || !res.data.encontrado) return;
-        setForm((f) => (
-          f.dni.trim() === dni
-            ? { ...f, nombres: f.nombres.trim() ? f.nombres : (res.data.nombres || f.nombres), apellidos: f.apellidos.trim() ? f.apellidos : (res.data.apellidos || f.apellidos) }
-            : f
-        ));
-      })
-      .catch(() => {})
-      .finally(() => { if (!cancelado) setBuscandoDniForm(false); });
-    return () => { cancelado = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form.dni, showForm, editingId]);
-
-  useEffect(() => {
-    if (!showOperativoForm || editingOperativoId) return;
-    const dni = operativoForm.dni.trim();
-    if (dni.length !== 8) return;
-    let cancelado = false;
-    setBuscandoDniOperativo(true);
-    api.get('/users/consultar-dni', { params: { dni } })
-      .then((res) => {
-        if (cancelado || !res.data.encontrado) return;
-        setOperativoForm((f) => (
-          f.dni.trim() === dni
-            ? { ...f, nombres: f.nombres.trim() ? f.nombres : (res.data.nombres || f.nombres), apellidos: f.apellidos.trim() ? f.apellidos : (res.data.apellidos || f.apellidos) }
-            : f
-        ));
-      })
-      .catch(() => {})
-      .finally(() => { if (!cancelado) setBuscandoDniOperativo(false); });
-    return () => { cancelado = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [operativoForm.dni, showOperativoForm, editingOperativoId]);
 
   function openNewUser() {
     setEditingId(null);
@@ -3052,7 +3004,7 @@ export default function Configuracion() {
               </div>
               <label>Usuario (identificador interno) *</label>
               <input required disabled={!!editingId} value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} />
-              <label>DNI / Carnet de Extranjería * (8 o 9 dígitos) — se usa para iniciar sesión junto con el RUC de la empresa{buscandoDniForm ? ' — buscando...' : ''}</label>
+              <label>DNI / Carnet de Extranjería * (8 o 9 dígitos) — se usa para iniciar sesión junto con el RUC de la empresa</label>
               <input required value={form.dni} onChange={(e) => setForm({ ...form, dni: e.target.value })} maxLength={9} />
               <div className="form-row">
                 <div>
@@ -3135,7 +3087,7 @@ export default function Configuracion() {
                   <input required value={operativoForm.apellidos} onChange={(e) => setOperativoForm({ ...operativoForm, apellidos: e.target.value })} />
                 </div>
               </div>
-              <label>DNI / Carnet de Extranjería * (8 o 9 dígitos){buscandoDniOperativo ? ' — buscando...' : ''}</label>
+              <label>DNI / Carnet de Extranjería * (8 o 9 dígitos)</label>
               <input required value={operativoForm.dni} onChange={(e) => setOperativoForm({ ...operativoForm, dni: e.target.value })} maxLength={9} />
               <div className="form-row">
                 <div>
@@ -3299,7 +3251,7 @@ export default function Configuracion() {
                   <input required value={operativoForm.apellidos} onChange={(e) => setOperativoForm({ ...operativoForm, apellidos: e.target.value })} />
                 </div>
               </div>
-              <label>DNI / Carnet de Extranjería * (8 o 9 dígitos){buscandoDniOperativo ? ' — buscando...' : ''}</label>
+              <label>DNI / Carnet de Extranjería * (8 o 9 dígitos)</label>
               <input required value={operativoForm.dni} onChange={(e) => setOperativoForm({ ...operativoForm, dni: e.target.value })} maxLength={9} />
               <div className="form-row">
                 <div>

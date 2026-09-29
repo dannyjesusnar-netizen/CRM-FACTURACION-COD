@@ -82,7 +82,6 @@ export default function Compras() {
   const [observaciones, setObservaciones] = useState('');
   const [formaPago, setFormaPago] = useState('efectivo');
   const [newSupplier, setNewSupplier] = useState(emptySupplier());
-  const [buscandoProveedorDoc, setBuscandoProveedorDoc] = useState(false);
   const [igvRate, setIgvRate] = useState(0.18);
   const [tiposCompra, setTiposCompra] = useState([]);
 
@@ -136,33 +135,6 @@ export default function Compras() {
     e.preventDefault();
     load();
   }
-
-  // Autocompletar el nombre del proveedor apenas se completa un RUC (11
-  // dígitos) válido en "Nuevo proveedor" — primero busca si ya está
-  // registrado, si no consulta SUNAT. Nunca pisa un nombre ya escrito a
-  // mano ni bloquea nada si el proveedor externo falla.
-  useEffect(() => {
-    if (!showSupplierForm) return;
-    const ruc = newSupplier.ruc.trim();
-    if (ruc.length !== 11) return;
-    let cancelado = false;
-    setBuscandoProveedorDoc(true);
-    api.get('/suppliers/consultar-ruc', { params: { ruc } })
-      .then((res) => {
-        if (cancelado || !res.data.encontrado) return;
-        const nombre = res.data.existente ? res.data.proveedor.nombre : res.data.nombre;
-        const direccion = res.data.existente ? res.data.proveedor.direccion : res.data.direccion;
-        setNewSupplier((s) => (
-          s.ruc.trim() === ruc
-            ? { ...s, nombre: s.nombre.trim() ? s.nombre : (nombre || s.nombre), direccion: s.direccion.trim() ? s.direccion : (direccion || s.direccion) }
-            : s
-        ));
-      })
-      .catch(() => {})
-      .finally(() => { if (!cancelado) setBuscandoProveedorDoc(false); });
-    return () => { cancelado = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [newSupplier.ruc, showSupplierForm]);
 
   function openNew(mode = 'compra', ordenDoc = 'Orden de Compra') {
     setFormMode(mode);
@@ -721,10 +693,10 @@ export default function Compras() {
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h2>Nuevo proveedor</h2>
             <form onSubmit={handleNewSupplier}>
-              <label>RUC</label>
-              <input value={newSupplier.ruc} onChange={(e) => setNewSupplier((s) => ({ ...s, ruc: e.target.value }))} maxLength={11} />
-              <label>Nombre / Razón social{buscandoProveedorDoc ? ' — buscando...' : ''}</label>
+              <label>Nombre / Razón social</label>
               <input required value={newSupplier.nombre} onChange={(e) => setNewSupplier((s) => ({ ...s, nombre: e.target.value }))} />
+              <label>RUC</label>
+              <input value={newSupplier.ruc} onChange={(e) => setNewSupplier((s) => ({ ...s, ruc: e.target.value }))} />
               <label>Dirección</label>
               <input value={newSupplier.direccion} onChange={(e) => setNewSupplier((s) => ({ ...s, direccion: e.target.value }))} />
               <label>Teléfono</label>

@@ -2,30 +2,10 @@ const express = require('express');
 const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { requirePermiso, requireAccion } = require('../utils/permisos');
-const { consultarRuc } = require('../utils/rucLookup');
 
 const router = express.Router();
 router.use(requireAuth);
 router.use(requirePermiso('compras'));
-
-// GET /api/suppliers/consultar-ruc?ruc=XXXXXXXXXXX -> autocompletar el
-// nombre al registrar un proveedor nuevo. Primero busca si ese RUC ya está
-// registrado (evita duplicar proveedores), si no consulta SUNAT (mismo
-// proveedor externo que ya usa Clientes). Nunca falla la petición por un
-// problema del proveedor externo -- responde 200 con encontrado:false para
-// que el frontend deje el nombre en blanco para completarlo a mano. Va
-// antes de /:id para no chocar con esa ruta.
-router.get('/consultar-ruc', async (req, res) => {
-  const ruc = (req.query.ruc || '').trim();
-  if (!/^\d{11}$/.test(ruc)) return res.json({ encontrado: false });
-  const existente = db.prepare('SELECT * FROM suppliers WHERE ruc = ?').get(ruc);
-  if (existente) return res.json({ encontrado: true, existente: true, proveedor: existente });
-  const info = await consultarRuc(ruc);
-  if (info.verificado && info.existe) {
-    return res.json({ encontrado: true, existente: false, nombre: info.razonSocial, direccion: info.direccion || undefined });
-  }
-  return res.json({ encontrado: false });
-});
 
 router.get('/', (req, res) => {
   const q = (req.query.q || '').trim();
