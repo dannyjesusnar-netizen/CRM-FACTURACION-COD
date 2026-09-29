@@ -57,8 +57,8 @@ export default function Planilla() {
         <h1 className="page-title">Planilla</h1>
       </div>
       <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -8, marginBottom: 16 }}>
-        Reporte de horas: quién abrió y cerró su turno de caja, y cuánto duró. Para abrir o cerrar tu turno,
-        ve a Caja y Bancos.
+        Reporte de horas: quién abrió y cerró su turno de caja, cuánto duró y cuánto se vendió/movió en caja durante
+        ese turno puntual (no el total del día completo). Para abrir o cerrar tu turno, ve a Caja y Bancos.
       </p>
 
       <div className="filter-panel" style={{ marginBottom: 16 }}>
@@ -106,6 +106,7 @@ export default function Planilla() {
                   <th>Apertura</th>
                   <th>Cierre</th>
                   <th>Duración</th>
+                  <th style={{ textAlign: 'right' }}>Total</th>
                   <th>Estado</th>
                 </tr>
               </thead>
@@ -118,6 +119,7 @@ export default function Planilla() {
                     <td>{fmtHora(t.abierto_at)}</td>
                     <td>{fmtHora(t.cerrado_at)}</td>
                     <td>{duracion(t.abierto_at, t.cerrado_at)}</td>
+                    <td style={{ textAlign: 'right' }}>S/ {Number(t.total).toFixed(2)}</td>
                     <td>
                       <span className={'badge ' + (t.cerrado_at ? 'badge-good' : 'badge-warning')}>
                         {t.cerrado_at ? 'Cerrado' : 'Abierto'}
@@ -126,7 +128,7 @@ export default function Planilla() {
                   </tr>
                 ))}
                 {data.turnos.length === 0 && (
-                  <tr><td colSpan={data.verTodos ? 7 : 6} className="empty-row">No hay turnos de caja registrados en este período.</td></tr>
+                  <tr><td colSpan={data.verTodos ? 8 : 7} className="empty-row">No hay turnos de caja registrados en este período.</td></tr>
                 )}
               </tbody>
             </table>

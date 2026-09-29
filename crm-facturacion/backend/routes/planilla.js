@@ -3,6 +3,7 @@ const db = require('../db');
 const { requireAuth, resolveSucursal } = require('../middleware/auth');
 const { requirePermiso, tieneAccionSupervisor } = require('../utils/permisos');
 const { hoyPeru } = require('../utils/fechas');
+const { round2 } = require('../utils/cajaCalculos');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -11,6 +12,35 @@ router.use(resolveSucursal);
 
 function todayStr() {
   return hoyPeru();
+}
+
+// Total vendido/movido en caja durante la ventana exacta de un turno (su
+// abierto_at hasta su cerrado_at, o hasta ahora si sigue abierto) -- no el
+// total del día completo del empleado, que puede incluir otro turno aparte.
+// No cuenta lo "abonado" (crédito, no es dinero que entró a caja en ese
+// momento) -- mismo criterio que el resto de Caja y Bancos.
+function totalTurno(turno) {
+  const fin = turno.cerrado_at || db.prepare("SELECT datetime('now') AS n").get().n;
+  const params = [turno.sucursal_id, turno.created_by, turno.abierto_at, fin];
+  const ventas = db.prepare(
+    `SELECT COALESCE(SUM(total), 0) AS t FROM invoices
+     WHERE estado = 'emitido' AND tipo_comprobante != 'nota_credito' AND forma_pago != 'abonado'
+       AND sucursal_id = ? AND created_by = ? AND created_at BETWEEN ? AND ?`
+  ).get(...params).t;
+  const notasVenta = db.prepare(
+    `SELECT COALESCE(SUM(total), 0) AS t FROM notas_venta
+     WHERE estado = 'emitido' AND (forma_pago IS NULL OR forma_pago != 'abonado')
+       AND sucursal_id = ? AND created_by = ? AND created_at BETWEEN ? AND ?`
+  ).get(...params).t;
+  const ingresos = db.prepare(
+    `SELECT COALESCE(SUM(monto), 0) AS t FROM caja_movimientos
+     WHERE tipo = 'ingreso' AND sucursal_id = ? AND created_by = ? AND created_at BETWEEN ? AND ?`
+  ).get(...params).t;
+  const egresos = db.prepare(
+    `SELECT COALESCE(SUM(monto), 0) AS t FROM caja_movimientos
+     WHERE tipo = 'egreso' AND sucursal_id = ? AND created_by = ? AND created_at BETWEEN ? AND ?`
+  ).get(...params).t;
+  return round2(ventas + notasVenta + ingresos - egresos);
 }
 
 // GET /api/planilla?desde=&hasta=&empleado_id=&sucursal_id=
@@ -33,7 +63,7 @@ router.get('/', (req, res) => {
     : req.sucursalId;
 
   let sql = `
-    SELECT ct.id, ct.fecha, ct.abierto_at, ct.cerrado_at, ct.created_by,
+    SELECT ct.id, ct.fecha, ct.abierto_at, ct.cerrado_at, ct.created_by, ct.sucursal_id,
            u.full_name AS empleado_nombre, s.nombre AS sede_nombre
     FROM caja_turnos ct
     JOIN users u ON u.id = ct.created_by
@@ -49,7 +79,7 @@ router.get('/', (req, res) => {
     params.push(req.user.id);
   }
   sql += ' ORDER BY ct.abierto_at DESC';
-  const turnos = db.prepare(sql).all(...params);
+  const turnos = db.prepare(sql).all(...params).map((t) => ({ ...t, total: totalTurno(t) }));
   res.json({
     desde, hasta, verTodos: esSupervisorOGerencia,
     puedeElegirSede: req.user.role === 'gerencia', sucursal_id: sucursalFiltro,
