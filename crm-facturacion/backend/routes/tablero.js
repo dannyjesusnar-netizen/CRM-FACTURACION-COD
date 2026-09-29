@@ -179,6 +179,39 @@ router.get('/resumen-sedes', (req, res) => {
   });
 });
 
+// GET /api/tablero/ventas-dia-por-sede?fecha=YYYY-MM-DD -> cuánto vendió
+// cada sede en un día puntual (por defecto hoy), para comparar el día
+// entre sedes de un vistazo -- distinto de /resumen-sedes, que es siempre
+// por mes calendario completo (y compara contra la meta mensual, que no
+// tiene un equivalente diario real).
+router.get('/ventas-dia-por-sede', (req, res) => {
+  const fecha = req.query.fecha || new Date().toISOString().slice(0, 10);
+  const sucursalId = sedeFiltro(req);
+  const ventaPorSede = db.prepare(`
+    SELECT s.id, s.nombre, COALESCE(SUM(v.monto), 0) AS venta
+    FROM sucursales s
+    LEFT JOIN (
+      SELECT sucursal_id, CASE WHEN tipo_comprobante = 'nota_credito' THEN -total ELSE total END AS monto
+      FROM invoices
+      WHERE estado = 'emitido' AND date(fecha_emision) = date(?)
+      UNION ALL
+      SELECT sucursal_id, total AS monto
+      FROM notas_venta
+      WHERE estado = 'emitido' AND date(fecha_emision) = date(?)
+    ) v ON v.sucursal_id = s.id
+    WHERE s.activo = 1
+      AND (? IS NULL OR s.id = ?)
+    GROUP BY s.id
+  `).all(fecha, fecha, sucursalId, sucursalId);
+
+  const sedes = ventaPorSede
+    .map((s) => ({ sucursal_id: s.id, sede: s.nombre, venta: round2(s.venta) }))
+    .sort((a, b) => b.venta - a.venta);
+  const ventasTotales = round2(sedes.reduce((acc, s) => acc + s.venta, 0));
+
+  res.json({ fecha, sedes, total: { venta: ventasTotales } });
+});
+
 // Ítems vendidos del mes/sede, juntando Boletas/Facturas (invoice_items, con
 // nota de crédito restando) y Notas de Venta Interna (nota_venta_items) —
 // esta última es la única que admite forma_pago "Abonado" (crédito), así que
