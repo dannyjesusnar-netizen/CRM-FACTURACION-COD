@@ -339,31 +339,38 @@ por cada una.
 
 SUNAT no expone una API pública oficial para consultar RUC ni DNI. Con la
 misma variable de entorno, este token de un proveedor externo que sí ofrece
-una API sobre esos mismos datos públicos ([Decolecta](https://decolecta.com/),
-con plan gratuito limitado) se usa en dos lugares:
+una API sobre esos mismos datos públicos ([Perú API](https://peruapi.com/),
+con plan gratuito limitado: 50 consultas/día, 1,000/mes) se usa en tres
+lugares:
 
 | Variable | Valor |
 | --- | --- |
-| `RUC_LOOKUP_TOKEN` | API Key de tu cuenta en decolecta.com (empieza con `sk_...`) |
+| `RUC_LOOKUP_TOKEN` | API Key de tu cuenta en peruapi.com (panel → "Tu API Key") |
 
-Ojo: no es lo mismo que apis.net.pe (otro proveedor similar, pero con una URL
-y token incompatibles) — si generaste un token ahí en vez de en decolecta.com,
-esta verificación no va a funcionar.
+Ojo: el plan gratuito de Perú API limita a **1 IP autorizada** (panel →
+"IPs autorizadas") — si la IP de salida del backend cambia (por ejemplo al
+cambiar de plan en el hosting), hay que volver a autorizarla ahí o esta
+verificación empieza a fallar en silencio (nunca bloquea nada, pero deja de
+autocompletar).
 
 1. **Registrar mi empresa** (`POST /api/auth/register`): sin esta variable,
    el registro sigue funcionando igual que antes, validando solo que el RUC
    tenga 11 dígitos. Con la variable configurada, el registro se rechaza si
    el proveedor confirma que el RUC **no existe** o que figura **inactivo**
    en SUNAT.
-2. **Alta de cliente nuevo en Ventas** (`GET /api/clients/consultar-documento`):
-   al escribir un DNI (8 dígitos) o RUC (11 dígitos) completo en "Cliente
-   Nuevo", se autocompleta el nombre/razón social (y la dirección, para RUC)
-   si el proveedor lo encuentra. Sin esta variable, ese campo simplemente se
+2. **Alta de cliente nuevo** (`GET /api/clients/consultar-documento`, usado
+   tanto en Ventas/Notas de venta/Guías como en Clientes → Nuevo cliente):
+   al escribir un DNI (8 dígitos) o RUC (11 dígitos) completo, se
+   autocompleta el nombre/razón social (y la dirección, para RUC) si el
+   proveedor lo encuentra. Sin esta variable, ese campo simplemente se
    sigue completando a mano, como siempre.
+3. **Alta de proveedor nuevo en Compras** (`GET /api/suppliers/consultar-ruc`):
+   mismo autocompletado que el punto 2, pero para el RUC del proveedor.
 
-En ambos casos, si el proveedor externo falla o no responde a tiempo, la
-acción **nunca se bloquea** por eso — es una verificación/autocompletado de
-mejor esfuerzo, no un requisito indispensable.
+En los tres casos, si el proveedor externo falla, no responde a tiempo o se
+agota la cuota gratuita, la acción **nunca se bloquea** por eso — es una
+verificación/autocompletado de mejor esfuerzo, no un requisito
+indispensable.
 
 ## Suscripción a la plataforma: cobro recurrente con Izipay (`IZIPAY_USERNAME` / `IZIPAY_PASSWORD`)
 
