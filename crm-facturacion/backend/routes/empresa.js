@@ -366,4 +366,23 @@ router.get('/respaldos/:nombre/descargar', requireGerencia, (req, res) => {
   res.download(ruta, req.params.nombre);
 });
 
+// GET /api/empresa/mi-ip -- diagnóstico: con qué IP de salida sale este
+// backend hacia internet, para autorizarla en el panel de un proveedor
+// externo con lista blanca de IPs (ej. Perú API para RUC_LOOKUP_TOKEN, ver
+// utils/rucLookup.js y el README). No hay forma de saberlo desde el panel
+// del hosting en todos los planes, así que se pregunta directo.
+router.get('/mi-ip', requireGerencia, async (req, res) => {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 6000);
+    const r = await fetch('https://api.ipify.org?format=json', { signal: controller.signal });
+    clearTimeout(timer);
+    if (!r.ok) return res.status(502).json({ error: 'No se pudo consultar el servicio de IP.' });
+    const data = await r.json();
+    res.json({ ip: data.ip });
+  } catch (err) {
+    res.status(502).json({ error: 'No se pudo consultar el servicio de IP.' });
+  }
+});
+
 module.exports = router;
