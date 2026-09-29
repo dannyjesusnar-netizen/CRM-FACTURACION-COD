@@ -45,15 +45,15 @@ router.get('/', (req, res) => {
   res.json({ fecha, hasta, moneda, resumen, movimientos, totalGeneral });
 });
 
-// GET /api/caja/empleados -> empleados visibles en la sede activa, para el
-// filtro "Cuenta". Excluye a los Entrenadores (categoria_staff='trainer'):
-// no manejan caja, así que nunca aparecen como created_by de un movimiento
-// -- listarlos solo ensucia el filtro con nombres que nunca van a tener
-// nada que mostrar.
+// GET /api/caja/empleados -> vendedores visibles en la sede activa, para el
+// filtro "Vendedor". Solo categoria_staff='vendedor' -- Entrenadores y
+// Supervisores no manejan caja, así que nunca aparecen como created_by de
+// un movimiento -- listarlos solo ensucia el filtro con nombres que nunca
+// van a tener nada que mostrar.
 router.get('/empleados', (req, res) => {
   const rows = db.prepare(
     `SELECT id, full_name FROM users
-     WHERE activo = 1 AND categoria_staff != 'trainer' AND (sucursal_id IS NULL OR sucursal_id = ?)
+     WHERE activo = 1 AND categoria_staff = 'vendedor' AND (sucursal_id IS NULL OR sucursal_id = ?)
      ORDER BY full_name ASC`
   ).all(req.sucursalId);
   res.json(rows);

@@ -218,9 +218,9 @@ export default function Caja() {
           <input type="date" value={hasta} min={fecha} onChange={(e) => setHasta(e.target.value)} />
         </div>
         <div className="filter-field">
-          <label>Cuenta</label>
+          <label>Vendedor</label>
           <select value={empleadoId} onChange={(e) => setEmpleadoId(e.target.value)}>
-            <option value="">Todos los empleados</option>
+            <option value="">Todos los vendedores</option>
             {empleados.map((e) => <option key={e.id} value={e.id}>{e.full_name}</option>)}
           </select>
         </div>
