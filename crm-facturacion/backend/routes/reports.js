@@ -643,4 +643,43 @@ router.get('/evolucion-inventarios', requireReportes, requireAccion('reportes', 
   })));
 });
 
+// Kardex detallado de un producto: cada movimiento de stock_movements con su
+// saldo corriente (stock_resultante ya queda guardado en cada fila al
+// insertarla, así que no hace falta reconstruirlo sumando uno por uno) más
+// un "saldo inicial" = el saldo justo antes del rango pedido (el resultante
+// del último movimiento anterior a "from", o 0 si no hay ninguno).
+router.get('/kardex', requireReportes, requireAccion('reportes', 'financieros'), (req, res) => {
+  const productId = Number(req.query.product_id);
+  if (!productId) return res.status(400).json({ error: 'product_id es requerido.' });
+  const producto = db.prepare('SELECT id, codigo, nombre, unidad FROM products WHERE id = ?').get(productId);
+  if (!producto) return res.status(404).json({ error: 'Producto no encontrado.' });
+
+  const from = req.query.from;
+  const to = req.query.to;
+
+  let saldoInicial = 0;
+  if (from) {
+    // created_at se guarda en UTC -- se resta 5h antes de comparar contra
+    // la fecha de Perú (mismo criterio que movements.js), para que un
+    // movimiento de después de las 7pm no se cuente en el día siguiente.
+    const previo = db.prepare(
+      `SELECT stock_resultante FROM stock_movements
+       WHERE product_id = ? AND sucursal_id = ? AND date(created_at, '-5 hours') < date(?)
+       ORDER BY id DESC LIMIT 1`
+    ).get(productId, req.sucursalId, from);
+    saldoInicial = previo ? previo.stock_resultante : 0;
+  }
+
+  let sql = `SELECT m.id, m.created_at, m.tipo, m.cantidad, m.stock_resultante, m.motivo, m.referencia, u.full_name AS usuario_nombre
+             FROM stock_movements m LEFT JOIN users u ON u.id = m.created_by
+             WHERE m.product_id = ? AND m.sucursal_id = ?`;
+  const params = [productId, req.sucursalId];
+  if (from) { sql += " AND date(m.created_at, '-5 hours') >= date(?)"; params.push(from); }
+  if (to) { sql += " AND date(m.created_at, '-5 hours') <= date(?)"; params.push(to); }
+  sql += ' ORDER BY m.id ASC';
+  const movimientos = db.prepare(sql).all(...params);
+
+  res.json({ producto, saldo_inicial: saldoInicial, movimientos });
+});
+
 module.exports = router;
