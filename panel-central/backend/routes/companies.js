@@ -121,6 +121,18 @@ router.put('/locales/:ruc/mensajes/:id/leido', (req, res) => {
   res.json(mensaje);
 });
 
+// GET /api/companies/locales/:ruc/documentos-por-sede?anio=&mes= — cuántos
+// documentos emitió cada sede de esa empresa en el mes (default: mes/año
+// actual), más el total de la empresa. Exclusivo de este panel (ver la nota
+// en localTenants.js:documentosPorSede sobre por qué no existe un endpoint
+// equivalente dentro del propio CRM de la empresa).
+router.get('/locales/:ruc/documentos-por-sede', (req, res) => {
+  if (!getLocalTenantOr404(req, res)) return;
+  const anio = req.query.anio ? Number(req.query.anio) : undefined;
+  const mes = req.query.mes ? Number(req.query.mes) : undefined;
+  res.json(localTenants.documentosPorSede(req.params.ruc, { anio, mes }));
+});
+
 // GET /api/companies/locales/:ruc/usuarios — empleados de esa empresa.
 router.get('/locales/:ruc/usuarios', (req, res) => {
   if (!getLocalTenantOr404(req, res)) return;

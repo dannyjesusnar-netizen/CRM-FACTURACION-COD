@@ -8,6 +8,11 @@ const ESTADO_BADGE = { pendiente: 'badge-warning', aprobado: 'badge-good', recha
 const SOLICITUD_LABEL = { pendiente: 'Pendiente', aprobada: 'Aprobada', rechazada: 'Rechazada' };
 const SOLICITUD_BADGE = { pendiente: 'badge-warning', aprobada: 'badge-good', rechazada: 'badge-critical' };
 
+const MESES = [
+  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
+];
+
 function formatFecha(f) {
   if (!f) return '—';
   return String(f).slice(0, 10);
@@ -26,6 +31,11 @@ export default function Companies() {
   const [mensajes, setMensajes] = useState([]);
   const [usuariosRuc, setUsuariosRuc] = useState(null);
   const [usuarios, setUsuarios] = useState([]);
+  const [docsRuc, setDocsRuc] = useState(null);
+  const [docsRazonSocial, setDocsRazonSocial] = useState('');
+  const [docsAnio, setDocsAnio] = useState(new Date().getFullYear());
+  const [docsMes, setDocsMes] = useState(new Date().getMonth() + 1);
+  const [docsData, setDocsData] = useState({ sedes: [], total: { boletas: 0, facturas: 0, notas_credito: 0, notas_venta: 0, total: 0 } });
   const [sedesLibresRuc, setSedesLibresRuc] = useState(null);
   const [sedesLibresValor, setSedesLibresValor] = useState('');
   const [solicitudesRuc, setSolicitudesRuc] = useState(null);
@@ -40,6 +50,8 @@ export default function Companies() {
   const empresasActivas = locales.empresas.filter((t) => t.estado === 'aprobado' && t.activo).length;
   const ingresoTotal = locales.empresas.reduce((sum, t) => sum + (Number(t.ingreso_total) || 0), 0);
   const solicitudesPendientesTotal = locales.empresas.reduce((sum, t) => sum + (Number(t.solicitudes_sede_pendientes) || 0), 0);
+  const documentosMesTotal = locales.empresas.reduce((sum, t) => sum + (Number(t.documentos_mes) || 0), 0);
+  const docsMaxTotal = Math.max(1, ...docsData.sedes.map((s) => s.total));
 
   useEffect(() => { loadLocales(); }, []);
 
@@ -161,6 +173,20 @@ export default function Companies() {
     setUsuarios(res.data);
   }
 
+  function verDocumentos(t) {
+    const ahora = new Date();
+    setDocsAnio(ahora.getFullYear());
+    setDocsMes(ahora.getMonth() + 1);
+    setDocsRazonSocial(t.razon_social);
+    setDocsRuc(t.ruc);
+  }
+
+  useEffect(() => {
+    if (!docsRuc) return;
+    api.get(`/companies/locales/${docsRuc}/documentos-por-sede`, { params: { anio: docsAnio, mes: docsMes } })
+      .then((res) => setDocsData(res.data));
+  }, [docsRuc, docsAnio, docsMes]);
+
   // Resetear la contraseña de un empleado equivale a tomar control de esa
   // cuenta — por eso, a diferencia del resto de acciones de este panel, no
   // es de un solo clic: pide el motivo y la propia contraseña del admin de
@@ -204,7 +230,7 @@ export default function Companies() {
             tengas que agregarlas a mano.
           </p>
 
-          <div className="stat-grid" style={{ gridTemplateColumns: 'repeat(3, minmax(160px, 220px))' }}>
+          <div className="stat-grid" style={{ gridTemplateColumns: 'repeat(4, minmax(160px, 220px))' }}>
             <div className="stat-card">
               <div className="stat-label">EMPRESAS ACTIVAS</div>
               <div className="stat-value">{empresasActivas}</div>
@@ -212,6 +238,11 @@ export default function Companies() {
             <div className="stat-card">
               <div className="stat-label">INGRESO TOTAL</div>
               <div className="stat-value">S/ {ingresoTotal.toFixed(2)}</div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-label">DOCUMENTOS EMITIDOS (mes)</div>
+              <div className="stat-value">{documentosMesTotal}</div>
+              <div className="stat-sub">Boletas + facturas + N. crédito + N. venta, todas las empresas</div>
             </div>
             <div className="stat-card">
               <div className="stat-label">SOLICITUDES DE SEDE PENDIENTES</div>
@@ -223,7 +254,7 @@ export default function Companies() {
             <thead>
               <tr>
                 <th>Razón social</th><th>RUC</th><th>Estado</th><th>Costo mensual</th>
-                <th>Fecha de pago</th><th>Próximo cobro</th><th>Ingresos</th><th>Sucursales</th><th>Sedes libres</th><th></th>
+                <th>Fecha de pago</th><th>Próximo cobro</th><th>Ingresos</th><th>Sucursales</th><th>Sedes libres</th><th>Documentos (mes)</th><th></th>
               </tr>
             </thead>
             <tbody>
@@ -249,6 +280,9 @@ export default function Companies() {
                     {t.sedes_libres ?? 1}
                     <button className="btn-link" style={{ marginLeft: 6 }} onClick={() => abrirSedesLibres(t)}>Editar</button>
                   </td>
+                  <td>
+                    <span className="badge badge-neutral">{t.documentos_mes ?? 0}</span>
+                  </td>
                   <td className="row-actions">
                     {t.estado === 'pendiente' && (
                       <>
@@ -264,6 +298,7 @@ export default function Companies() {
                     <button className="btn-link" onClick={() => abrirCosto(t)}>Costo</button>
                     <button className="btn-link" onClick={() => verPagos(t.ruc)}>Pagos</button>
                     <button className="btn-link" onClick={() => verUsuarios(t.ruc)}>Usuarios</button>
+                    <button className="btn-link" onClick={() => verDocumentos(t)}>Documentos</button>
                     <button className="btn-link" onClick={() => verMensajes(t.ruc)}>Mensajes</button>
                     <button className="btn-link" onClick={() => verSolicitudes(t.ruc)}>
                       Solicitudes{t.solicitudes_sede_pendientes > 0 ? ` (${t.solicitudes_sede_pendientes})` : ''}
@@ -272,7 +307,7 @@ export default function Companies() {
                 </tr>
               ))}
               {locales.empresas.length === 0 && (
-                <tr><td colSpan={10} className="empty-row">Todavía no hay empresas registradas desde "Registrar mi empresa".</td></tr>
+                <tr><td colSpan={11} className="empty-row">Todavía no hay empresas registradas desde "Registrar mi empresa".</td></tr>
               )}
             </tbody>
           </table>
@@ -463,6 +498,80 @@ export default function Companies() {
             </table>
             <div className="modal-actions">
               <button type="button" className="btn-secondary" onClick={() => setUsuariosRuc(null)}>Cerrar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {docsRuc && (
+        <div className="modal-overlay" onClick={() => setDocsRuc(null)}>
+          <div className="modal modal-lg" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header-row">
+              <h2>Documentos emitidos — {docsRazonSocial}</h2>
+              <div className="docs-periodo">
+                <select value={docsMes} onChange={(e) => setDocsMes(Number(e.target.value))}>
+                  {MESES.map((nombre, idx) => (
+                    <option key={idx} value={idx + 1}>{nombre}</option>
+                  ))}
+                </select>
+                <select value={docsAnio} onChange={(e) => setDocsAnio(Number(e.target.value))}>
+                  {[docsAnio - 1, docsAnio, docsAnio + 1].map((a) => (
+                    <option key={a} value={a}>{a}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -2 }}>
+              Solo visible desde QORIA Central — ni Gerencia ni ningún otro rol dentro del propio CRM de la empresa ve esta comparación entre sedes.
+            </p>
+
+            <div className="docs-hero">
+              <div>
+                <div className="docs-hero-total">{docsData.total.total}</div>
+                <div className="docs-hero-label">Total {MESES[docsMes - 1]} {docsAnio}</div>
+              </div>
+              <div className="docs-hero-chips">
+                <div className="docs-chip">
+                  <div className="docs-chip-value">{docsData.total.boletas}</div>
+                  <div className="docs-chip-label">Boletas</div>
+                </div>
+                <div className="docs-chip">
+                  <div className="docs-chip-value">{docsData.total.facturas}</div>
+                  <div className="docs-chip-label">Facturas</div>
+                </div>
+                <div className="docs-chip">
+                  <div className="docs-chip-value">{docsData.total.notas_credito}</div>
+                  <div className="docs-chip-label">N. Crédito</div>
+                </div>
+                <div className="docs-chip">
+                  <div className="docs-chip-value">{docsData.total.notas_venta}</div>
+                  <div className="docs-chip-label">N. Venta</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="docs-sedes">
+              {docsData.sedes.map((s) => (
+                <div className="docs-sede-row" key={s.sucursal_id}>
+                  <div className="docs-sede-head">
+                    <span className="docs-sede-nombre">{s.sede}</span>
+                    <span className="docs-sede-total">{s.total}</span>
+                  </div>
+                  <div className="docs-sede-bar-track">
+                    <div className="docs-sede-bar-fill" style={{ width: `${Math.round((s.total / docsMaxTotal) * 100)}%` }} />
+                  </div>
+                  <div className="docs-sede-detalle">
+                    {s.boletas} boletas · {s.facturas} facturas · {s.notas_credito} N. crédito · {s.notas_venta} N. venta
+                  </div>
+                </div>
+              ))}
+              {docsData.sedes.length === 0 && (
+                <p className="empty-row">Sin sedes activas.</p>
+              )}
+            </div>
+
+            <div className="modal-actions">
+              <button type="button" className="btn-secondary" onClick={() => setDocsRuc(null)}>Cerrar</button>
             </div>
           </div>
         </div>

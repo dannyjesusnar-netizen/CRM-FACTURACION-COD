@@ -387,6 +387,40 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--b
   width: 90px; padding: 5px 6px; font-size: 12px; text-align: right; background: var(--surface);
 }
 
+/* ---------- Documentos por sede (QORIA Central) ---------- */
+
+.docs-hero {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  background: linear-gradient(120deg, var(--brand-blue-darker), var(--brand-blue) 60%, var(--aqua));
+  border-radius: 10px; padding: 18px 22px; margin-top: 6px; color: #fff;
+  box-shadow: 0 14px 30px rgba(79, 70, 229, 0.28);
+}
+.docs-hero-total { font-size: 34px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+.docs-hero-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px; opacity: 0.85; margin-top: 4px; }
+.docs-hero-chips { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+.docs-chip {
+  background: rgba(255,255,255,0.16); border-radius: 8px; padding: 6px 12px; text-align: center; min-width: 68px;
+  backdrop-filter: blur(2px);
+}
+.docs-chip-value { font-size: 17px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.docs-chip-label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.4px; opacity: 0.85; margin-top: 2px; }
+
+.docs-periodo { display: flex; gap: 8px; align-items: center; }
+.docs-periodo select { width: auto; padding: 6px 8px; font-size: 12px; }
+
+.docs-sedes { margin-top: 18px; display: flex; flex-direction: column; gap: 10px; }
+.docs-sede-row { animation: fadeUp 0.25s ease; }
+.docs-sede-head { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 4px; }
+.docs-sede-nombre { font-weight: 600; color: var(--ink); }
+.docs-sede-total { font-weight: 800; color: var(--ink); font-variant-numeric: tabular-nums; }
+.docs-sede-bar-track { background: var(--surface-hover); border-radius: 20px; height: 10px; overflow: hidden; border: 1px solid var(--border); }
+.docs-sede-bar-fill {
+  height: 100%; border-radius: 20px;
+  background: linear-gradient(90deg, var(--brand-blue), var(--aqua));
+  transition: width 0.5s ease;
+}
+.docs-sede-detalle { font-size: 11px; color: var(--ink-muted); margin-top: 3px; }
+
 .icon-link { color: var(--brand-blue-dark); text-decoration: none; font-size: 15px; cursor: pointer; transition: transform 0.12s, color 0.12s; display: inline-flex; }
 .icon-link:hover { transform: scale(1.15); color: var(--brand-blue-darker); }
 .icon-link.muted { color: var(--ink-muted); cursor: default; opacity: 0.5; }
