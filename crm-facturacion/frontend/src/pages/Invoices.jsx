@@ -7,6 +7,7 @@ import { useToast } from '../context/ToastContext';
 import { useAuth } from '../context/AuthContext';
 import ExportButton from '../components/ExportButton';
 import { exportarTabla } from '../utils/excelImport';
+import { labelStaff } from '../utils/staffLabel';
 
 const TIPO_LABEL = { factura: 'Factura', boleta: 'Boleta', nota_credito: 'Nota de crédito' };
 
@@ -348,7 +349,7 @@ export default function Invoices() {
                       >
                         <option value="">{inv.vendedor_nombre || 'Vendedor'}</option>
                         {entrenadores.map((e) => (
-                          <option key={e.id} value={e.id}>{e.full_name} ({e.categoria_staff === 'trainer' ? 'Trainer' : 'Supervisor'})</option>
+                          <option key={e.id} value={e.id}>{e.full_name} ({labelStaff(e)})</option>
                         ))}
                       </select>
                     ) : (

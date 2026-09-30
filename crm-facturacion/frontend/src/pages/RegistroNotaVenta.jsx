@@ -9,6 +9,7 @@ import ClientPicker from '../components/ClientPicker';
 import MetodoPagoQr from '../components/MetodoPagoQr';
 import ComboGrupoPicker from '../components/ComboGrupoPicker';
 import ComboSearchBar from '../components/ComboSearchBar';
+import { labelStaff } from '../utils/staffLabel';
 
 function todayStr() {
   return hoyPeru();
@@ -369,7 +370,7 @@ export default function RegistroNotaVenta() {
                 <select value={atribuidoAId} onChange={(e) => setAtribuidoAId(e.target.value)}>
                   <option value="">Yo (vendedor)</option>
                   {entrenadores.map((e) => (
-                    <option key={e.id} value={e.id}>{e.full_name} ({e.categoria_staff === 'trainer' ? 'Trainer' : 'Supervisor'})</option>
+                    <option key={e.id} value={e.id}>{e.full_name} ({labelStaff(e)})</option>
                   ))}
                 </select>
               </div>
