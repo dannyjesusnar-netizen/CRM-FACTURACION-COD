@@ -179,6 +179,55 @@ router.get('/resumen-sedes', (req, res) => {
   });
 });
 
+// Cuántos documentos emitió cada sede en el mes (Boletas, Facturas, Notas de
+// Crédito y Notas de Venta Interna por separado, más el total) y el total
+// de toda la empresa al pie -- mismo período (mes/año) que /resumen-sedes,
+// pero contando comprobantes en vez de sumar montos.
+router.get('/documentos-por-sede', (req, res) => {
+  const { anio, mesPad } = anioMes(req);
+  const sucursalId = sedeFiltro(req);
+  const rows = db.prepare(`
+    SELECT s.id, s.nombre,
+      COALESCE(SUM(CASE WHEN d.tipo = 'boleta' THEN 1 ELSE 0 END), 0) AS boletas,
+      COALESCE(SUM(CASE WHEN d.tipo = 'factura' THEN 1 ELSE 0 END), 0) AS facturas,
+      COALESCE(SUM(CASE WHEN d.tipo = 'nota_credito' THEN 1 ELSE 0 END), 0) AS notas_credito,
+      COALESCE(SUM(CASE WHEN d.tipo = 'nota_venta' THEN 1 ELSE 0 END), 0) AS notas_venta
+    FROM sucursales s
+    LEFT JOIN (
+      SELECT sucursal_id, tipo_comprobante AS tipo FROM invoices
+      WHERE estado = 'emitido' AND strftime('%Y', fecha_emision) = ? AND strftime('%m', fecha_emision) = ?
+      UNION ALL
+      SELECT sucursal_id, 'nota_venta' AS tipo FROM notas_venta
+      WHERE estado = 'emitido' AND strftime('%Y', fecha_emision) = ? AND strftime('%m', fecha_emision) = ?
+    ) d ON d.sucursal_id = s.id
+    WHERE s.activo = 1
+      AND (? IS NULL OR s.id = ?)
+    GROUP BY s.id
+  `).all(String(anio), mesPad, String(anio), mesPad, sucursalId, sucursalId);
+
+  const sedes = rows
+    .map((r) => ({
+      sucursal_id: r.id,
+      sede: r.nombre,
+      boletas: r.boletas,
+      facturas: r.facturas,
+      notas_credito: r.notas_credito,
+      notas_venta: r.notas_venta,
+      total: r.boletas + r.facturas + r.notas_credito + r.notas_venta,
+    }))
+    .sort((a, b) => b.total - a.total);
+
+  const total = sedes.reduce((acc, s) => ({
+    boletas: acc.boletas + s.boletas,
+    facturas: acc.facturas + s.facturas,
+    notas_credito: acc.notas_credito + s.notas_credito,
+    notas_venta: acc.notas_venta + s.notas_venta,
+    total: acc.total + s.total,
+  }), { boletas: 0, facturas: 0, notas_credito: 0, notas_venta: 0, total: 0 });
+
+  res.json({ sedes, total });
+});
+
 // GET /api/tablero/ventas-dia-por-sede?fecha=YYYY-MM-DD -> cuánto vendió
 // cada sede en un día puntual (por defecto hoy), para comparar el día
 // entre sedes de un vistazo -- distinto de /resumen-sedes, que es siempre

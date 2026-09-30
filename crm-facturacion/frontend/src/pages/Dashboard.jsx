@@ -150,6 +150,7 @@ export default function Dashboard() {
   const totalProductoRef = useRef(null);
   const resumenSedesRef = useRef(null);
   const ventasTotalesRef = useRef(null);
+  const documentosPorSedeRef = useRef(null);
   const ventasDiaPorSedeRef = useRef(null);
 
   async function guardarColorTablero(nuevoColor) {
@@ -236,6 +237,7 @@ export default function Dashboard() {
   const [totalLinea, setTotalLinea] = useState([]);
   const [totalProducto, setTotalProducto] = useState([]);
   const [resumenSedes, setResumenSedes] = useState({ sedes: [], total: null, ventas_totales: 0 });
+  const [documentosPorSede, setDocumentosPorSede] = useState({ sedes: [], total: { boletas: 0, facturas: 0, notas_credito: 0, notas_venta: 0, total: 0 } });
   const [tableroLoading, setTableroLoading] = useState(false);
   const [ventasDiaFecha, setVentasDiaFecha] = useState(hoyPeru());
   const [ventasDiaPorSede, setVentasDiaPorSede] = useState({ sedes: [], total: { venta: 0 } });
@@ -269,7 +271,8 @@ export default function Dashboard() {
       api.get('/tablero/total-por-linea', { params }),
       api.get('/tablero/total-por-producto', { params }),
       api.get('/tablero/resumen-sedes', { params }),
-    ]).then(([trainers, vendedores, supervisores, marca, linea, producto, sedes]) => {
+      api.get('/tablero/documentos-por-sede', { params }),
+    ]).then(([trainers, vendedores, supervisores, marca, linea, producto, sedes, documentos]) => {
       setRankingTrainers(trainers.data);
       setRankingVendedores(vendedores.data);
       setRankingSupervisores(supervisores.data);
@@ -277,6 +280,7 @@ export default function Dashboard() {
       setTotalLinea(linea.data);
       setTotalProducto(producto.data);
       setResumenSedes(sedes.data);
+      setDocumentosPorSede(documentos.data);
     }).finally(() => setTableroLoading(false));
   }, [puedeVerTablero, tableroAnio, tableroMes, tableroSedeId]);
 
@@ -817,6 +821,59 @@ export default function Dashboard() {
                       : 'todas las sedes'}
                   </div>
                 </div>
+              </div>
+
+              <div className="panel" ref={documentosPorSedeRef} style={{ marginTop: 20 }}>
+                <PanelHeader
+                  color={colorTablero}
+                  onCopiar={() => copiarPanelComoImagen(documentosPorSedeRef, 'documentos-por-sede.png', toast)}
+                  onDescargarExcel={() => descargarPanelComoExcel(
+                    'documentos-por-sede.xlsx',
+                    ['Sede', 'Boletas', 'Facturas', 'Notas de Crédito', 'Notas de Venta', 'Total'],
+                    [
+                      ...documentosPorSede.sedes.map((s) => [s.sede, s.boletas, s.facturas, s.notas_credito, s.notas_venta, s.total]),
+                      ['Total empresa', documentosPorSede.total.boletas, documentosPorSede.total.facturas, documentosPorSede.total.notas_credito, documentosPorSede.total.notas_venta, documentosPorSede.total.total],
+                    ],
+                    toast
+                  )}
+                >Documentos emitidos por sede</PanelHeader>
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Sede</th>
+                      <th style={{ textAlign: 'right' }}>Boletas</th>
+                      <th style={{ textAlign: 'right' }}>Facturas</th>
+                      <th style={{ textAlign: 'right' }}>N. Crédito</th>
+                      <th style={{ textAlign: 'right' }}>N. Venta</th>
+                      <th style={{ textAlign: 'right' }}>Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {documentosPorSede.sedes.map((s) => (
+                      <tr key={s.sucursal_id}>
+                        <td>{s.sede}</td>
+                        <td style={{ textAlign: 'right' }}>{s.boletas}</td>
+                        <td style={{ textAlign: 'right' }}>{s.facturas}</td>
+                        <td style={{ textAlign: 'right' }}>{s.notas_credito}</td>
+                        <td style={{ textAlign: 'right' }}>{s.notas_venta}</td>
+                        <td style={{ textAlign: 'right' }}><strong>{s.total}</strong></td>
+                      </tr>
+                    ))}
+                    {documentosPorSede.sedes.length === 0 && (
+                      <tr><td colSpan={6} className="empty-row">Sin sedes activas.</td></tr>
+                    )}
+                  </tbody>
+                  <tfoot>
+                    <tr className="totals-footer">
+                      <td>Total empresa</td>
+                      <td style={{ textAlign: 'right' }}>{documentosPorSede.total.boletas}</td>
+                      <td style={{ textAlign: 'right' }}>{documentosPorSede.total.facturas}</td>
+                      <td style={{ textAlign: 'right' }}>{documentosPorSede.total.notas_credito}</td>
+                      <td style={{ textAlign: 'right' }}>{documentosPorSede.total.notas_venta}</td>
+                      <td style={{ textAlign: 'right' }}>{documentosPorSede.total.total}</td>
+                    </tr>
+                  </tfoot>
+                </table>
               </div>
 
               <div className="panel" ref={ventasDiaPorSedeRef} style={{ marginTop: 20 }}>
