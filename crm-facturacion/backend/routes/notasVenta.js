@@ -6,6 +6,7 @@ const { requireTurnoCajaAbierto } = require('../utils/cajaTurno');
 const { siguienteNumero } = require('../utils/series');
 const { resolverDescuentoPct } = require('../utils/descuentos');
 const { resolverDescuentoItemPct } = require('../utils/promociones');
+const { usuarioAtribuible } = require('../utils/atribucion');
 const { consumirStock, incrementarStock, StockInsuficienteError } = require('../utils/stock');
 const { buildNotaVentaPdf } = require('../utils/pdf');
 const { hoyPeru } = require('../utils/fechas');
@@ -196,14 +197,11 @@ router.post('/', requireAccion('ventas', 'nota_venta'), requireTurnoCajaAbierto,
   }
 
   // atribuido_a_id: igual que en invoices.js — quien registra la nota de
-  // venta puede elegir que cuente para un Trainer/Supervisor de su misma
-  // sede en el Ranking del Tablero de Ventas.
+  // venta puede elegir que cuente para otro Trainer, Supervisor, Vendedor
+  // o Gerencia de su misma sede en el Ranking del Tablero de Ventas.
   let atribuidoA = null;
   if (atribuido_a_id) {
-    const entrenador = db.prepare(
-      `SELECT id FROM users WHERE id = ? AND activo = 1 AND categoria_staff IN ('trainer', 'supervisor')
-       AND (sucursal_id IS NULL OR sucursal_id = ?)`
-    ).get(atribuido_a_id, req.sucursalId);
+    const entrenador = usuarioAtribuible(atribuido_a_id, req.sucursalId);
     if (!entrenador) {
       return res.status(400).json({ error: 'La persona seleccionada no existe o no pertenece a esta sede.' });
     }
@@ -389,10 +387,7 @@ router.put('/:id/atribuido-a', requireAccionSupervisor('reatribuir_venta', 'No t
   const { atribuido_a_id } = req.body || {};
   let atribuidoA = null;
   if (atribuido_a_id) {
-    const entrenador = db.prepare(
-      `SELECT id FROM users WHERE id = ? AND activo = 1 AND categoria_staff IN ('trainer', 'supervisor')
-       AND (sucursal_id IS NULL OR sucursal_id = ?)`
-    ).get(atribuido_a_id, nv.sucursal_id);
+    const entrenador = usuarioAtribuible(atribuido_a_id, nv.sucursal_id);
     if (!entrenador) {
       return res.status(400).json({ error: 'La persona seleccionada no existe o no pertenece a esta sede.' });
     }
