@@ -61,6 +61,7 @@ function listarEmpresas() {
     ingreso_total: tenantRegistry.ingresoTotal(t.ruc),
     sucursales_count: sucursalesCount(t.ruc),
     solicitudes_sede_pendientes: solicitudesSedePendientesCount(t.ruc),
+    documentos_mes: documentosPorSede(t.ruc)?.total?.total ?? 0,
   }));
 }
 
@@ -165,6 +166,65 @@ function resolverSolicitudSede(ruc, id, { aprobar, respuesta }) {
   });
 }
 
+// Cuántos documentos emitió cada sede de esta empresa en el mes (Boletas,
+// Facturas, Notas de Crédito y Notas de Venta Interna por separado, más el
+// total), y el total de toda la empresa al pie -- mismo cross-db que
+// listarMensajes. Por defecto es el mes/año actual; se puede pedir otro con
+// { anio, mes }. Este conteo es a propósito exclusivo de este panel (QORIA
+// Central) -- ni Gerencia ni ningún rol dentro del propio CRM de la empresa
+// debe ver cuánto factura cada una de sus sedes comparado con las demás
+// desde el panel de la plataforma, así que no existe un endpoint equivalente
+// en crm-facturacion.
+function documentosPorSede(ruc, { anio, mes } = {}) {
+  if (!resolveTenantDb || !crmDb) return null;
+  const tenantDb = resolveTenantDb(ruc);
+  if (!tenantDb) return null;
+  const ahora = new Date();
+  const anioStr = String(anio || ahora.getFullYear());
+  const mesPad = String(mes || ahora.getMonth() + 1).padStart(2, '0');
+  return crmDb.runWithDb(tenantDb, () => {
+    const rows = crmDb.prepare(`
+      SELECT s.id, s.nombre,
+        COALESCE(SUM(CASE WHEN d.tipo = 'boleta' THEN 1 ELSE 0 END), 0) AS boletas,
+        COALESCE(SUM(CASE WHEN d.tipo = 'factura' THEN 1 ELSE 0 END), 0) AS facturas,
+        COALESCE(SUM(CASE WHEN d.tipo = 'nota_credito' THEN 1 ELSE 0 END), 0) AS notas_credito,
+        COALESCE(SUM(CASE WHEN d.tipo = 'nota_venta' THEN 1 ELSE 0 END), 0) AS notas_venta
+      FROM sucursales s
+      LEFT JOIN (
+        SELECT sucursal_id, tipo_comprobante AS tipo FROM invoices
+        WHERE estado = 'emitido' AND strftime('%Y', fecha_emision) = ? AND strftime('%m', fecha_emision) = ?
+        UNION ALL
+        SELECT sucursal_id, 'nota_venta' AS tipo FROM notas_venta
+        WHERE estado = 'emitido' AND strftime('%Y', fecha_emision) = ? AND strftime('%m', fecha_emision) = ?
+      ) d ON d.sucursal_id = s.id
+      WHERE s.activo = 1
+      GROUP BY s.id
+    `).all(anioStr, mesPad, anioStr, mesPad);
+
+    const sedes = rows
+      .map((r) => ({
+        sucursal_id: r.id,
+        sede: r.nombre,
+        boletas: r.boletas,
+        facturas: r.facturas,
+        notas_credito: r.notas_credito,
+        notas_venta: r.notas_venta,
+        total: r.boletas + r.facturas + r.notas_credito + r.notas_venta,
+      }))
+      .sort((a, b) => b.total - a.total);
+
+    const total = sedes.reduce((acc, s) => ({
+      boletas: acc.boletas + s.boletas,
+      facturas: acc.facturas + s.facturas,
+      notas_credito: acc.notas_credito + s.notas_credito,
+      notas_venta: acc.notas_venta + s.notas_venta,
+      total: acc.total + s.total,
+    }), { boletas: 0, facturas: 0, notas_credito: 0, notas_venta: 0, total: 0 });
+
+    return { anio: Number(anioStr), mes: Number(mesPad), sedes, total };
+  });
+}
+
 // Cuentas de empleados de esa empresa (mismo cross-db que listarMensajes),
 // para poder restablecerles la clave desde acá cuando lo pidan.
 function listarUsuarios(ruc) {
@@ -191,5 +251,5 @@ function restablecerClave(ruc, userId, password) {
 module.exports = {
   disponible, listarEmpresas, encontrar, aprobar, rechazar, activar, desactivar, setCosto, setSedesLibres,
   listarPagos, listarMensajes, marcarMensajeLeido, listarSolicitudesSede, resolverSolicitudSede,
-  listarUsuarios, restablecerClave,
+  listarUsuarios, restablecerClave, documentosPorSede,
 };
