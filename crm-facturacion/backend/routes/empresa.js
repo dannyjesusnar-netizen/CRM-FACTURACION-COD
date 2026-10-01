@@ -102,6 +102,21 @@ router.put('/direccion', requireEmpresa, (req, res) => {
   res.json(db.prepare('SELECT * FROM empresa_config WHERE id = 1').get());
 });
 
+// PUT /api/empresa/nubefact { nubefact_ruta, nubefact_token } -> credenciales
+// propias de Nubefact (OSE) de esta empresa (ver utils/facturacionElectronica.js).
+// Endpoint aparte del PUT / general -- igual que /direccion e /igv-rate --
+// porque es un dato sensible (habilita emitir comprobantes reales ante
+// SUNAT) que no debería poder cambiarse de paso al editar la razón social.
+// Vacío (string vacío o ausente) limpia la credencial y vuelve al modo
+// simulado para esta empresa (o a las variables de entorno, si existen).
+router.put('/nubefact', requireEmpresa, (req, res) => {
+  const { nubefact_ruta, nubefact_token } = req.body || {};
+  db.prepare(
+    `UPDATE empresa_config SET nubefact_ruta = ?, nubefact_token = ?, updated_at = datetime('now'), updated_by = ? WHERE id = 1`
+  ).run(nubefact_ruta || null, nubefact_token || null, req.user?.id || null);
+  res.json(db.prepare('SELECT * FROM empresa_config WHERE id = 1').get());
+});
+
 // PUT /api/empresa/igv-rate { igv_rate_pct } -> tasa de IGV en porcentaje
 // (ej. 18 para 18%), se guarda internamente como fracción (0.18).
 router.put('/igv-rate', requireEmpresa, (req, res) => {

@@ -7,10 +7,18 @@
 //   2. Contratar un OSE (Operador de Servicios Electrónicos) — esta
 //      implementación de referencia usa la API de Nubefact
 //      (https://nubefact.com), un OSE peruano con planes desde ~S/40/mes.
-//   3. Configurar las variables de entorno NUBEFACT_RUTA y NUBEFACT_TOKEN en
-//      el servidor (Render u otro). Sin esas variables, el sistema sigue en
-//      modo simulado exactamente como antes: NUNCA se marca un comprobante
-//      como aceptado por SUNAT sin una confirmación real del OSE.
+//   3. Configurar su RUTA y TOKEN de Nubefact desde Configuración → Empresa
+//      en el propio CRM. Sin eso, el sistema sigue en modo simulado
+//      exactamente como antes: NUNCA se marca un comprobante como aceptado
+//      por SUNAT sin una confirmación real del OSE.
+//
+// Las credenciales son POR EMPRESA (empresa_config.nubefact_ruta/token),
+// no globales: cada empresa factura ante SUNAT con su propio RUC, así que
+// no puede compartir la cuenta de Nubefact de otra empresa que corra en la
+// misma instancia (co-desplegada) — ver credenciales() más abajo. Si una
+// empresa no configuró las suyas, se cae a las variables de entorno
+// NUBEFACT_RUTA/NUBEFACT_TOKEN (comportamiento de siempre, para no romper
+// una instalación de un solo cliente que ya las tenía así).
 //
 // A diferencia de otros OSE, Nubefact NO usa una URL base fija + tu RUC: te
 // asigna una RUTA única por empresa/local (algo como
@@ -26,11 +34,19 @@
 // lo emitido en demo no vale y no debe mezclarse con series ya usadas en
 // real.
 
-const NUBEFACT_RUTA = process.env.NUBEFACT_RUTA;
-const NUBEFACT_TOKEN = process.env.NUBEFACT_TOKEN;
+const db = require('../db');
+
+function credenciales() {
+  const config = db.prepare('SELECT nubefact_ruta, nubefact_token FROM empresa_config WHERE id = 1').get();
+  return {
+    ruta: config?.nubefact_ruta || process.env.NUBEFACT_RUTA,
+    token: config?.nubefact_token || process.env.NUBEFACT_TOKEN,
+  };
+}
 
 function estaConfigurado() {
-  return Boolean(NUBEFACT_RUTA && NUBEFACT_TOKEN);
+  const { ruta, token } = credenciales();
+  return Boolean(ruta && token);
 }
 
 const TIPO_COMPROBANTE_NUBEFACT = { factura: 1, boleta: 2, nota_credito: 3 };
@@ -192,11 +208,12 @@ async function emitirComprobante(invoice, items, client) {
 
   try {
     const payload = construirPayload(invoice, items, client);
-    const res = await fetch(NUBEFACT_RUTA, {
+    const { ruta, token } = credenciales();
+    const res = await fetch(ruta, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${NUBEFACT_TOKEN}`,
+        Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify(payload),
     });
@@ -243,11 +260,12 @@ async function consultarComprobante(invoice) {
   if (!tipoComprobanteId) return null;
 
   try {
-    const res = await fetch(NUBEFACT_RUTA, {
+    const { ruta, token } = credenciales();
+    const res = await fetch(ruta, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${NUBEFACT_TOKEN}`,
+        Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({
         operacion: 'consultar_comprobante',
