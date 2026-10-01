@@ -719,6 +719,12 @@ CREATE TABLE IF NOT EXISTS qr_unico_medios (
     ['proveedor_id', "INTEGER REFERENCES suppliers(id)"],
     ['precio_mayorista', "REAL"],
     ['precio_distribuidor', "REAL"],
+    // Foto del producto (data URL base64) -- usada por el menú visual de
+    // Registrar Venta cuando la empresa es de tipo "restaurante" (ver
+    // empresa_config / tenantRegistry y RegistroVenta.jsx). Cada empresa
+    // sube sus propias fotos; sin foto, el menú visual muestra un ícono
+    // genérico en vez de romper el diseño.
+    ['foto_data_url', 'TEXT'],
   ];
   for (const [col, def] of PRODUCT_NEW_COLUMNS) {
     if (!productColumns.includes(col)) {

@@ -28,7 +28,7 @@ const EMPTY_FORM = {
   codigo: '', nombre: '', descripcion: '', categoria: 'General', marca: '', linea: '',
   unidad: 'NIU', afectacion_igv: 'gravado', control: 'ninguno', tipo_inventario: 'MERCADERÍAS',
   tipo_clasificacion: 'Otros', subtipo_clasificacion: 'Otros', peso: '', favorito: false,
-  precio_compra: '', precio_unitario: '', stock: '', palabras_clave: '', proveedor_id: '',
+  precio_compra: '', precio_unitario: '', stock: '', palabras_clave: '', proveedor_id: '', foto_data_url: '',
 };
 
 function emptySupplier() {
@@ -63,7 +63,8 @@ const CONTROLES = [
 export default function Products() {
   const toast = useToast();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, empresa } = useAuth();
+  const esRestaurante = empresa?.tipo_negocio === 'restaurante';
   const [products, setProducts] = useState([]);
   const [categorias, setCategorias] = useState([]);
   const [q, setQ] = useState('');
@@ -158,6 +159,7 @@ export default function Products() {
       stock: p.stock ?? '',
       palabras_clave: p.palabras_clave || '',
       proveedor_id: p.proveedor_id ?? '',
+      foto_data_url: p.foto_data_url || '',
     });
     setEditingId(p.id);
     setError('');
@@ -224,6 +226,18 @@ export default function Products() {
     } catch (err) {
       toast.error(err.response?.data?.error || 'No se pudo crear el proveedor.');
     }
+  }
+
+  function handleFotoChange(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 900 * 1024) {
+      toast.error('La foto es muy pesada. Usa una de menos de 900KB.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => setForm((f) => ({ ...f, foto_data_url: reader.result }));
+    reader.readAsDataURL(file);
   }
 
   async function handleSubmit(e) {
@@ -433,6 +447,33 @@ export default function Products() {
               </button>
             </div>
             <form onSubmit={handleSubmit}>
+              {esRestaurante && (
+                <div className="form-row">
+                  <div>
+                    <label>Foto del plato</label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <div className="producto-foto-preview">
+                        {form.foto_data_url ? (
+                          <img src={form.foto_data_url} alt={form.nombre || 'Producto'} />
+                        ) : (
+                          <span className="producto-foto-preview-vacia">🍽️</span>
+                        )}
+                      </div>
+                      <div>
+                        <label className="btn-secondary" style={{ width: 'auto', display: 'inline-block', cursor: 'pointer' }}>
+                          {form.foto_data_url ? 'Cambiar foto' : 'Subir foto'}
+                          <input type="file" accept="image/png,image/jpeg,image/webp" onChange={handleFotoChange} style={{ display: 'none' }} />
+                        </label>
+                        {form.foto_data_url && (
+                          <button type="button" className="btn-link danger" style={{ marginLeft: 10 }} onClick={() => setForm({ ...form, foto_data_url: '' })}>
+                            Quitar
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
               <div className="form-row">
                 <div>
                   <label>Código producto</label>

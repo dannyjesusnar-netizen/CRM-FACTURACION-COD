@@ -5,6 +5,7 @@ import { hoyPeru } from '../utils/fechas';
 import { useToast } from '../context/ToastContext';
 import { useAuth } from '../context/AuthContext';
 import ProductSearchBar from '../components/ProductSearchBar';
+import MenuVisualGrid from '../components/MenuVisualGrid';
 import ClientPicker from '../components/ClientPicker';
 import MetodoPagoQr from '../components/MetodoPagoQr';
 import ComboGrupoPicker from '../components/ComboGrupoPicker';
@@ -25,7 +26,8 @@ export default function RegistroVenta() {
   const { tipo } = useParams(); // 'factura' | 'boleta' | 'cotizacion'
   const navigate = useNavigate();
   const toast = useToast();
-  const { user } = useAuth();
+  const { user, empresa } = useAuth();
+  const esRestaurante = empresa?.tipo_negocio === 'restaurante';
   // Stock exacto y costo/ganancia son datos de Inventario, no de Ventas —
   // el backend ya no los manda en la búsqueda de productos a quien no tiene
   // ese módulo habilitado (ver routes/products.js:conStockDeSede), así que
@@ -416,7 +418,11 @@ export default function RegistroVenta() {
           </div>
 
           <div className="venta-fields-row">
-            <ProductSearchBar onSelect={addProducto} />
+            {esRestaurante ? (
+              <MenuVisualGrid onSelect={addProducto} ofertaPorProducto={ofertaPorProducto} />
+            ) : (
+              <ProductSearchBar onSelect={addProducto} />
+            )}
           </div>
 
           {combosActivos.length > 0 && (

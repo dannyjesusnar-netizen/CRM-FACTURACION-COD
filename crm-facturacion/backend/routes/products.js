@@ -9,6 +9,8 @@ const { coincideProducto } = require('../utils/textMatch');
 const router = express.Router();
 router.use(requireAuth);
 router.use(resolveSucursal);
+
+const FOTO_MAX_BYTES = 900 * 1024; // ~900KB en base64 (foto_data_url)
 // Sin el candado de módulo a nivel de router (antes bloqueaba /products
 // entero a quien no tuviera Inventario habilitado — incluidos vendedores
 // que solo necesitan buscar productos para vender). Cada endpoint que
@@ -136,7 +138,7 @@ router.post('/', requireAccion('inventario', 'productos'), (req, res) => {
   const {
     codigo, codigo_barras, nombre, descripcion, categoria, marca, linea, unidad,
     afectacion_igv, control, tipo_inventario, tipo_clasificacion, subtipo_clasificacion,
-    peso, favorito, precio_compra, precio_unitario, stock, palabras_clave, proveedor_id,
+    peso, favorito, precio_compra, precio_unitario, stock, palabras_clave, proveedor_id, foto_data_url,
   } = req.body || {};
   if (!codigo || !nombre || precio_unitario === undefined) {
     return res.status(400).json({ error: 'codigo, nombre y precio_unitario son requeridos.' });
@@ -145,14 +147,17 @@ router.post('/', requireAccion('inventario', 'productos'), (req, res) => {
   if (lineaNormalizada && lineaNormalizada.error) {
     return res.status(400).json({ error: 'linea inválida — use "organic" o "fit" (o déjelo vacío).' });
   }
+  if (foto_data_url && foto_data_url.length > FOTO_MAX_BYTES) {
+    return res.status(400).json({ error: 'La foto es muy pesada. Usa una de menos de 900KB.' });
+  }
   const tipo = tipoDesdeUnidad(unidad || 'NIU');
   try {
     const info = db.prepare(
       `INSERT INTO products (
          codigo, codigo_barras, nombre, descripcion, tipo, categoria, marca, linea, unidad,
          afectacion_igv, control, tipo_inventario, tipo_clasificacion, subtipo_clasificacion,
-         peso, favorito, precio_compra, precio_unitario, stock, palabras_clave, proveedor_id
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         peso, favorito, precio_compra, precio_unitario, stock, palabras_clave, proveedor_id, foto_data_url
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       codigo,
       codigo_barras || null,
@@ -174,7 +179,8 @@ router.post('/', requireAccion('inventario', 'productos'), (req, res) => {
       Number(precio_unitario),
       tipo === 'servicio' ? null : Number(stock || 0),
       palabras_clave || null,
-      proveedor_id === undefined || proveedor_id === '' ? null : Number(proveedor_id)
+      proveedor_id === undefined || proveedor_id === '' ? null : Number(proveedor_id),
+      foto_data_url || null
     );
     const newId = info.lastInsertRowid;
     // El "Stock inicial" del formulario es el stock en la sede donde se está
@@ -409,11 +415,14 @@ router.put('/:id', requireAccion('inventario', 'productos'), (req, res) => {
   const {
     codigo, codigo_barras, nombre, descripcion, categoria, marca, linea, unidad,
     afectacion_igv, control, tipo_inventario, tipo_clasificacion, subtipo_clasificacion,
-    peso, favorito, precio_compra, precio_unitario, stock, palabras_clave, activo, proveedor_id,
+    peso, favorito, precio_compra, precio_unitario, stock, palabras_clave, activo, proveedor_id, foto_data_url,
   } = req.body || {};
   const lineaNormalizada = normalizarLinea(linea);
   if (lineaNormalizada && lineaNormalizada.error) {
     return res.status(400).json({ error: 'linea inválida — use "organic" o "fit" (o déjelo vacío).' });
+  }
+  if (foto_data_url && foto_data_url.length > FOTO_MAX_BYTES) {
+    return res.status(400).json({ error: 'La foto es muy pesada. Usa una de menos de 900KB.' });
   }
   const unidadFinal = unidad ?? existing.unidad;
   const tipo = tipoDesdeUnidad(unidadFinal);
@@ -431,7 +440,7 @@ router.put('/:id', requireAccion('inventario', 'productos'), (req, res) => {
   db.prepare(
     `UPDATE products SET codigo = ?, codigo_barras = ?, nombre = ?, descripcion = ?, tipo = ?, categoria = ?, marca = ?, linea = ?, unidad = ?,
      afectacion_igv = ?, control = ?, tipo_inventario = ?, tipo_clasificacion = ?, subtipo_clasificacion = ?,
-     peso = ?, favorito = ?, precio_compra = ?, precio_unitario = ?, stock = ?, palabras_clave = ?, activo = ?, proveedor_id = ?
+     peso = ?, favorito = ?, precio_compra = ?, precio_unitario = ?, stock = ?, palabras_clave = ?, activo = ?, proveedor_id = ?, foto_data_url = ?
      WHERE id = ?`
   ).run(
     codigo ?? existing.codigo,
@@ -456,6 +465,7 @@ router.put('/:id', requireAccion('inventario', 'productos'), (req, res) => {
     palabras_clave ?? existing.palabras_clave,
     activo !== undefined ? Number(activo) : existing.activo,
     proveedor_id === undefined ? existing.proveedor_id : (proveedor_id === '' ? null : Number(proveedor_id)),
+    foto_data_url === undefined ? existing.foto_data_url : (foto_data_url === '' ? null : foto_data_url),
     req.params.id
   );
   if (tipo !== 'servicio' && stock !== undefined) {
