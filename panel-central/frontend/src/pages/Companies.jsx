@@ -44,6 +44,11 @@ export default function Companies() {
   const [resetMotivo, setResetMotivo] = useState('');
   const [resetAdminPassword, setResetAdminPassword] = useState('');
   const [resetSubmitting, setResetSubmitting] = useState(false);
+  const [showNuevaDemo, setShowNuevaDemo] = useState(false);
+  const [demoRuc, setDemoRuc] = useState('');
+  const [demoRazonSocial, setDemoRazonSocial] = useState('');
+  const [demoSubmitting, setDemoSubmitting] = useState(false);
+  const [demoCreada, setDemoCreada] = useState(null); // { ruc, razon_social } o null
 
   const CLAVE_DEFECTO = 'Lima2026*';
 
@@ -57,6 +62,28 @@ export default function Companies() {
 
   function loadLocales() {
     api.get('/companies/locales').then((res) => setLocales(res.data));
+  }
+
+  function abrirNuevaDemo() {
+    setDemoRuc('');
+    setDemoRazonSocial('');
+    setShowNuevaDemo(true);
+  }
+
+  async function crearDemo(e) {
+    e.preventDefault();
+    setDemoSubmitting(true);
+    try {
+      const res = await api.post('/companies/locales/demo', { ruc: demoRuc, razon_social: demoRazonSocial });
+      toast.success(`Empresa demo "${res.data.razon_social}" creada.`);
+      setShowNuevaDemo(false);
+      setDemoCreada(res.data);
+      loadLocales();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'No se pudo crear la empresa demo.');
+    } finally {
+      setDemoSubmitting(false);
+    }
   }
 
   async function aprobarLocal(ruc) {
@@ -223,6 +250,7 @@ export default function Companies() {
         <>
           <div className="report-toolbar">
             <h1 className="page-title" style={{ margin: 0 }}>CUENTAS REGISTRADAS</h1>
+            <button className="btn-primary" style={{ width: 'auto' }} onClick={abrirNuevaDemo}>+ Empresa demo</button>
           </div>
           <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -8 }}>
             Empresas que corren en esta misma instancia — se registraron solas desde "Registrar mi empresa",
@@ -312,6 +340,57 @@ export default function Companies() {
             </tbody>
           </table>
         </>
+      )}
+
+      {showNuevaDemo && (
+        <div className="modal-overlay" onClick={() => !demoSubmitting && setShowNuevaDemo(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h2>Nueva empresa demo</h2>
+            <p style={{ fontSize: 12, color: 'var(--ink-muted)' }}>
+              Se crea y se aprueba al instante, ya cargada con datos de ejemplo (3 sedes, productos, clientes) lista
+              para mostrar — no pasa por la cola de "Registrar mi empresa".
+            </p>
+            <form onSubmit={crearDemo}>
+              <label>RUC (11 dígitos)</label>
+              <input
+                required
+                value={demoRuc}
+                onChange={(e) => setDemoRuc(e.target.value.replace(/\D/g, '').slice(0, 11))}
+                placeholder="20123456789"
+              />
+              <label>Razón social</label>
+              <input required value={demoRazonSocial} onChange={(e) => setDemoRazonSocial(e.target.value)} placeholder="Empresa Demo S.A.C." />
+              <div className="modal-actions">
+                <button type="button" className="btn-secondary" disabled={demoSubmitting} onClick={() => setShowNuevaDemo(false)}>
+                  Cancelar
+                </button>
+                <button type="submit" className="btn-primary" disabled={demoSubmitting}>
+                  {demoSubmitting ? 'Creando...' : 'Crear empresa demo'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {demoCreada && (
+        <div className="modal-overlay" onClick={() => setDemoCreada(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h2>"{demoCreada.razon_social}" lista</h2>
+            <p style={{ fontSize: 13 }}>Ya puedes entrar a su CRM con cualquiera de estos usuarios de ejemplo:</p>
+            <div className="totals-box">
+              <div><strong>Gerencia</strong></div>
+              <div>DNI 00000000 · contraseña admin123</div>
+              <div style={{ marginTop: 8 }}><strong>Vendedor 1 — Carlos Ramírez</strong></div>
+              <div>DNI 45678912 · contraseña vendedor123</div>
+              <div style={{ marginTop: 8 }}><strong>Vendedor 2 — Lucía Fernández</strong></div>
+              <div>DNI 87654321 · contraseña vendedor123</div>
+            </div>
+            <div className="modal-actions">
+              <button type="button" className="btn-primary" onClick={() => setDemoCreada(null)}>Entendido</button>
+            </div>
+          </div>
+        </div>
       )}
 
       {costoRuc && (

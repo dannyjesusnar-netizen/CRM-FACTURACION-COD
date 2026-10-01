@@ -15,6 +15,19 @@ router.get('/locales', (req, res) => {
   res.json({ disponible: true, empresas: localTenants.listarEmpresas() });
 });
 
+// POST /api/companies/locales/demo { ruc, razon_social } — crea y aprueba
+// de una vez una empresa de demostración, con datos de ejemplo ya
+// cargados (ver localTenants.js:crearEmpresaDemo).
+router.post('/locales/demo', (req, res) => {
+  if (!localTenants.disponible()) {
+    return res.status(404).json({ error: 'Esta instancia del panel no tiene una instancia local co-desplegada.' });
+  }
+  const { ruc, razon_social } = req.body || {};
+  const resultado = localTenants.crearEmpresaDemo({ ruc, razon_social });
+  if (resultado.error) return res.status(400).json({ error: resultado.error });
+  res.status(201).json(resultado.tenant);
+});
+
 function getLocalTenantOr404(req, res) {
   if (!localTenants.disponible()) {
     res.status(404).json({ error: 'Esta instancia del panel no tiene una instancia local co-desplegada.' });
