@@ -1260,6 +1260,19 @@ export default function Configuracion() {
     await exportarTabla('empleados', header, rows, formato);
   }
 
+  async function exportarOperativosCsv(formato) {
+    const header = ['Nombres', 'Apellidos', 'Categoría', 'Sede', 'N° documento', 'Turno', 'Estado'];
+    const rows = operativosFiltrados.map((o) => [
+      o.nombres || o.full_name || '', o.apellidos || '',
+      CATEGORIA_STAFF_LABEL[o.categoria_staff] || o.categoria_staff || '',
+      o.sucursal_nombre || 'Todas las sedes',
+      o.dni || '',
+      o.turno === 'manana' ? 'Mañana' : o.turno === 'tarde' ? 'Tarde' : '',
+      o.activo ? 'Habilitado' : 'Deshabilitado',
+    ]);
+    await exportarTabla('entrenadores-supervisores', header, rows, formato);
+  }
+
   function openNewOperativo() {
     setEditingOperativoId(null);
     setOperativoForm(emptyOperativoForm());
@@ -2339,6 +2352,7 @@ export default function Configuracion() {
               <div className="report-toolbar" style={{ marginTop: 28 }}>
                 <h3 style={{ margin: 0 }}>Entrenadores y Supervisores operativos</h3>
                 <div style={{ display: 'flex', gap: 10 }}>
+                  <ExportButton onExport={exportarOperativosCsv} />
                   <button className="btn-secondary" style={{ width: 'auto' }} onClick={openCargaMasivaOperativos}>Carga masiva</button>
                   <button className="btn-primary" style={{ width: 'auto' }} onClick={openNewOperativo}>Nuevo registro</button>
                 </div>
