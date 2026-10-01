@@ -14,7 +14,14 @@ router.use(requireAuth);
 
 router.get('/', (req, res) => {
   const config = db.prepare('SELECT * FROM empresa_config WHERE id = 1').get();
-  res.json(config);
+  // tipo_negocio (general | restaurante) no vive acá -- lo decide el dueño
+  // de la plataforma desde panel-central (ver tenantRegistry.js), nunca la
+  // propia empresa. Se cruza por RUC contra el registro de tenants para que
+  // el frontend sepa si debe mostrar las funciones pensadas solo para
+  // restaurantes; sin RUC configurado todavía (instalación recién
+  // desplegada) o sin match en el registro, default "general".
+  const tenant = config?.ruc ? tenantRegistry.findTenant(config.ruc) : null;
+  res.json({ ...config, tipo_negocio: tenant?.tipo_negocio || 'general' });
 });
 
 const LOGO_MAX_BYTES = 1.5 * 1024 * 1024; // ~1.5MB en base64

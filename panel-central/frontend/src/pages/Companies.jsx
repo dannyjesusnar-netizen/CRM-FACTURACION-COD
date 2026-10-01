@@ -140,6 +140,16 @@ export default function Companies() {
     }
   }
 
+  async function cambiarTipoNegocio(ruc, tipo_negocio) {
+    try {
+      await api.put(`/companies/locales/${ruc}/tipo-negocio`, { tipo_negocio });
+      toast.success(`Tipo de negocio actualizado a "${tipo_negocio === 'restaurante' ? 'Restaurante' : 'General'}".`);
+      loadLocales();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'No se pudo actualizar el tipo de negocio.');
+    }
+  }
+
   function abrirSedesLibres(tenant) {
     setSedesLibresRuc(tenant.ruc);
     setSedesLibresValor(tenant.sedes_libres ?? 1);
@@ -281,7 +291,7 @@ export default function Companies() {
           <table className="data-table">
             <thead>
               <tr>
-                <th>Razón social</th><th>RUC</th><th>Estado</th><th>Costo mensual</th>
+                <th>Razón social</th><th>RUC</th><th>Estado</th><th>Tipo de negocio</th><th>Costo mensual</th>
                 <th>Fecha de pago</th><th>Próximo cobro</th><th>Ingresos</th><th>Sucursales</th><th>Sedes libres</th><th>Documentos (mes)</th><th></th>
               </tr>
             </thead>
@@ -298,6 +308,12 @@ export default function Companies() {
                     ) : (
                       <span className={'badge ' + (ESTADO_BADGE[t.estado] || 'badge-neutral')}>{ESTADO_LABEL[t.estado] || t.estado}</span>
                     )}
+                  </td>
+                  <td>
+                    <select value={t.tipo_negocio || 'general'} onChange={(e) => cambiarTipoNegocio(t.ruc, e.target.value)}>
+                      <option value="general">General</option>
+                      <option value="restaurante">Restaurante</option>
+                    </select>
                   </td>
                   <td>{t.costo_mensual != null ? `S/ ${Number(t.costo_mensual).toFixed(2)}` : '—'}</td>
                   <td>{formatFecha(t.fecha_inicio_suscripcion)}</td>
@@ -335,7 +351,7 @@ export default function Companies() {
                 </tr>
               ))}
               {locales.empresas.length === 0 && (
-                <tr><td colSpan={11} className="empty-row">Todavía no hay empresas registradas desde "Registrar mi empresa".</td></tr>
+                <tr><td colSpan={12} className="empty-row">Todavía no hay empresas registradas desde "Registrar mi empresa".</td></tr>
               )}
             </tbody>
           </table>
