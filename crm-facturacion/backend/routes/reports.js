@@ -4,7 +4,7 @@ const { requireAuth, resolveSucursal } = require('../middleware/auth');
 const { requirePermiso, requireAlgunPermiso, requireAccion, puedeCambiarSede, tieneAccionSupervisor } = require('../utils/permisos');
 const { buildResumen } = require('../utils/cajaCalculos');
 const { hoyPeru } = require('../utils/fechas');
-const { getStockSucursal } = require('../utils/stock');
+const { reconstruirSaldosPorSede } = require('../utils/stock');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -687,17 +687,7 @@ router.get('/kardex', requireReportes, requireAccion('reportes', 'financieros'),
   const from = req.query.from;
   const to = req.query.to;
 
-  const stockActualSede = getStockSucursal(productId, req.sucursalId);
-  const todos = db.prepare(
-    'SELECT id, cantidad FROM stock_movements WHERE product_id = ? AND sucursal_id = ? ORDER BY id DESC'
-  ).all(productId, req.sucursalId);
-  const saldoDespuesPorId = new Map();
-  let saldo = stockActualSede;
-  for (const m of todos) {
-    saldoDespuesPorId.set(m.id, saldo);
-    saldo -= m.cantidad;
-  }
-  const saldoAntesDeTodo = saldo;
+  const { saldoDespuesPorId, saldoAntesDeTodo } = reconstruirSaldosPorSede(productId, req.sucursalId);
 
   let condiciones = 'm.product_id = ? AND m.sucursal_id = ?';
   const params = [productId, req.sucursalId];

@@ -120,7 +120,29 @@ function setStockSucursal(productId, sucursalId, stock) {
   ).run(productId, sucursalId, round2(stock));
 }
 
+// Reconstruye el saldo real de una sede para cada movimiento de stock de un
+// producto. stock_movements.stock_resultante NO sirve para esto -- guarda
+// el stock agregado de TODA la empresa en el momento de insertar la fila
+// (products.stock, ver consumirStock/incrementarStock más arriba), no el de
+// la sede de ese movimiento puntual. Se parte del stock real actual de la
+// sede (sucursal_stock) y se deshace cada movimiento desde el más reciente,
+// para saber cuánto había justo después (y antes) de cada uno. Usado tanto
+// por el Kardex (Reportes) como por el listado de Movimientos (Inventario).
+function reconstruirSaldosPorSede(productId, sucursalId) {
+  const stockActual = getStockSucursal(productId, sucursalId);
+  const todos = db.prepare(
+    'SELECT id, cantidad FROM stock_movements WHERE product_id = ? AND sucursal_id = ? ORDER BY id DESC'
+  ).all(productId, sucursalId);
+  const saldoDespuesPorId = new Map();
+  let saldo = stockActual;
+  for (const m of todos) {
+    saldoDespuesPorId.set(m.id, saldo);
+    saldo -= m.cantidad;
+  }
+  return { saldoDespuesPorId, saldoAntesDeTodo: saldo };
+}
+
 module.exports = {
   consumirStock, incrementarStock, getStockSucursal, setStockSucursal, ajustarStockSucursal,
-  getSucursalPrincipalId, StockInsuficienteError, round2,
+  reconstruirSaldosPorSede, getSucursalPrincipalId, StockInsuficienteError, round2,
 };
