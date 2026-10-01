@@ -2,7 +2,7 @@ const express = require('express');
 const multer = require('multer');
 const db = require('../db');
 const { requireAuth, resolveSucursal } = require('../middleware/auth');
-const { round2, ajustarStockSucursal, getStockSucursal, setStockSucursal } = require('../utils/stock');
+const { round2, ajustarStockSucursal, getStockSucursal, setStockSucursal, reconstruirSaldosPorSede } = require('../utils/stock');
 const { requirePermiso, requireAccion, requireAccionSupervisor } = require('../utils/permisos');
 const { analizarEtiqueta } = require('../utils/ocrEtiqueta');
 const { analizarGuia } = require('../utils/ocrGuia');
@@ -113,6 +113,19 @@ router.get('/', (req, res) => {
   }
   sql += ' ORDER BY m.id DESC LIMIT 300';
   const rows = db.prepare(sql).all(...params);
+
+  // m.stock_resultante (traído por m.* de arriba) es el stock agregado de
+  // TODA la empresa en ese instante, no el de esta sede (ver utils/stock.js)
+  // -- se reemplaza por el saldo real de esta sede, reconstruido por
+  // producto (un producto puede repetirse varias veces en esta lista).
+  const saldosPorProducto = new Map();
+  for (const row of rows) {
+    if (!saldosPorProducto.has(row.product_id)) {
+      saldosPorProducto.set(row.product_id, reconstruirSaldosPorSede(row.product_id, req.sucursalId).saldoDespuesPorId);
+    }
+    row.stock_resultante = saldosPorProducto.get(row.product_id).get(row.id);
+  }
+
   res.json(rows);
 });
 
