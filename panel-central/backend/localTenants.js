@@ -70,6 +70,32 @@ function encontrar(ruc) {
   return tenantRegistry.findTenant(ruc);
 }
 
+// Crea una empresa de demostración lista para mostrar: siembra el mismo
+// set de datos de ejemplo que trae la instalación base (3 sedes, 8
+// productos, 3 clientes, y los 3 usuarios de siempre: admin/00000000/
+// admin123, vendedor1/45678912 y vendedor2/87654321, ambos vendedor123 —
+// ver crm-facturacion/backend/db.js:initSchema, opción "demo"). A
+// diferencia de "Registrar mi empresa" (que crea un tenant vacío,
+// demo:false, en estado "pendiente" hasta que Gerencia la apruebe), esta
+// la crea y aprueba de una sola vez el propio dueño de la plataforma, sin
+// pasar por esa cola — no es un cliente real pidiendo acceso, es una
+// demo para mostrar.
+function crearEmpresaDemo({ ruc, razon_social }) {
+  if (!tenantRegistry || !resolveTenantDb || !crmDb) return { error: 'No disponible.' };
+  if (!/^\d{11}$/.test(ruc || '')) return { error: 'El RUC debe tener 11 dígitos.' };
+  const razonSocialLimpia = (razon_social || '').trim();
+  if (!razonSocialLimpia) return { error: 'La razón social es requerida.' };
+  if (tenantRegistry.findTenant(ruc)) return { error: 'Ese RUC ya está registrado.' };
+
+  const tenant = tenantRegistry.crearTenant({ ruc, razon_social: razonSocialLimpia });
+  crmDb.openTenantDb(tenant.db_file, {
+    demo: true,
+    empresa: { razon_social: razonSocialLimpia, ruc, nombre_comercial: razonSocialLimpia },
+  });
+  tenantRegistry.aprobarTenant(ruc);
+  return { tenant: tenantRegistry.findTenant(ruc) };
+}
+
 function aprobar(ruc) {
   return tenantRegistry.aprobarTenant(ruc);
 }
@@ -249,7 +275,7 @@ function restablecerClave(ruc, userId, password) {
 }
 
 module.exports = {
-  disponible, listarEmpresas, encontrar, aprobar, rechazar, activar, desactivar, setCosto, setSedesLibres,
+  disponible, listarEmpresas, encontrar, crearEmpresaDemo, aprobar, rechazar, activar, desactivar, setCosto, setSedesLibres,
   listarPagos, listarMensajes, marcarMensajeLeido, listarSolicitudesSede, resolverSolicitudSede,
   listarUsuarios, restablecerClave, documentosPorSede,
 };
