@@ -37,6 +37,7 @@ const SECCIONES = [
   { key: 'tributario', label: 'Informe Tributario', Icon: Calculator },
   { key: 'vendedor', label: 'Ventas por vendedor', Icon: User },
   { key: 'producto', label: 'Ventas por producto', Icon: ShoppingCart },
+  { key: 'detalle_producto', label: 'Detalle de ventas por producto', Icon: FileText },
   { key: 'inventarios', label: 'Evolución inventarios', Icon: TrendingUp },
   { key: 'kardex', label: 'Kardex', Icon: FileText },
   { key: 'compras_mes', label: 'Compras por mes', Icon: Package },
@@ -105,6 +106,12 @@ export default function Reports() {
   const [kardexData, setKardexData] = useState(null);
   const [kardexLoading, setKardexLoading] = useState(false);
 
+  const [detalleProdProducto, setDetalleProdProducto] = useState(null);
+  const [detalleProdDesde, setDetalleProdDesde] = useState('');
+  const [detalleProdHasta, setDetalleProdHasta] = useState(todayStr());
+  const [detalleProdData, setDetalleProdData] = useState([]);
+  const [detalleProdLoading, setDetalleProdLoading] = useState(false);
+
   const [cierreFecha, setCierreFecha] = useState(todayStr());
   const [cierreEmpleadoId, setCierreEmpleadoId] = useState('');
   const [cierreEmpleados, setCierreEmpleados] = useState([]);
@@ -172,6 +179,19 @@ export default function Reports() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kardexProducto, kardexDesde, kardexHasta]);
 
+  useEffect(() => {
+    if (!detalleProdProducto) { setDetalleProdData([]); return; }
+    setDetalleProdLoading(true);
+    const params = { product_id: detalleProdProducto.id };
+    if (detalleProdDesde) params.desde = detalleProdDesde;
+    if (detalleProdHasta) params.hasta = detalleProdHasta;
+    api.get('/reports/ventas-detalle', { params })
+      .then((res) => setDetalleProdData(res.data))
+      .catch(() => { setDetalleProdData([]); toast.error('No se pudo cargar el detalle de ventas.'); })
+      .finally(() => setDetalleProdLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detalleProdProducto, detalleProdDesde, detalleProdHasta]);
+
   const barOptionsV = {
     responsive: true, plugins: { legend: { display: false } },
     scales: { x: { grid: { display: false }, ticks: { color: COLORS.mutedInk } }, y: { grid: { color: COLORS.grid }, ticks: { color: COLORS.mutedInk } } },
@@ -216,6 +236,9 @@ export default function Reports() {
   const productosVisibles = mostrarTodo ? productos : productos.slice(0, 5);
   const totalProductosSoles = productos.reduce((s, p) => s + p.monto_soles, 0);
   const totalProductosDolares = productos.reduce((s, p) => s + p.monto_dolares, 0);
+  const detalleProdVigentes = detalleProdData.filter((r) => r.estado !== 'anulado');
+  const totalDetalleProdCantidad = detalleProdVigentes.reduce((s, r) => s + r.cantidad, 0);
+  const totalDetalleProdSubtotal = detalleProdVigentes.reduce((s, r) => s + r.subtotal_item, 0);
 
   async function exportKardex(formato) {
     if (!kardexData) return;
@@ -226,6 +249,18 @@ export default function Reports() {
       m.stock_resultante, m.motivo || '', m.usuario_nombre || '',
     ]);
     await exportarTabla(`kardex_${kardexData.producto.codigo}`, header, rows, formato);
+    toast.success(`Archivo ${formato === 'excel' ? 'Excel' : 'CSV'} exportado.`);
+  }
+
+  async function exportDetalleProducto(formato) {
+    if (!detalleProdProducto) return;
+    const header = ['Fecha', 'Sede', 'Tipo', 'Serie', 'Número', 'Cliente', 'Cantidad', 'Precio Unit.', '% Descuento', 'Subtotal', 'Vendedor', 'Atribuido a', 'Estado'];
+    const rows = detalleProdData.map((r) => [
+      r.fecha_emision, r.sede, r.tipo, r.serie, r.numero, r.cliente_nombre,
+      r.cantidad, r.precio_unitario, r.descuento_pct, r.subtotal_item,
+      r.vendedor_nombre || '', r.atribuido_nombre || '', r.estado === 'anulado' ? 'Anulado' : 'Emitido',
+    ]);
+    await exportarTabla(`ventas_${detalleProdProducto.codigo}`, header, rows, formato);
     toast.success(`Archivo ${formato === 'excel' ? 'Excel' : 'CSV'} exportado.`);
   }
 
@@ -449,6 +484,105 @@ export default function Reports() {
                 <button className="btn-secondary" style={{ marginTop: 12 }} onClick={() => setMostrarTodo((v) => !v)}>
                   {mostrarTodo ? 'Ocultar lista' : 'Mostrar todo'}
                 </button>
+              )}
+            </>
+          )}
+
+          {seccion === 'detalle_producto' && (
+            <>
+              <div className="report-toolbar">
+                <h3 style={{ margin: 0 }}>
+                  {detalleProdProducto ? `Detalle de ventas — ${detalleProdProducto.codigo} · ${detalleProdProducto.nombre}` : 'Detalle de ventas por producto'}
+                </h3>
+                {detalleProdProducto && <ExportButton onExport={exportDetalleProducto} />}
+              </div>
+              <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -6 }}>
+                Busca un producto y ve cada línea de venta que lo incluyó (Boletas, Facturas, Notas de Crédito y
+                Notas de Venta Interna), con cantidad, descuento aplicado y a quién se atribuyó — para encontrar
+                de un vistazo todos los movimientos de ese producto puntual.
+              </p>
+
+              <div className="filter-panel" style={{ marginBottom: 16 }}>
+                <div className="filter-field grow">
+                  <label>Producto</label>
+                  {detalleProdProducto ? (
+                    <p className="caja-row-auto" style={{ margin: 0 }}>
+                      <strong>{detalleProdProducto.codigo} — {detalleProdProducto.nombre}</strong>{' '}
+                      <button type="button" className="btn-link" onClick={() => setDetalleProdProducto(null)}>Cambiar</button>
+                    </p>
+                  ) : (
+                    <ProductSearchBar
+                      placeholder="Buscar producto por nombre, código o código de barras..."
+                      onSelect={setDetalleProdProducto}
+                    />
+                  )}
+                </div>
+                <div className="filter-field">
+                  <label>Desde</label>
+                  <input type="date" value={detalleProdDesde} onChange={(e) => setDetalleProdDesde(e.target.value)} />
+                </div>
+                <div className="filter-field">
+                  <label>Hasta</label>
+                  <input type="date" value={detalleProdHasta} onChange={(e) => setDetalleProdHasta(e.target.value)} />
+                </div>
+              </div>
+
+              {!detalleProdProducto && <p className="empty-row">Busca un producto para ver el detalle de sus ventas.</p>}
+
+              {detalleProdProducto && detalleProdLoading && <p className="empty-row">Cargando...</p>}
+
+              {detalleProdProducto && !detalleProdLoading && (
+                <div className="table-scroll">
+                  <table className="data-table compact">
+                    <thead>
+                      <tr>
+                        <th>Fecha</th><th>Sede</th><th>Tipo</th><th>Documento</th><th>Cliente</th>
+                        <th style={{ textAlign: 'right' }}>Cantidad</th>
+                        <th style={{ textAlign: 'right' }}>P. Unit.</th>
+                        <th style={{ textAlign: 'right' }}>% Desc.</th>
+                        <th style={{ textAlign: 'right' }}>Subtotal</th>
+                        <th>Vendedor</th><th>Atribuido a</th><th>Estado</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {detalleProdData.map((r, i) => (
+                        <tr key={i} style={r.estado === 'anulado' ? { color: 'var(--ink-muted)', fontStyle: 'italic' } : undefined}>
+                          <td>{r.fecha_emision}</td>
+                          <td>{r.sede}</td>
+                          <td>{r.tipo}</td>
+                          <td>{r.serie}-{r.numero}</td>
+                          <td>{r.cliente_nombre}</td>
+                          <td style={{ textAlign: 'right' }}>{r.cantidad}</td>
+                          <td style={{ textAlign: 'right' }}>{money(r.precio_unitario)}</td>
+                          <td style={{ textAlign: 'right' }}>{r.descuento_pct ? `${r.descuento_pct}%` : '—'}</td>
+                          <td style={{ textAlign: 'right' }}>{money(r.subtotal_item)}</td>
+                          <td>{r.vendedor_nombre || '—'}</td>
+                          <td>{r.atribuido_nombre || '—'}</td>
+                          <td>
+                            <span className={'badge ' + (r.estado === 'anulado' ? 'badge-critical' : 'badge-good')}>
+                              {r.estado === 'anulado' ? 'Anulado' : 'Emitido'}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                      {detalleProdData.length === 0 && (
+                        <tr><td colSpan={12} className="empty-row">Sin movimientos de este producto en el periodo seleccionado.</td></tr>
+                      )}
+                    </tbody>
+                    {detalleProdData.length > 0 && (
+                      <tfoot>
+                        <tr className="totals-footer">
+                          <td colSpan={5}>Total (sin contar anulados)</td>
+                          <td style={{ textAlign: 'right' }}>{totalDetalleProdCantidad}</td>
+                          <td></td>
+                          <td></td>
+                          <td style={{ textAlign: 'right' }}>{money(totalDetalleProdSubtotal)}</td>
+                          <td colSpan={3}></td>
+                        </tr>
+                      </tfoot>
+                    )}
+                  </table>
+                </div>
               )}
             </>
           )}

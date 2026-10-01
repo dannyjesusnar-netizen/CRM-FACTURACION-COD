@@ -245,11 +245,35 @@ const LINEA_EXPR = (alias) => `CASE ${alias}.linea WHEN 'organic' THEN 'Organic'
 // todas las sedes (puedeCambiarSede: Gerencia, Supervisor, o un rol con el
 // toggle de Configuración → Roles → Inicio → "Cambiar de sede"); cualquier
 // otro usuario sigue limitado a su propia sede, aunque mande el parámetro.
+// product_id/desde/hasta son opcionales: sin ellos, se comporta exactamente
+// igual que antes (el export completo sin filtrar de Configuración →
+// Exportador de Datos Masivos). Con product_id, es el detalle de ventas de
+// UN producto puntual — usado por Reportes → Detalle de ventas por producto
+// (buscas el producto y ves cada línea de venta/descuento que lo incluyó).
 router.get('/ventas-detalle', requireAlgunPermiso(['ventas', 'reportes']), (req, res) => {
   const todasLasSedes = req.query.todas_sedes === '1' && puedeCambiarSede(req.user);
-  const filtroInvoices = todasLasSedes ? '1 = 1' : 'i.sucursal_id = ?';
-  const filtroNotasVenta = todasLasSedes ? '1 = 1' : 'nv.sucursal_id = ?';
-  const params = todasLasSedes ? [] : [req.sucursalId];
+  const productId = req.query.product_id ? Number(req.query.product_id) : null;
+  const desde = req.query.desde || null;
+  const hasta = req.query.hasta || null;
+
+  const condicionesInvoices = [todasLasSedes ? '1 = 1' : 'i.sucursal_id = ?'];
+  const paramsInvoices = todasLasSedes ? [] : [req.sucursalId];
+  const condicionesNV = [todasLasSedes ? '1 = 1' : 'nv.sucursal_id = ?'];
+  const paramsNV = todasLasSedes ? [] : [req.sucursalId];
+  if (productId) {
+    condicionesInvoices.push('ii.product_id = ?'); paramsInvoices.push(productId);
+    condicionesNV.push('nvi.product_id = ?'); paramsNV.push(productId);
+  }
+  if (desde) {
+    condicionesInvoices.push('i.fecha_emision >= ?'); paramsInvoices.push(desde);
+    condicionesNV.push('nv.fecha_emision >= ?'); paramsNV.push(desde);
+  }
+  if (hasta) {
+    condicionesInvoices.push('i.fecha_emision <= ?'); paramsInvoices.push(hasta);
+    condicionesNV.push('nv.fecha_emision <= ?'); paramsNV.push(hasta);
+  }
+  const filtroInvoices = condicionesInvoices.join(' AND ');
+  const filtroNotasVenta = condicionesNV.join(' AND ');
 
   const sql = `
     SELECT i.fecha_emision, suc.nombre AS sede,
@@ -297,7 +321,7 @@ router.get('/ventas-detalle', requireAlgunPermiso(['ventas', 'reportes']), (req,
     WHERE ${filtroNotasVenta}
     ORDER BY fecha_emision DESC
   `;
-  const rows = db.prepare(sql).all(...params, ...params);
+  const rows = db.prepare(sql).all(...paramsInvoices, ...paramsNV);
   res.json(rows);
 });
 
