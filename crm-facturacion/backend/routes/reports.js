@@ -4,6 +4,7 @@ const { requireAuth, resolveSucursal } = require('../middleware/auth');
 const { requirePermiso, requireAlgunPermiso, requireAccion, puedeCambiarSede, tieneAccionSupervisor } = require('../utils/permisos');
 const { buildResumen } = require('../utils/cajaCalculos');
 const { hoyPeru } = require('../utils/fechas');
+const { getStockSucursal } = require('../utils/stock');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -667,11 +668,16 @@ router.get('/evolucion-inventarios', requireReportes, requireAccion('reportes', 
   })));
 });
 
-// Kardex detallado de un producto: cada movimiento de stock_movements con su
-// saldo corriente (stock_resultante ya queda guardado en cada fila al
-// insertarla, así que no hace falta reconstruirlo sumando uno por uno) más
-// un "saldo inicial" = el saldo justo antes del rango pedido (el resultante
-// del último movimiento anterior a "from", o 0 si no hay ninguno).
+// Kardex detallado de un producto, con el saldo de ESTA sede después de cada
+// movimiento. OJO: stock_movements.stock_resultante NO sirve para esto -- es
+// el stock agregado de TODA la empresa en ese instante (lo que queda en
+// products.stock al insertar la fila, ver utils/stock.js), no el de la sede
+// de este movimiento; filtrar los movimientos por sucursal_id sin corregir
+// esa columna hace que el "saldo" salte de forma inconsistente, porque
+// incluye ventas/compras de las OTRAS sedes que no aparecen en esta lista.
+// Por eso se reconstruye el saldo real de esta sede hacia atrás, partiendo
+// del stock actual real (sucursal_stock) y deshaciendo cada movimiento --
+// el más reciente primero -- hasta llegar al "saldo inicial" del rango.
 router.get('/kardex', requireReportes, requireAccion('reportes', 'financieros'), (req, res) => {
   const productId = Number(req.query.product_id);
   if (!productId) return res.status(400).json({ error: 'product_id es requerido.' });
@@ -681,29 +687,42 @@ router.get('/kardex', requireReportes, requireAccion('reportes', 'financieros'),
   const from = req.query.from;
   const to = req.query.to;
 
-  let saldoInicial = 0;
+  const stockActualSede = getStockSucursal(productId, req.sucursalId);
+  const todos = db.prepare(
+    'SELECT id, cantidad FROM stock_movements WHERE product_id = ? AND sucursal_id = ? ORDER BY id DESC'
+  ).all(productId, req.sucursalId);
+  const saldoDespuesPorId = new Map();
+  let saldo = stockActualSede;
+  for (const m of todos) {
+    saldoDespuesPorId.set(m.id, saldo);
+    saldo -= m.cantidad;
+  }
+  const saldoAntesDeTodo = saldo;
+
+  let condiciones = 'm.product_id = ? AND m.sucursal_id = ?';
+  const params = [productId, req.sucursalId];
+  // created_at se guarda en UTC -- se resta 5h antes de comparar contra la
+  // fecha de Perú (mismo criterio que movements.js), para que un movimiento
+  // de después de las 7pm no se cuente en el día siguiente.
+  if (from) { condiciones += " AND date(m.created_at, '-5 hours') >= date(?)"; params.push(from); }
+  if (to) { condiciones += " AND date(m.created_at, '-5 hours') <= date(?)"; params.push(to); }
+  const movimientos = db.prepare(
+    `SELECT m.id, m.created_at, m.tipo, m.cantidad, m.motivo, m.referencia, u.full_name AS usuario_nombre
+     FROM stock_movements m LEFT JOIN users u ON u.id = m.created_by
+     WHERE ${condiciones} ORDER BY m.id ASC`
+  ).all(...params);
+  const movimientosConSaldo = movimientos.map((m) => ({ ...m, stock_resultante: saldoDespuesPorId.get(m.id) }));
+
+  let saldoInicial = saldoAntesDeTodo;
   if (from) {
-    // created_at se guarda en UTC -- se resta 5h antes de comparar contra
-    // la fecha de Perú (mismo criterio que movements.js), para que un
-    // movimiento de después de las 7pm no se cuente en el día siguiente.
-    const previo = db.prepare(
-      `SELECT stock_resultante FROM stock_movements
-       WHERE product_id = ? AND sucursal_id = ? AND date(created_at, '-5 hours') < date(?)
+    const anterior = db.prepare(
+      `SELECT id FROM stock_movements WHERE product_id = ? AND sucursal_id = ? AND date(created_at, '-5 hours') < date(?)
        ORDER BY id DESC LIMIT 1`
     ).get(productId, req.sucursalId, from);
-    saldoInicial = previo ? previo.stock_resultante : 0;
+    saldoInicial = anterior ? saldoDespuesPorId.get(anterior.id) : saldoAntesDeTodo;
   }
 
-  let sql = `SELECT m.id, m.created_at, m.tipo, m.cantidad, m.stock_resultante, m.motivo, m.referencia, u.full_name AS usuario_nombre
-             FROM stock_movements m LEFT JOIN users u ON u.id = m.created_by
-             WHERE m.product_id = ? AND m.sucursal_id = ?`;
-  const params = [productId, req.sucursalId];
-  if (from) { sql += " AND date(m.created_at, '-5 hours') >= date(?)"; params.push(from); }
-  if (to) { sql += " AND date(m.created_at, '-5 hours') <= date(?)"; params.push(to); }
-  sql += ' ORDER BY m.id ASC';
-  const movimientos = db.prepare(sql).all(...params);
-
-  res.json({ producto, saldo_inicial: saldoInicial, movimientos });
+  res.json({ producto, saldo_inicial: saldoInicial, movimientos: movimientosConSaldo });
 });
 
 module.exports = router;
