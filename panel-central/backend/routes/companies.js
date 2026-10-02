@@ -72,6 +72,16 @@ router.put('/locales/:ruc/costo', (req, res) => {
   }));
 });
 
+// PUT /api/companies/locales/:ruc/tipo-negocio { tipo_negocio } -- general
+// o restaurante. Prende/oculta en el CRM de esa empresa las funciones
+// pensadas solo para restaurantes (ver GET /api/empresa del CRM).
+router.put('/locales/:ruc/tipo-negocio', (req, res) => {
+  if (!getLocalTenantOr404(req, res)) return;
+  const resultado = localTenants.setTipoNegocio(req.params.ruc, req.body?.tipo_negocio);
+  if (resultado.error) return res.status(400).json({ error: resultado.error });
+  res.json(resultado.tenant);
+});
+
 // PUT /api/companies/locales/:ruc/sedes-libres { cantidad }
 router.put('/locales/:ruc/sedes-libres', (req, res) => {
   if (!getLocalTenantOr404(req, res)) return;

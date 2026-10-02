@@ -69,6 +69,12 @@ const TENANT_SUSCRIPCION_COLUMNS = [
   // sede queda como solicitud pendiente hasta que el dueño de la plataforma
   // la apruebe desde panel-central (ver setSedesLibres más abajo).
   ['sedes_libres', 'INTEGER NOT NULL DEFAULT 1'],
+  // general | restaurante — lo decide el dueño de la plataforma desde
+  // panel-central (nunca la propia empresa) al vender QORIA a un rubro
+  // distinto, para prender/ocultar en el CRM las funciones pensadas solo
+  // para restaurantes (ver GET /api/empresa del CRM y setTipoNegocio más
+  // abajo) sin que le aparezcan a una empresa que no las pidió.
+  ['tipo_negocio', "TEXT NOT NULL DEFAULT 'general'"],
 ];
 for (const [col, def] of TENANT_SUSCRIPCION_COLUMNS) {
   if (!tenantColumns.includes(col)) {
@@ -185,6 +191,14 @@ function setSedesLibres(ruc, cantidad) {
   return findTenant(ruc);
 }
 
+const TIPOS_NEGOCIO = ['general', 'restaurante'];
+function setTipoNegocio(ruc, tipo) {
+  if (!TIPOS_NEGOCIO.includes(tipo)) return { error: 'tipo_negocio inválido. Use general o restaurante.' };
+  if (!findTenant(ruc)) return { error: 'Empresa no encontrada.' };
+  registryDb.prepare('UPDATE tenants SET tipo_negocio = ? WHERE ruc = ?').run(tipo, ruc);
+  return { tenant: findTenant(ruc) };
+}
+
 function guardarTarjeta(ruc, { izipay_token, tarjeta_marca, tarjeta_ultimos4 }) {
   const tenant = findTenant(ruc);
   if (!tenant) return null;
@@ -245,6 +259,6 @@ function tenantsConCobroVencido() {
 
 module.exports = {
   tenantDbPath, findTenant, listPendientes, listTodos, crearTenant, adoptarInstanciaBase, aprobarTenant,
-  rechazarTenant, activarTenant, desactivarTenant, setCosto, setSedesLibres, guardarTarjeta, quitarTarjeta,
-  registrarPago, listarPagos, ingresoTotal, tenantsConCobroVencido,
+  rechazarTenant, activarTenant, desactivarTenant, setCosto, setSedesLibres, setTipoNegocio, guardarTarjeta,
+  quitarTarjeta, registrarPago, listarPagos, ingresoTotal, tenantsConCobroVencido,
 };

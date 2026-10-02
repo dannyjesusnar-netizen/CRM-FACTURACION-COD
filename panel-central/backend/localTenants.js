@@ -96,6 +96,11 @@ function crearEmpresaDemo({ ruc, razon_social }) {
   return { tenant: tenantRegistry.findTenant(ruc) };
 }
 
+function setTipoNegocio(ruc, tipo) {
+  if (!tenantRegistry) return { error: 'No disponible.' };
+  return tenantRegistry.setTipoNegocio(ruc, tipo);
+}
+
 function aprobar(ruc) {
   return tenantRegistry.aprobarTenant(ruc);
 }
@@ -276,6 +281,6 @@ function restablecerClave(ruc, userId, password) {
 
 module.exports = {
   disponible, listarEmpresas, encontrar, crearEmpresaDemo, aprobar, rechazar, activar, desactivar, setCosto, setSedesLibres,
-  listarPagos, listarMensajes, marcarMensajeLeido, listarSolicitudesSede, resolverSolicitudSede,
+  setTipoNegocio, listarPagos, listarMensajes, marcarMensajeLeido, listarSolicitudesSede, resolverSolicitudSede,
   listarUsuarios, restablecerClave, documentosPorSede,
 };
