@@ -2,6 +2,9 @@ import { useEffect, useState } from 'react';
 import api from '../api';
 import { hoyPeru } from '../utils/fechas';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
+import ExportButton from '../components/ExportButton';
+import { exportarTabla } from '../utils/excelImport';
 
 function todayStr() {
   return hoyPeru();
@@ -13,7 +16,7 @@ function fmtHora(iso) {
   // agregarlo para que el navegador los interprete como UTC y los
   // convierta a la hora local, en vez de asumir que ya son locales.
   const d = new Date(iso.replace(' ', 'T') + 'Z');
-  return d.toLocaleString('es-PE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleString('es-PE', { hour: '2-digit', minute: '2-digit' });
 }
 
 function duracion(abiertoAt, cerradoAt) {
@@ -28,6 +31,7 @@ function duracion(abiertoAt, cerradoAt) {
 
 export default function Planilla() {
   const { user } = useAuth();
+  const toast = useToast();
   const esGerencia = user?.role === 'gerencia';
   const [desde, setDesde] = useState(todayStr());
   const [hasta, setHasta] = useState(todayStr());
@@ -50,6 +54,22 @@ export default function Planilla() {
     if (esGerencia) api.get('/sucursales').then((res) => setSucursales(res.data)).catch(() => {});
   }, [esGerencia]);
   useEffect(() => { load(); }, [desde, hasta, sucursalId]);
+
+  async function exportPlanilla(formato) {
+    if (!data?.turnos?.length) return;
+    const header = [
+      ...(data.verTodos ? ['Empleado'] : []),
+      'Sede', 'Fecha', 'Apertura', 'Cierre', 'Duración', 'Total', 'Estado',
+    ];
+    const rows = data.turnos.map((t) => [
+      ...(data.verTodos ? [t.empleado_nombre] : []),
+      t.sede_nombre, t.fecha, fmtHora(t.abierto_at), fmtHora(t.cerrado_at),
+      duracion(t.abierto_at, t.cerrado_at), Number(t.total).toFixed(2),
+      t.cerrado_at ? 'Cerrado' : 'Abierto',
+    ]);
+    await exportarTabla(`planilla_${desde}_${hasta}`, header, rows, formato);
+    toast.success(`Archivo ${formato === 'excel' ? 'Excel' : 'CSV'} exportado.`);
+  }
 
   return (
     <div>
@@ -84,10 +104,13 @@ export default function Planilla() {
       </div>
 
       <div className="panel">
-        <h3>
-          {data?.verTodos ? 'Turnos de caja — todos los empleados' : 'Mis turnos de caja'}
-          {data?.puedeElegirSede && !sucursalId && ' (todas las sedes)'}
-        </h3>
+        <div className="report-toolbar">
+          <h3 style={{ margin: 0 }}>
+            {data?.verTodos ? 'Turnos de caja — todos los empleados' : 'Mis turnos de caja'}
+            {data?.puedeElegirSede && !sucursalId && ' (todas las sedes)'}
+          </h3>
+          {data?.turnos?.length > 0 && <ExportButton onExport={exportPlanilla} />}
+        </div>
         {loadError ? (
           <>
             <p className="form-error">{loadError}</p>
