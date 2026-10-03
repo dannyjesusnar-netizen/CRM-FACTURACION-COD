@@ -10,6 +10,7 @@ import MetodoPagoQr from '../components/MetodoPagoQr';
 import ComboGrupoPicker from '../components/ComboGrupoPicker';
 import ComboSearchBar from '../components/ComboSearchBar';
 import { labelStaff } from '../utils/staffLabel';
+import { imprimirComprobante } from '../utils/imprimirComprobante';
 
 function todayStr() {
   return hoyPeru();
@@ -184,6 +185,10 @@ export default function RegistroNotaVenta() {
     if (msg) { setError(msg); return; }
     if (!window.confirm(`¿Confirmas el registro de esta nota de venta por S/ ${computed.total.toFixed(2)}?`)) return;
     setEmitiendo(true);
+    // Se abre ANTES del await para que el navegador no la bloquee como
+    // popup — window.confirm es síncrono y no rompe el gesto del click
+    // original (ver utils/imprimirComprobante.js).
+    const ventanaImpresion = window.open('', '_blank');
     try {
       const payload = {
         client_id: cliente.id,
@@ -209,10 +214,12 @@ export default function RegistroNotaVenta() {
         if (Number(pago || 0) > 0) payload.medio_abono = medioAbono;
       }
       if (atribuidoAId) payload.atribuido_a_id = Number(atribuidoAId);
-      await api.post('/notas-venta', payload);
+      const res = await api.post('/notas-venta', payload);
+      imprimirComprobante(ventanaImpresion, res.data.id, 'nota_venta');
       toast.success('Nota de venta interna registrada correctamente.');
       navigate('/ventas');
     } catch (err) {
+      if (ventanaImpresion) ventanaImpresion.close();
       setError(err.response?.data?.error || 'Error al registrar la nota de venta.');
     } finally {
       setEmitiendo(false);

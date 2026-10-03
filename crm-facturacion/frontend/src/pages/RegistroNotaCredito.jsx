@@ -4,6 +4,7 @@ import api from '../api';
 import { hoyPeru } from '../utils/fechas';
 import { useToast } from '../context/ToastContext';
 import ConfirmDialog from '../components/ConfirmDialog';
+import { imprimirComprobante } from '../utils/imprimirComprobante';
 
 const TIPOS_NOTA = [
   { value: 'anulacion_operacion', label: 'Anulación de la operación' },
@@ -149,8 +150,11 @@ export default function RegistroNotaCredito() {
 
   async function confirmarEmision() {
     setEmitiendo(true);
+    // Se abre ANTES del await para que el navegador no la bloquee como
+    // popup (mismo gesto del click de confirmar — ver utils/imprimirComprobante.js).
+    const ventanaImpresion = window.open('', '_blank');
     try {
-      await api.post('/invoices', {
+      const res = await api.post('/invoices', {
         tipo_comprobante: 'nota_credito',
         client_id: cliente.id,
         items: computed.rows.map((it) => ({
@@ -169,9 +173,11 @@ export default function RegistroNotaCredito() {
         modifica_numero: modificaNumero,
         tipo_nota: tipoNota,
       });
+      imprimirComprobante(ventanaImpresion, res.data.id, 'invoice');
       toast.success('Nota de crédito registrada correctamente.');
       navigate('/ventas');
     } catch (err) {
+      if (ventanaImpresion) ventanaImpresion.close();
       setError(err.response?.data?.error || 'Error al registrar la nota de crédito.');
       setShowConfirm(false);
     } finally {
