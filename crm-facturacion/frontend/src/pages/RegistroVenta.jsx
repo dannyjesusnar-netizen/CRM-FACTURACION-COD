@@ -11,6 +11,7 @@ import MetodoPagoQr from '../components/MetodoPagoQr';
 import ComboGrupoPicker from '../components/ComboGrupoPicker';
 import ComboSearchBar from '../components/ComboSearchBar';
 import { labelStaff } from '../utils/staffLabel';
+import { imprimirComprobante } from '../utils/imprimirComprobante';
 
 const TITULOS = { factura: 'Factura', boleta: 'Boleta', cotizacion: 'Cotización' };
 
@@ -348,16 +349,23 @@ export default function RegistroVenta() {
   async function confirmarEmision() {
     setEmitiendo(true);
     setError('');
+    // La cotización no es un comprobante con PDF imprimible (ver
+    // utils/imprimirComprobante.js) — solo boleta/factura abren la pestaña
+    // de impresión. Se abre ANTES del await para que el navegador no la
+    // bloquee como popup (mismo gesto del click de "Confirmar y Emitir").
+    const ventanaImpresion = tipo !== 'cotizacion' ? window.open('', '_blank') : null;
     try {
       const payload = buildPayload();
       if (tipo === 'cotizacion') {
         await api.post('/cotizaciones', payload);
       } else {
-        await api.post('/invoices', payload);
+        const res = await api.post('/invoices', payload);
+        imprimirComprobante(ventanaImpresion, res.data.id, 'invoice');
       }
       toast.success(`${TITULOS[tipo]} registrada correctamente.`);
       navigate('/ventas');
     } catch (err) {
+      if (ventanaImpresion) ventanaImpresion.close();
       setError(err.response?.data?.error || 'Error al registrar el comprobante.');
       setShowPreview(false);
     } finally {
