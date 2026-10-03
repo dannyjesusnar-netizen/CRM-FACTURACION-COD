@@ -1987,6 +1987,7 @@ export default function Configuracion() {
                   <select value={empresa.tamano_pdf || 'A4'} onChange={(e) => setEmpresa({ ...empresa, tamano_pdf: e.target.value })} style={{ maxWidth: 260 }}>
                     <option value="A4">Hoja A4</option>
                     <option value="ticket_80mm">Ticket / rollo térmico (80mm)</option>
+                    <option value="ticket_58mm">Ticket / rollo térmico (58mm)</option>
                   </select>
 
                   <div className="role-permiso-row" style={{ marginTop: 16 }}>

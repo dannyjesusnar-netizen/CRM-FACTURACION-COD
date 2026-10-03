@@ -131,7 +131,10 @@ async function buildInvoicePdf(invoice, items, cobros) {
   const qr = await qrBuffer(invoice, empresa);
 
   if (empresa.tamano_pdf === 'ticket_80mm') {
-    return buildTicketPdf(invoice, items, empresa, acento, logo, qr, cobros);
+    return buildTicketPdf(invoice, items, empresa, acento, logo, qr, cobros, 227);
+  }
+  if (empresa.tamano_pdf === 'ticket_58mm') {
+    return buildTicketPdf(invoice, items, empresa, acento, logo, qr, cobros, 164);
   }
   return buildA4Pdf(invoice, items, empresa, acento, logo, qr, cobros);
 }
@@ -377,10 +380,18 @@ function buildA4Pdf(invoice, items, empresa, acento, logo, qr, cobros) {
 // fiscal. Layout simple: encabezado de empresa, aviso legal bien visible,
 // datos del cliente, tabla de items y un solo TOTAL (sin Op. gravada/IGV).
 async function buildNotaVentaPdf(notaVenta, items, empresa) {
-  const doc = new PDFDocument({ margin: 40, size: 'A4' });
   const acento = /^#[0-9a-fA-F]{6}$/.test(empresa?.color_acento || '') ? empresa.color_acento : COLOR_ACENTO_DEFAULT;
   const mostrarLogo = empresa?.mostrar_logo_pdf !== 0 && !!empresa?.logo_data_url;
   const logo = mostrarLogo ? logoBuffer(empresa.logo_data_url) : null;
+
+  if (empresa?.tamano_pdf === 'ticket_80mm') {
+    return buildNotaVentaTicketPdf(notaVenta, items, empresa, acento, logo, 227);
+  }
+  if (empresa?.tamano_pdf === 'ticket_58mm') {
+    return buildNotaVentaTicketPdf(notaVenta, items, empresa, acento, logo, 164);
+  }
+
+  const doc = new PDFDocument({ margin: 40, size: 'A4' });
 
   let textX = 40;
   if (logo) {
@@ -496,17 +507,20 @@ async function buildNotaVentaPdf(notaVenta, items, empresa) {
   return doc;
 }
 
-// Formato ticket/recibo angosto (rollo térmico de 80mm), pensado para
+// Formato ticket/recibo angosto (rollo térmico de 80mm o 58mm), pensado para
 // impresoras de punto de venta. Al no tener el alto fijo de una hoja A4, se
 // estima según la cantidad de items para no dejar espacio de más ni cortar
-// contenido.
-function buildTicketPdf(invoice, items, empresa, acento, logo, qr, cobros) {
-  const width = 227; // 80mm
-  const margin = 10;
+// contenido. En 58mm el ancho útil queda muy reducido (144pt vs 207pt de un
+// 80mm), así que las fuentes se achican medio punto y se reserva más alto
+// por item para que la línea "cantidad x precio" quepa aunque se envuelva.
+function buildTicketPdf(invoice, items, empresa, acento, logo, qr, cobros, width = 227) {
+  const esAngosto = width < 200; // 58mm
+  const fs = (normal) => (esAngosto ? Math.max(5.5, normal - 0.5) : normal);
+  const margin = esAngosto ? 8 : 10;
   const contentWidth = width - margin * 2;
   const esAbonado = invoice.forma_pago === 'abonado';
   const esMixto = invoice.forma_pago === 'mixto';
-  const estimatedHeight = 420 + items.length * 34
+  const estimatedHeight = 420 + items.length * (esAngosto ? 48 : 34)
     + (empresa.terminos_condiciones_pdf ? 60 : 0)
     + (invoice.observaciones ? 40 : 0)
     + (logo ? 60 : 0)
@@ -538,9 +552,9 @@ function buildTicketPdf(invoice, items, empresa, acento, logo, qr, cobros) {
       try { layout.dibujar(); y += maxLogoH + 6; } catch { /* logo corrupto, se ignora */ }
     }
   }
-  doc.font('Helvetica-Bold').fontSize(11).fillColor(acento);
+  doc.font('Helvetica-Bold').fontSize(fs(11)).fillColor(acento);
   linea(empresa.razon_social || 'CRM Facturacion', { align: 'center', gap: 4 });
-  doc.font('Helvetica').fontSize(7).fillColor('#333');
+  doc.font('Helvetica').fontSize(fs(7)).fillColor('#333');
   if (empresa.ruc) linea(`RUC: ${empresa.ruc}`, { align: 'center' });
   if (empresa.direccion_fiscal) linea(`Sede principal: ${empresa.direccion_fiscal}`, { align: 'center' });
   const contacto = [empresa.telefono, empresa.email].filter(Boolean).join(' / ');
@@ -550,12 +564,12 @@ function buildTicketPdf(invoice, items, empresa, acento, logo, qr, cobros) {
   doc.moveTo(margin, y).lineTo(width - margin, y).stroke('#000');
   y += 8;
 
-  doc.font('Helvetica-Bold').fontSize(9).fillColor(acento);
+  doc.font('Helvetica-Bold').fontSize(fs(9)).fillColor(acento);
   linea(TIPO_LABEL[invoice.tipo_comprobante] || invoice.tipo_comprobante, { align: 'center', gap: 4 });
-  doc.font('Helvetica-Bold').fontSize(10).fillColor('#000');
+  doc.font('Helvetica-Bold').fontSize(fs(10)).fillColor('#000');
   linea(`${invoice.serie}-${String(invoice.numero).padStart(3, '0')}`, { align: 'center', gap: 6 });
 
-  doc.font('Helvetica').fontSize(7).fillColor('#000');
+  doc.font('Helvetica').fontSize(fs(7)).fillColor('#000');
   const filaTicket = (label, valor) => {
     if (!valor) return;
     linea(`${label}: ${valor}`, { gap: 3 });
@@ -574,16 +588,25 @@ function buildTicketPdf(invoice, items, empresa, acento, logo, qr, cobros) {
   y += 8;
 
   items.forEach((it) => {
-    doc.fontSize(7).fillColor('#000');
+    doc.fontSize(fs(7)).fillColor('#000');
     linea(`${it.descripcion} ${it.codigo ? `(${it.codigo})` : ''}`, { gap: 1 });
-    doc.text(`${it.cantidad} ${it.unidad || 'NIU'} x ${money(it.precio_unitario, invoice.moneda)}`, margin, y, { width: contentWidth - 70 });
-    doc.text(money(it.subtotal, invoice.moneda), margin, y, { width: contentWidth, align: 'right' });
-    y += 13;
+    const cantidadTxt = `${it.cantidad} ${it.unidad || 'NIU'} x ${money(it.precio_unitario, invoice.moneda)}`;
+    if (esAngosto) {
+      // A 58mm no entra "cantidad x precio" y el subtotal en la misma línea
+      // sin encimarse — se apilan en dos líneas en vez de compartir una.
+      linea(cantidadTxt, { gap: 1 });
+      doc.text(money(it.subtotal, invoice.moneda), margin, y, { width: contentWidth, align: 'right' });
+      y += 11;
+    } else {
+      doc.text(cantidadTxt, margin, y, { width: contentWidth - 70 });
+      doc.text(money(it.subtotal, invoice.moneda), margin, y, { width: contentWidth, align: 'right' });
+      y += 13;
+    }
   });
 
   doc.moveTo(margin, y).lineTo(width - margin, y).stroke('#000');
   y += 8;
-  doc.fontSize(7);
+  doc.fontSize(fs(7));
   if (Number(invoice.descuento_global_pct) > 0) {
     doc.fillColor('#000').text(`Descuento aplicado (${invoice.descuento_global_pct}%)`, margin, y, { width: contentWidth });
     y += 10;
@@ -594,12 +617,12 @@ function buildTicketPdf(invoice, items, empresa, acento, logo, qr, cobros) {
   doc.text(igvLabel(invoice, empresa), margin, y, { width: contentWidth - 60 });
   doc.text(money(invoice.igv, invoice.moneda), margin, y, { width: contentWidth, align: 'right' });
   y += 10;
-  doc.fontSize(9).fillColor(acento);
+  doc.fontSize(fs(9)).fillColor(acento);
   doc.text('TOTAL:', margin, y, { width: contentWidth - 60 });
   doc.text(money(invoice.total, invoice.moneda), margin, y, { width: contentWidth, align: 'right' });
   y += 14;
 
-  doc.fontSize(6.5).fillColor('#333').text(montoEnLetras(invoice.total, invoice.moneda), margin, y, { width: contentWidth, align: 'center' });
+  doc.fontSize(fs(6.5)).fillColor('#333').text(montoEnLetras(invoice.total, invoice.moneda), margin, y, { width: contentWidth, align: 'center' });
   y += doc.heightOfString(montoEnLetras(invoice.total, invoice.moneda), { width: contentWidth, align: 'center' }) + 8;
 
   if (esAbonado || esMixto) {
@@ -607,21 +630,21 @@ function buildTicketPdf(invoice, items, empresa, acento, logo, qr, cobros) {
     y += 8;
     if (esAbonado) {
       const saldo = Math.max(0, Number(invoice.total) - Number(invoice.monto_pagado || 0));
-      doc.fontSize(7).fillColor(acento).text('INFORMACION DEL CREDITO', margin, y, { width: contentWidth, align: 'center' });
+      doc.fontSize(fs(7)).fillColor(acento).text('INFORMACION DEL CREDITO', margin, y, { width: contentWidth, align: 'center' });
       y += 10;
       doc.fillColor('#000');
       doc.text(`Abonado: ${money(invoice.monto_pagado || 0, invoice.moneda)}`, margin, y, { width: contentWidth }); y += 10;
       doc.font('Helvetica-Bold').text(`Saldo: ${money(saldo, invoice.moneda)}`, margin, y, { width: contentWidth }); y += 12;
       doc.font('Helvetica');
     } else {
-      doc.fontSize(7).fillColor(acento).text('DESGLOSE DE PAGO MIXTO', margin, y, { width: contentWidth, align: 'center' });
+      doc.fontSize(fs(7)).fillColor(acento).text('DESGLOSE DE PAGO MIXTO', margin, y, { width: contentWidth, align: 'center' });
       y += 10;
       doc.fillColor('#000');
     }
     if (cobros && cobros.length) {
       cobros.forEach((c) => {
         const fechaTxt = esAbonado ? `${(c.created_at || '').slice(0, 10)} ` : '';
-        doc.fontSize(6.5).text(`${fechaTxt}${formaPagoLabel(c.medio)} ${money(c.monto, invoice.moneda)}`, margin, y, { width: contentWidth });
+        doc.fontSize(fs(6.5)).text(`${fechaTxt}${formaPagoLabel(c.medio)} ${money(c.monto, invoice.moneda)}`, margin, y, { width: contentWidth });
         y += 9;
       });
     }
@@ -629,7 +652,7 @@ function buildTicketPdf(invoice, items, empresa, acento, logo, qr, cobros) {
   }
 
   if (invoice.observaciones) {
-    doc.fontSize(6).fillColor('#444').text(invoice.observaciones, margin, y, { width: contentWidth, align: 'center' });
+    doc.fontSize(fs(6)).fillColor('#444').text(invoice.observaciones, margin, y, { width: contentWidth, align: 'center' });
     y += doc.heightOfString(invoice.observaciones, { width: contentWidth, align: 'center' }) + 6;
   }
   if (qr) {
@@ -639,7 +662,7 @@ function buildTicketPdf(invoice, items, empresa, acento, logo, qr, cobros) {
     } catch { /* ignore */ }
   }
   if (empresa.terminos_condiciones_pdf) {
-    doc.fontSize(6).fillColor('#555').text(empresa.terminos_condiciones_pdf, margin, y, { width: contentWidth, align: 'center' });
+    doc.fontSize(fs(6)).fillColor('#555').text(empresa.terminos_condiciones_pdf, margin, y, { width: contentWidth, align: 'center' });
     y += doc.heightOfString(empresa.terminos_condiciones_pdf, { width: contentWidth, align: 'center' }) + 6;
   }
 
@@ -655,8 +678,114 @@ function buildTicketPdf(invoice, items, empresa, acento, logo, qr, cobros) {
     estadoTicket = { color: '#dc2626', texto: `Comprobante con error de envio a SUNAT (estado: ${invoice.sunat_estado}). No valido hasta corregirlo.` };
   }
   if (estadoTicket) {
-    doc.fontSize(6.5).fillColor(estadoTicket.color).text(estadoTicket.texto, margin, y, { width: contentWidth, align: 'center' });
+    doc.fontSize(fs(6.5)).fillColor(estadoTicket.color).text(estadoTicket.texto, margin, y, { width: contentWidth, align: 'center' });
   }
+
+  return doc;
+}
+
+// Nota de Venta en formato ticket angosto (80mm o 58mm) — misma idea que
+// buildTicketPdf, pero sin IGV/QR/hash SUNAT y manteniendo bien visible el
+// aviso de que es un documento sin efectos tributarios (ver el comentario
+// de buildNotaVentaPdf: nunca debe poder confundirse con uno fiscal).
+function buildNotaVentaTicketPdf(notaVenta, items, empresa, acento, logo, width = 227) {
+  const esAngosto = width < 200; // 58mm
+  const fs = (normal) => (esAngosto ? Math.max(5.5, normal - 0.5) : normal);
+  const margin = esAngosto ? 8 : 10;
+  const contentWidth = width - margin * 2;
+  const estimatedHeight = 260 + items.length * (esAngosto ? 48 : 34)
+    + (notaVenta.observaciones ? 40 : 0)
+    + (logo ? 60 : 0)
+    + (notaVenta.cliente_direccion ? 20 : 0)
+    + (Number(notaVenta.descuento_global_pct) > 0 ? 10 : 0);
+  const doc = new PDFDocument({ margin, size: [width, estimatedHeight] });
+
+  function linea(texto, opts = {}) {
+    if (!texto) return;
+    const textOpts = { width: contentWidth, ...opts };
+    doc.text(texto, margin, y, textOpts);
+    y += doc.heightOfString(texto, textOpts) + (opts.gap ?? 2);
+  }
+
+  let y = margin;
+  if (logo) {
+    const maxLogoW = contentWidth;
+    const maxLogoH = 55;
+    const layout = logoLayout(doc, logo, margin, y, maxLogoW, maxLogoH, { align: 'center' });
+    if (layout) {
+      try { layout.dibujar(); y += maxLogoH + 6; } catch { /* logo corrupto, se ignora */ }
+    }
+  }
+  doc.font('Helvetica-Bold').fontSize(fs(11)).fillColor(acento);
+  linea(empresa?.razon_social || 'CRM Facturacion', { align: 'center', gap: 4 });
+  doc.font('Helvetica').fontSize(fs(7)).fillColor('#333');
+  if (empresa?.ruc) linea(`RUC: ${empresa.ruc}`, { align: 'center' });
+  if (empresa?.direccion_fiscal) linea(empresa.direccion_fiscal, { align: 'center' });
+  y += 4;
+  doc.moveTo(margin, y).lineTo(width - margin, y).stroke('#000');
+  y += 8;
+
+  doc.font('Helvetica-Bold').fontSize(fs(9)).fillColor(acento);
+  linea('NOTA DE VENTA INTERNA', { align: 'center', gap: 4 });
+  doc.font('Helvetica-Bold').fontSize(fs(10)).fillColor('#000');
+  linea(`${notaVenta.serie}-${String(notaVenta.numero).padStart(6, '0')}`, { align: 'center', gap: 6 });
+
+  doc.font('Helvetica-Bold').fontSize(fs(6.5)).fillColor('#b45309');
+  linea('Documento SIN efectos tributarios — no es un comprobante de pago (no válido ante SUNAT, no incluye IGV).', { align: 'center', gap: 6 });
+
+  doc.font('Helvetica').fontSize(fs(7)).fillColor('#000');
+  const filaTicket = (label, valor) => {
+    if (!valor) return;
+    linea(`${label}: ${valor}`, { gap: 3 });
+  };
+  filaTicket('Fecha', notaVenta.fecha_emision);
+  filaTicket('Cliente', notaVenta.cliente_nombre);
+  filaTicket(notaVenta.cliente_tipo_documento, notaVenta.cliente_documento);
+  filaTicket('Direccion', notaVenta.cliente_direccion);
+  filaTicket('F. Pago', formaPagoLabel(notaVenta.forma_pago));
+  y += 2;
+
+  doc.moveTo(margin, y).lineTo(width - margin, y).stroke('#000');
+  y += 8;
+
+  items.forEach((it) => {
+    doc.fontSize(fs(7)).fillColor('#000');
+    linea(it.descripcion || '', { gap: 1 });
+    const cantidadTxt = `${it.cantidad} x ${money(it.precio_unitario, notaVenta.moneda)}`;
+    if (esAngosto) {
+      linea(cantidadTxt, { gap: 1 });
+      doc.text(money(it.subtotal, notaVenta.moneda), margin, y, { width: contentWidth, align: 'right' });
+      y += 11;
+    } else {
+      doc.text(cantidadTxt, margin, y, { width: contentWidth - 70 });
+      doc.text(money(it.subtotal, notaVenta.moneda), margin, y, { width: contentWidth, align: 'right' });
+      y += 13;
+    }
+  });
+
+  doc.moveTo(margin, y).lineTo(width - margin, y).stroke('#000');
+  y += 8;
+  if (Number(notaVenta.descuento_global_pct) > 0) {
+    doc.fontSize(fs(7)).fillColor('#000').text(`Descuento aplicado (${notaVenta.descuento_global_pct}%)`, margin, y, { width: contentWidth });
+    y += 10;
+  }
+  doc.fontSize(fs(9)).fillColor(acento);
+  doc.text('TOTAL:', margin, y, { width: contentWidth - 60 });
+  doc.text(money(notaVenta.total, notaVenta.moneda), margin, y, { width: contentWidth, align: 'right' });
+  y += 14;
+
+  doc.fontSize(fs(6.5)).fillColor('#333').text(montoEnLetras(notaVenta.total, notaVenta.moneda), margin, y, { width: contentWidth, align: 'center' });
+  y += doc.heightOfString(montoEnLetras(notaVenta.total, notaVenta.moneda), { width: contentWidth, align: 'center' }) + 8;
+
+  if (notaVenta.observaciones) {
+    doc.fontSize(fs(6)).fillColor('#444').text(notaVenta.observaciones, margin, y, { width: contentWidth, align: 'center' });
+    y += doc.heightOfString(notaVenta.observaciones, { width: contentWidth, align: 'center' }) + 6;
+  }
+
+  doc.fontSize(fs(6.5)).fillColor('#555').text(
+    'Documento sin efectos tributarios — no es un comprobante de pago, no tiene validez ante SUNAT.',
+    margin, y, { width: contentWidth, align: 'center' }
+  );
 
   return doc;
 }

@@ -25,7 +25,7 @@ router.get('/', (req, res) => {
 });
 
 const LOGO_MAX_BYTES = 1.5 * 1024 * 1024; // ~1.5MB en base64
-const TAMANOS_PDF = ['A4', 'ticket_80mm'];
+const TAMANOS_PDF = ['A4', 'ticket_80mm', 'ticket_58mm'];
 
 // Este mismo endpoint guarda tanto los campos de "Empresa" (razón social,
 // RUC, IGV) como los de "Diseño de comprobantes" (color, logo en PDF) — se
@@ -57,7 +57,7 @@ router.put('/', requireEmpresa, (req, res) => {
     return res.status(400).json({ error: 'color_tablero_ventas debe ser un color hexadecimal (ej. #16a34a).' });
   }
   if (tamano_pdf && !TAMANOS_PDF.includes(tamano_pdf)) {
-    return res.status(400).json({ error: 'tamano_pdf inválido. Use A4 o ticket_80mm.' });
+    return res.status(400).json({ error: 'tamano_pdf inválido. Use A4, ticket_80mm o ticket_58mm.' });
   }
   const existing = db.prepare('SELECT * FROM empresa_config WHERE id = 1').get();
   db.prepare(
