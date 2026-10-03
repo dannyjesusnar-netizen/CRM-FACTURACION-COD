@@ -568,6 +568,9 @@ export default function Configuracion() {
   const [savingSucursalSerie, setSavingSucursalSerie] = useState(false);
   const [igvPct, setIgvPct] = useState(18);
   const [savingIgv, setSavingIgv] = useState(false);
+  const [nubefactRuta, setNubefactRuta] = useState('');
+  const [nubefactToken, setNubefactToken] = useState('');
+  const [savingNubefact, setSavingNubefact] = useState(false);
 
   useEffect(() => {
     api.get('/empresa').then((res) => setEmpresa(res.data));
@@ -601,6 +604,8 @@ export default function Configuracion() {
     if (!empresa) return;
     setDireccionPrincipal(empresa.direccion_fiscal || '');
     setIgvPct(empresa.igv_rate ? Math.round(Number(empresa.igv_rate) * 1000) / 10 : 18);
+    setNubefactRuta(empresa.nubefact_ruta || '');
+    setNubefactToken(empresa.nubefact_token || '');
   }, [empresa]);
 
   useEffect(() => {
@@ -1040,6 +1045,20 @@ export default function Configuracion() {
       setErrorSeries(err.response?.data?.error || 'No se pudo actualizar la sede.');
     } finally {
       setSavingSucursalSerie(false);
+    }
+  }
+
+  async function handleGuardarNubefact() {
+    setSavingNubefact(true);
+    try {
+      const res = await api.put('/empresa/nubefact', { nubefact_ruta: nubefactRuta.trim(), nubefact_token: nubefactToken.trim() });
+      setEmpresa(res.data);
+      refreshEmpresa();
+      toast.success('Credenciales de Nubefact guardadas.');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'No se pudo guardar.');
+    } finally {
+      setSavingNubefact(false);
     }
   }
 
@@ -1934,6 +1953,31 @@ export default function Configuracion() {
                     )}
                   </div>
                 </div>
+              </div>
+
+              <div className="panel" style={{ maxWidth: 560, marginTop: 20 }}>
+                <h3 style={{ marginTop: 0 }}>Facturación electrónica (Nubefact)</h3>
+                <p style={{ fontSize: 12, color: 'var(--ink-muted)' }}>
+                  RUTA y TOKEN de la cuenta de Nubefact de ESTA empresa (panel de Nubefact → API - Integración). Son
+                  propios de cada RUC — no se comparten entre empresas distintas, aunque corran en la misma instancia.
+                  Sin estos datos, los comprobantes se emiten en modo simulado (sin validez ante SUNAT).
+                </p>
+                <label>RUTA</label>
+                <input
+                  value={nubefactRuta}
+                  onChange={(e) => setNubefactRuta(e.target.value)}
+                  placeholder="https://api.nubefact.com/api/v1/tu-cuenta"
+                />
+                <label>TOKEN</label>
+                <input
+                  type="password"
+                  value={nubefactToken}
+                  onChange={(e) => setNubefactToken(e.target.value)}
+                  placeholder="Token de tu cuenta de Nubefact"
+                />
+                <button type="button" className="btn-primary" style={{ width: 'auto', marginTop: 12 }} onClick={handleGuardarNubefact} disabled={savingNubefact}>
+                  {savingNubefact ? 'Guardando...' : 'Guardar credenciales'}
+                </button>
               </div>
 
               <div className="panel" style={{ maxWidth: 560, marginTop: 20 }}>
