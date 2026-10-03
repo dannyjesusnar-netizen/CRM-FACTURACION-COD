@@ -35,11 +35,33 @@ export default function ProductSearchBar({ onSelect, placeholder }) {
     setOpen(false);
   }
 
-  function handleKeyDown(e) {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      if (results.length > 0) pick(results[0]);
+  // Un lector de código de barras escribe el código y manda Enter casi al
+  // instante — mucho más rápido que el debounce de 200ms de arriba, así que
+  // "results" todavía no tiene la respuesta de la búsqueda cuando llega el
+  // Enter. Por eso el Enter no depende de "results": dispara su propia
+  // búsqueda inmediata y, si hay un único producto cuyo código o código de
+  // barras calza exacto (el caso normal al escanear) o un único resultado
+  // en general, lo agrega de una sin que el vendedor tenga que hacer nada
+  // más — así el siguiente escaneo también entra directo, uno tras otro.
+  async function handleKeyDown(e) {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const texto = q.trim();
+    if (!texto) return;
+    let encontrados;
+    try {
+      const res = await api.get('/products', { params: { q: texto } });
+      encontrados = res.data.filter((p) => p.activo);
+    } catch {
+      return;
     }
+    const exacto = encontrados.filter((p) => p.codigo === texto || p.codigo_barras === texto);
+    if (exacto.length === 1) { pick(exacto[0]); return; }
+    if (encontrados.length === 1) { pick(encontrados[0]); return; }
+    // Varios resultados (búsqueda por nombre, no un código único): se
+    // muestra el desplegable para que elija a mano, en vez de adivinar.
+    setResults(encontrados);
+    setOpen(true);
   }
 
   return (
