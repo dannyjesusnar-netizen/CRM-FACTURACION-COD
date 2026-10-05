@@ -7,6 +7,7 @@ import { useToast } from '../context/ToastContext';
 import { useAuth } from '../context/AuthContext';
 import ExportButton from '../components/ExportButton';
 import { exportarTabla } from '../utils/excelImport';
+import ProductTypeahead from '../components/ProductTypeahead';
 
 const ESTADO_LABEL = { pendiente: 'Pendiente', completado: 'Completado', rechazado: 'Rechazado', anulado: 'Anulado' };
 const ESTADO_BADGE = { pendiente: 'badge-warning', completado: 'badge-good', rechazado: 'badge-critical', anulado: 'badge-critical' };
@@ -294,10 +295,12 @@ export default function Traslados() {
                     return (
                       <tr key={idx}>
                         <td>
-                          <select value={it.product_id} onChange={(e) => handleProductSelect(idx, e.target.value)}>
-                            <option value="">Selecciona un producto...</option>
-                            {productos.map((p) => <option key={p.id} value={p.id}>{p.codigo} — {p.nombre}</option>)}
-                          </select>
+                          <ProductTypeahead
+                            productos={productos}
+                            value={it.product_id}
+                            onChange={(id) => handleProductSelect(idx, id)}
+                            placeholder="Buscar producto..."
+                          />
                         </td>
                         <td>{it.product_id ? (stockEnOrigen(it.product_id) ?? '...') : '—'}</td>
                         <td>
