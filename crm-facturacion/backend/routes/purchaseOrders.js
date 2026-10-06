@@ -1,7 +1,7 @@
 const express = require('express');
 const db = require('../db');
 const { requireAuth, resolveSucursal } = require('../middleware/auth');
-const { round2, incrementarStock } = require('../utils/stock');
+const { round2, incrementarStock, ajustarStockSucursal } = require('../utils/stock');
 const { requirePermiso, requireAccion } = require('../utils/permisos');
 const { siguienteNumero } = require('../utils/series');
 const { hoyPeru } = require('../utils/fechas');
@@ -212,8 +212,15 @@ router.post('/:id/anular', requireAccion('compras', 'anular_compra'), (req, res)
   res.json(db.prepare('SELECT * FROM purchase_orders WHERE id = ?').get(req.params.id));
 });
 
-// POST /api/purchase-orders/:id/recibir — convierte la orden pendiente en una
-// recepción real: ingresa el stock de cada item y marca la orden como recibida.
+// POST /api/purchase-orders/:id/recibir { fecha_recepcion?, items?: [{ id,
+// codigo_lote?, fecha_vencimiento? }] } — convierte la orden pendiente en
+// una recepción real: ingresa el stock de cada item y marca la orden como
+// recibida. "items" es opcional y solo hace falta para los productos a los
+// que SÍ se les quiere registrar lote/vencimiento al recibirlos (recién se
+// sabe en este momento, no al crear la orden) — para los demás se ingresa
+// el stock sin lote, igual que antes. Mismo criterio que "Registrar
+// Compras" (ver routes/purchases.js): cada item con código de lote crea el
+// lote de una vez, con la fecha de vencimiento indicada.
 router.post('/:id/recibir', requireAccion('compras', 'registrar_compra'), (req, res) => {
   const order = db.prepare('SELECT * FROM purchase_orders WHERE id = ? AND sucursal_id = ?').get(req.params.id, req.sucursalId);
   if (!order) return res.status(404).json({ error: 'Orden de compra no encontrada.' });
@@ -223,6 +230,9 @@ router.post('/:id/recibir', requireAccion('compras', 'registrar_compra'), (req, 
   const supplier = db.prepare('SELECT * FROM suppliers WHERE id = ?').get(order.supplier_id);
   const items = db.prepare('SELECT * FROM purchase_order_items WHERE purchase_order_id = ?').all(order.id);
   const fechaRecepcion = (req.body && req.body.fecha_recepcion) || hoyPeru();
+  const lotesPorItemId = new Map(
+    (Array.isArray(req.body?.items) ? req.body.items : []).map((it) => [Number(it.id), it])
+  );
 
   db.transaction(() => {
     db.prepare(
@@ -232,13 +242,31 @@ router.post('/:id/recibir', requireAccion('compras', 'registrar_compra'), (req, 
     for (const it of items) {
       const product = db.prepare('SELECT * FROM products WHERE id = ?').get(it.product_id);
       if (!product || product.stock === null) continue; // servicios no manejan stock
-      incrementarStock(it.product_id, it.cantidad, {
-        tipoMovimiento: 'compra',
-        motivo: `Recepción de orden de compra a ${supplier?.nombre || 'proveedor'}`,
-        referencia,
-        userId: req.user?.id,
-        sucursalId: order.sucursal_id,
-      });
+
+      const loteInfo = lotesPorItemId.get(it.id);
+      const codigoLote = (loteInfo?.codigo_lote || '').toString().trim();
+      if (codigoLote) {
+        const fechaVencimiento = (loteInfo?.fecha_vencimiento || '').toString().trim() || null;
+        const loteId = db.prepare(
+          `INSERT INTO lotes (product_id, codigo_lote, tipo, fecha_vencimiento, cantidad_inicial, cantidad_actual, created_by)
+           VALUES (?, ?, 'lote', ?, ?, ?, ?)`
+        ).run(it.product_id, codigoLote, fechaVencimiento, it.cantidad, it.cantidad, req.user?.id || null).lastInsertRowid;
+        db.prepare('UPDATE products SET stock = stock + ? WHERE id = ?').run(it.cantidad, it.product_id);
+        const nuevoStock = db.prepare('SELECT stock FROM products WHERE id = ?').get(it.product_id).stock;
+        ajustarStockSucursal(it.product_id, order.sucursal_id, it.cantidad);
+        db.prepare(
+          `INSERT INTO stock_movements (product_id, lote_id, tipo, cantidad, stock_resultante, motivo, referencia, created_by, sucursal_id)
+           VALUES (?, ?, 'ingreso_lote', ?, ?, ?, ?, ?, ?)`
+        ).run(it.product_id, loteId, it.cantidad, nuevoStock, `Recepción de orden de compra a ${supplier?.nombre || 'proveedor'}`, referencia, req.user?.id || null, order.sucursal_id);
+      } else {
+        incrementarStock(it.product_id, it.cantidad, {
+          tipoMovimiento: 'compra',
+          motivo: `Recepción de orden de compra a ${supplier?.nombre || 'proveedor'}`,
+          referencia,
+          userId: req.user?.id,
+          sucursalId: order.sucursal_id,
+        });
+      }
     }
   })();
 
