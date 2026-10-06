@@ -65,7 +65,7 @@ export default function Planilla() {
       ...(data.verTodos ? [t.empleado_nombre] : []),
       t.sede_nombre, t.fecha, fmtHora(t.abierto_at), fmtHora(t.cerrado_at),
       duracion(t.abierto_at, t.cerrado_at), Number(t.total).toFixed(2),
-      t.cerrado_at ? 'Cerrado' : 'Abierto',
+      t.cerrado_at ? (t.cerrado_automaticamente ? 'Cerrado automático (11:30pm)' : 'Cerrado') : 'Abierto',
     ]);
     await exportarTabla(`planilla_${desde}_${hasta}`, header, rows, formato);
     toast.success(`Archivo ${formato === 'excel' ? 'Excel' : 'CSV'} exportado.`);
@@ -144,8 +144,9 @@ export default function Planilla() {
                     <td>{duracion(t.abierto_at, t.cerrado_at)}</td>
                     <td style={{ textAlign: 'right' }}>S/ {Number(t.total).toFixed(2)}</td>
                     <td>
-                      <span className={'badge ' + (t.cerrado_at ? 'badge-good' : 'badge-warning')}>
-                        {t.cerrado_at ? 'Cerrado' : 'Abierto'}
+                      <span className={'badge ' + (t.cerrado_at ? 'badge-good' : 'badge-warning')}
+                        title={t.cerrado_automaticamente ? 'Nadie cerró este turno a tiempo — el sistema lo cerró solo a las 11:30pm.' : undefined}>
+                        {t.cerrado_at ? (t.cerrado_automaticamente ? 'Cerrado automático' : 'Cerrado') : 'Abierto'}
                       </span>
                     </td>
                   </tr>

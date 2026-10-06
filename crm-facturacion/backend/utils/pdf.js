@@ -507,6 +507,143 @@ async function buildNotaVentaPdf(notaVenta, items, empresa) {
   return doc;
 }
 
+const TIPO_ORDEN_LABEL = { orden_compra: 'ORDEN DE COMPRA', orden_servicio: 'ORDEN DE SERVICIO' };
+const ESTADO_ORDEN_LABEL = { pendiente: 'Pendiente de recepción', recibida: 'Recibida', anulada: 'Anulada' };
+
+// Orden de Compra / Orden de Servicio: el documento que se le entrega al
+// proveedor con el pedido (todavía no es una compra recibida, no afecta
+// stock — eso lo hace "Recepción de Compras"). Reusa la misma mecánica de
+// layout que buildNotaVentaPdf (encabezado con logo, panel de datos, tabla
+// de items) pero con sus propios campos: proveedor en vez de cliente, tipo
+// de cambio si es en dólares, y el desglose de IGV/no gravado/percepción
+// que si tiene una orden de compra (a diferencia de la Nota de Venta).
+async function buildOrdenCompraPdf(order, items, proveedor, empresa) {
+  const doc = new PDFDocument({ margin: 40, size: 'A4' });
+  const acento = /^#[0-9a-fA-F]{6}$/.test(empresa?.color_acento || '') ? empresa.color_acento : COLOR_ACENTO_DEFAULT;
+  const mostrarLogo = empresa?.mostrar_logo_pdf !== 0 && !!empresa?.logo_data_url;
+  const logo = mostrarLogo ? logoBuffer(empresa.logo_data_url) : null;
+
+  let textX = 40;
+  if (logo) {
+    const layout = logoLayout(doc, logo, 40, 40, 130, 64);
+    if (layout) {
+      try {
+        layout.dibujar();
+        textX = 40 + layout.anchoOcupado + 14;
+      } catch { /* logo corrupto, se ignora */ }
+    }
+  }
+  const nombreWidth = Math.max(150, 375 - textX);
+  const infoWidth = Math.max(140, 380 - (textX + 10));
+  const nombreEmpresa = empresa?.razon_social || 'CRM Facturacion';
+  doc.font('Helvetica-Bold').fontSize(17).fillColor(acento).text(nombreEmpresa, textX, 44, { width: nombreWidth });
+
+  let infoY = 44 + doc.heightOfString(nombreEmpresa, { width: nombreWidth }) + 6;
+  doc.font('Helvetica').fontSize(7.5).fillColor('#444');
+  if (empresa?.direccion_fiscal) {
+    doc.circle(textX + 3, infoY + 3, 2.5).fill(acento).fillColor('#444');
+    doc.text(empresa.direccion_fiscal, textX + 10, infoY, { width: infoWidth });
+    infoY += doc.heightOfString(empresa.direccion_fiscal, { width: infoWidth }) + 3;
+  }
+
+  doc.roundedRect(390, 38, 165, 78, 5).stroke(acento);
+  doc.font('Helvetica').fontSize(9).fillColor('#000').text(`RUC: ${empresa?.ruc || '-'}`, 398, 46, { width: 150, align: 'center' });
+  doc.font('Helvetica-Bold').fontSize(11).fillColor(acento).text(TIPO_ORDEN_LABEL[order.tipo_documento] || 'ORDEN DE COMPRA', 398, 61, { width: 150, align: 'center' });
+  doc.font('Helvetica-Bold').fontSize(13).fillColor('#000').text(`${order.serie}-${order.numero_doc}`, 398, 90, { width: 150, align: 'center' });
+
+  const panelTop = Math.max(infoY, 116) + 10;
+  const panelHeight = 90;
+  doc.roundedRect(40, panelTop, 515, panelHeight, 6).stroke('#ddd');
+  const leftX = 52;
+  const rightX = 310;
+  let ly = panelTop + 12;
+  bulletRow(doc, leftX, ly, 240, 'Proveedor', proveedor?.nombre, acento);
+  bulletRow(doc, rightX, ly, 200, 'RUC', proveedor?.ruc, acento);
+  ly += 26;
+  bulletRow(doc, leftX, ly, 240, 'Fecha', order.fecha, acento);
+  bulletRow(doc, rightX, ly, 200, 'Moneda', monedaLabel(order.moneda) + (order.moneda === 'USD' ? ` (T.C. ${order.tipo_cambio})` : ''), acento);
+  ly += 26;
+  bulletRow(doc, leftX, ly, 240, 'Tipo de compra', order.tipo_compra, acento);
+  bulletRow(doc, rightX, ly, 200, 'Estado', ESTADO_ORDEN_LABEL[order.estado] || order.estado, acento);
+
+  let y = panelTop + panelHeight + 14;
+  const cols = [
+    { key: 'item', label: 'ITEM', x: 40, w: 25, align: 'center' },
+    { key: 'cant', label: 'CANT.', x: 65, w: 40, align: 'right' },
+    { key: 'und', label: 'UND', x: 105, w: 35, align: 'center' },
+    { key: 'desc', label: 'DESCRIPCION', x: 140, w: 230, align: 'left' },
+    { key: 'pu', label: 'COSTO UNIT.', x: 370, w: 65, align: 'right' },
+    { key: 'imp', label: 'SUBTOTAL', x: 435, w: 80, align: 'right' },
+  ];
+  doc.rect(40, y, 515, 18).fill(acento);
+  doc.font('Helvetica-Bold').fontSize(7.5).fillColor('#fff');
+  cols.forEach((c) => doc.text(c.label, c.x + 3, y + 5, { width: c.w - 6, align: c.align }));
+  y += 18;
+
+  doc.font('Helvetica').fontSize(8).fillColor('#000');
+  items.forEach((it, idx) => {
+    const rowStartY = y;
+    const descTexto = it.producto_nombre + (it.observacion ? ` — ${it.observacion}` : '');
+    const descHeight = doc.heightOfString(descTexto, { width: cols[3].w - 6 });
+    const rowHeight = Math.max(16, descHeight + 6);
+    if (idx % 2 === 1) doc.rect(40, rowStartY, 515, rowHeight).fill('#f7f9fb').fillColor('#000');
+    doc.fillColor('#000');
+    doc.text(String(idx + 1), cols[0].x + 3, rowStartY + 4, { width: cols[0].w - 6, align: cols[0].align });
+    doc.text(String(it.cantidad), cols[1].x + 3, rowStartY + 4, { width: cols[1].w - 6, align: cols[1].align });
+    doc.text(it.unidad || 'UND', cols[2].x + 3, rowStartY + 4, { width: cols[2].w - 6, align: cols[2].align });
+    doc.text(descTexto, cols[3].x + 3, rowStartY + 4, { width: cols[3].w - 6, align: cols[3].align });
+    doc.text(money(it.costo_unitario, order.moneda), cols[4].x + 3, rowStartY + 4, { width: cols[4].w - 6, align: cols[4].align });
+    doc.text(money(it.subtotal, order.moneda), cols[5].x + 3, rowStartY + 4, { width: cols[5].w - 6, align: cols[5].align });
+    y = rowStartY + rowHeight;
+  });
+  doc.moveTo(40, y).lineTo(555, y).stroke('#ddd');
+  y += 10;
+
+  doc.font('Helvetica').fontSize(9).fillColor('#000');
+  if (Number(order.descuento_pct) > 0) {
+    doc.text(`Descuento aplicado (${order.descuento_pct}%)`, 350, y, { width: 165, align: 'left' });
+    y += 14;
+  }
+  doc.text('Op. gravada:', 350, y, { width: 165, align: 'left' });
+  doc.text(money(order.subtotal, order.moneda), 475, y, { width: 80, align: 'right' });
+  y += 14;
+  doc.text('IGV:', 350, y, { width: 165, align: 'left' });
+  doc.text(money(order.igv, order.moneda), 475, y, { width: 80, align: 'right' });
+  y += 14;
+  if (Number(order.no_gravado) > 0) {
+    doc.text('No gravado:', 350, y, { width: 165, align: 'left' });
+    doc.text(money(order.no_gravado, order.moneda), 475, y, { width: 80, align: 'right' });
+    y += 14;
+  }
+  if (Number(order.percepcion) > 0) {
+    doc.text('Percepción:', 350, y, { width: 165, align: 'left' });
+    doc.text(money(order.percepcion, order.moneda), 475, y, { width: 80, align: 'right' });
+    y += 14;
+  }
+
+  doc.font('Helvetica-Bold').fontSize(12).fillColor(acento);
+  doc.text('TOTAL:', 350, y, { width: 120, align: 'left' });
+  doc.text(money(order.total, order.moneda), 475, y, { width: 80, align: 'right' });
+  doc.font('Helvetica-Bold').fontSize(8).fillColor('#333');
+  doc.text(montoEnLetras(order.total, order.moneda), 40, y + 3, { width: 290 });
+  y += 40;
+
+  const obsBoxH = 50;
+  doc.roundedRect(40, y, 515, obsBoxH, 5).stroke('#ddd');
+  doc.font('Helvetica-Bold').fontSize(8).fillColor(acento).text('OBSERVACIONES:', 50, y + 8);
+  doc.font('Helvetica').fontSize(8).fillColor('#333').text(order.observaciones || 'Sin observaciones.', 50, y + 22, { width: 495 });
+  y += obsBoxH + 12;
+
+  const barY = y + 8;
+  doc.rect(0, barY, 595, 40).fill(acento);
+  doc.font('Helvetica-Bold').fontSize(9).fillColor('#fff').text(
+    order.tipo_documento === 'orden_servicio' ? 'Orden de servicio para el proveedor.' : 'Orden de compra para el proveedor.',
+    40, barY + 14, { width: 515, align: 'center' }
+  );
+
+  return doc;
+}
+
 // Formato ticket/recibo angosto (rollo térmico de 80mm o 58mm), pensado para
 // impresoras de punto de venta. Al no tener el alto fijo de una hoja A4, se
 // estima según la cantidad de items para no dejar espacio de más ni cortar
@@ -790,4 +927,4 @@ function buildNotaVentaTicketPdf(notaVenta, items, empresa, acento, logo, width 
   return doc;
 }
 
-module.exports = { buildInvoicePdf, buildNotaVentaPdf };
+module.exports = { buildInvoicePdf, buildNotaVentaPdf, buildOrdenCompraPdf };

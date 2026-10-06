@@ -313,6 +313,23 @@ export default function Compras() {
     }
   }
 
+  // El endpoint del PDF exige el token de sesión (Authorization: Bearer) —
+  // un <a href> normal no puede mandar ese header, así que se pide con el
+  // cliente `api` (que sí lo agrega) y se abre el PDF resultante como blob.
+  // La pestaña se abre ANTES del await, en el mismo gesto del click, para
+  // que el navegador no la bloquee como popup (mismo patrón que Invoices.jsx).
+  async function handleVerPdfOrden(id) {
+    const ventana = window.open('', '_blank');
+    try {
+      const res = await api.get(`/purchase-orders/${id}/pdf`, { responseType: 'blob' });
+      const blobUrl = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+      if (ventana) ventana.location.href = blobUrl;
+    } catch (err) {
+      if (ventana) ventana.close();
+      toast.error(err.response?.data?.error || 'No se pudo abrir el PDF.');
+    }
+  }
+
   async function handleGuiaFile(e) {
     const file = e.target.files?.[0];
     e.target.value = '';
@@ -478,13 +495,18 @@ export default function Compras() {
                   <td>{r.sucursal || '—'}</td>
                   <td><span className={'badge ' + r.badgeClass}>{r.estadoLabel}</span></td>
                   <td>
-                    {r.puedeAnular ? (
-                      <button className="btn-link danger" onClick={() => (r.kind === 'compra' ? handleAnular(r.id) : handleAnularOrder(r.id))}>
-                        Anular
-                      </button>
-                    ) : (
-                      <span className="icon-link muted">—</span>
-                    )}
+                    <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                      {r.kind === 'orden' && (
+                        <button type="button" className="icon-link" title="Ver / imprimir PDF" onClick={() => handleVerPdfOrden(r.id)} style={{ background: 'none', border: 'none', padding: 0, font: 'inherit' }}>🖨️</button>
+                      )}
+                      {r.puedeAnular ? (
+                        <button className="btn-link danger" onClick={() => (r.kind === 'compra' ? handleAnular(r.id) : handleAnularOrder(r.id))}>
+                          Anular
+                        </button>
+                      ) : r.kind !== 'orden' ? (
+                        <span className="icon-link muted">—</span>
+                      ) : null}
+                    </div>
                   </td>
                 </tr>
               ))}

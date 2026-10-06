@@ -63,7 +63,7 @@ router.get('/', (req, res) => {
     : req.sucursalId;
 
   let sql = `
-    SELECT ct.id, ct.fecha, ct.abierto_at, ct.cerrado_at, ct.created_by, ct.sucursal_id,
+    SELECT ct.id, ct.fecha, ct.abierto_at, ct.cerrado_at, ct.cerrado_automaticamente, ct.created_by, ct.sucursal_id,
            u.full_name AS empleado_nombre, s.nombre AS sede_nombre
     FROM caja_turnos ct
     JOIN users u ON u.id = ct.created_by

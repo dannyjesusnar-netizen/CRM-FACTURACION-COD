@@ -5,6 +5,7 @@ const { round2, incrementarStock } = require('../utils/stock');
 const { requirePermiso, requireAccion } = require('../utils/permisos');
 const { siguienteNumero } = require('../utils/series');
 const { hoyPeru } = require('../utils/fechas');
+const { buildOrdenCompraPdf } = require('../utils/pdf');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -68,6 +69,33 @@ router.get('/:id', (req, res) => {
      FROM purchase_order_items oi JOIN products pr ON pr.id = oi.product_id WHERE oi.purchase_order_id = ?`
   ).all(req.params.id);
   res.json({ ...order, items });
+});
+
+// GET /api/purchase-orders/:id/pdf — PDF de la orden (para dársela al
+// proveedor), mismo mecanismo que el PDF de Nota de Venta Interna.
+router.get('/:id/pdf', async (req, res) => {
+  const order = db.prepare(
+    `SELECT po.*, s.nombre AS proveedor_nombre, s.ruc AS proveedor_ruc
+     FROM purchase_orders po JOIN suppliers s ON s.id = po.supplier_id WHERE po.id = ? AND po.sucursal_id = ?`
+  ).get(req.params.id, req.sucursalId);
+  if (!order) return res.status(404).json({ error: 'Orden de compra no encontrada.' });
+  const items = db.prepare(
+    `SELECT oi.*, pr.nombre AS producto_nombre, pr.codigo AS producto_codigo
+     FROM purchase_order_items oi JOIN products pr ON pr.id = oi.product_id WHERE oi.purchase_order_id = ?`
+  ).all(req.params.id);
+  const proveedor = { nombre: order.proveedor_nombre, ruc: order.proveedor_ruc };
+  const empresa = db.prepare('SELECT * FROM empresa_config WHERE id = 1').get();
+  let doc;
+  try {
+    doc = await buildOrdenCompraPdf(order, items, proveedor, empresa);
+  } catch (err) {
+    console.error('Error generando el PDF de la orden de compra:', err);
+    return res.status(500).json({ error: 'No se pudo generar el PDF de la orden de compra.' });
+  }
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `inline; filename="${order.serie}-${order.numero_doc}.pdf"`);
+  doc.pipe(res);
+  doc.end();
 });
 
 router.post('/', requireAccion('compras', 'registrar_compra'), (req, res) => {
