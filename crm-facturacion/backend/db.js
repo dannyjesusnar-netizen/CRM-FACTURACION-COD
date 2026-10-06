@@ -1509,6 +1509,15 @@ CREATE TABLE IF NOT EXISTS caja_turnos (
 );
 `);
 
+  // Cierre automático de turnos de caja que nadie cerró antes de las
+  // 11:30pm hora de Perú (ver utils/cierreAutomaticoCaja.js, programado en
+  // server.js) — se distingue de un cierre a mano para que Planilla/Caja
+  // puedan mostrarlo distinto y que no parezca que el vendedor lo cerró él.
+  const cajaTurnosColumns = db.prepare("PRAGMA table_info(caja_turnos)").all().map((c) => c.name);
+  if (!cajaTurnosColumns.includes('cerrado_automaticamente')) {
+    db.exec("ALTER TABLE caja_turnos ADD COLUMN cerrado_automaticamente INTEGER NOT NULL DEFAULT 0");
+  }
+
   // Backfill: el toggle "Tablero de Ventas" (Configuración → Roles →
   // Inicio) es nuevo — antes de que existiera, cualquier rol llamado
   // "Supervisor" ya veía el Tablero de Ventas del Dashboard de forma

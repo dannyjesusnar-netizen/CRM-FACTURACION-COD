@@ -59,6 +59,7 @@ const biTokenRoutes = require('./routes/biTokens');
 const biRoutes = require('./routes/bi');
 const { procesarCobrosVencidos } = require('./utils/facturacionPlataforma');
 const { sincronizarPendientesDeTodasLasEmpresas } = require('./utils/sincronizarSunat');
+const { programarCierreAutomaticoDiario } = require('./utils/cierreAutomaticoCaja');
 const backup = require('./utils/backup');
 const db = require('./db');
 const tenantRegistry = require('./tenantRegistry');
@@ -212,6 +213,13 @@ setInterval(() => {
   sincronizarPendientesDeTodasLasEmpresas().catch((err) => console.error('Error sincronizando estado SUNAT:', err));
 }, SEIS_HORAS_MS);
 sincronizarPendientesDeTodasLasEmpresas().catch((err) => console.error('Error sincronizando estado SUNAT:', err));
+
+// Cierre automático de turnos de caja que nadie cerró — a las 11:30pm hora
+// de Perú (ver utils/cierreAutomaticoCaja.js). A diferencia de los demás
+// trabajos de fondo de acá arriba, esta función programa su propio
+// setTimeout/setInterval (tiene que esperar a una HORA DEL DÍA concreta, no
+// correr cada N horas desde que arrancó el servidor).
+programarCierreAutomaticoDiario();
 
 // Respaldo automático de CADA empresa de esta instancia (la del despliegue
 // original + cada una que se auto-registró desde "Registrar mi empresa" —
