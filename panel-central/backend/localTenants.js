@@ -256,6 +256,37 @@ function documentosPorSede(ruc, { anio, mes } = {}) {
   });
 }
 
+// Mismo reporte que documentosPorSede, pero para TODAS las empresas de esta
+// instancia a la vez — para el área de Reportes de QORIA Central ("¿qué
+// sede de qué empresa emite más?"), en vez de tener que abrirlas una por
+// una. Devuelve cada sede de cada empresa en una sola lista plana (más
+// fácil de ordenar/leer que agruparlas por empresa), más un total general.
+function documentosPorSedeTodasLasEmpresas({ anio, mes } = {}) {
+  if (!tenantRegistry) return { anio, mes, empresas: [], sedes: [], total: { boletas: 0, facturas: 0, notas_credito: 0, notas_venta: 0, total: 0 } };
+  const tenants = tenantRegistry.listTodos();
+  const sedes = [];
+  let anioResuelto = anio;
+  let mesResuelto = mes;
+  for (const t of tenants) {
+    const resultado = documentosPorSede(t.ruc, { anio, mes });
+    if (!resultado) continue;
+    anioResuelto = resultado.anio;
+    mesResuelto = resultado.mes;
+    for (const s of resultado.sedes) {
+      sedes.push({ ...s, ruc: t.ruc, razon_social: t.razon_social });
+    }
+  }
+  sedes.sort((a, b) => b.total - a.total);
+  const total = sedes.reduce((acc, s) => ({
+    boletas: acc.boletas + s.boletas,
+    facturas: acc.facturas + s.facturas,
+    notas_credito: acc.notas_credito + s.notas_credito,
+    notas_venta: acc.notas_venta + s.notas_venta,
+    total: acc.total + s.total,
+  }), { boletas: 0, facturas: 0, notas_credito: 0, notas_venta: 0, total: 0 });
+  return { anio: anioResuelto, mes: mesResuelto, sedes, total };
+}
+
 // Cuentas de empleados de esa empresa (mismo cross-db que listarMensajes),
 // para poder restablecerles la clave desde acá cuando lo pidan.
 function listarUsuarios(ruc) {
@@ -282,5 +313,5 @@ function restablecerClave(ruc, userId, password) {
 module.exports = {
   disponible, listarEmpresas, encontrar, crearEmpresaDemo, aprobar, rechazar, activar, desactivar, setCosto, setSedesLibres,
   setTipoNegocio, listarPagos, listarMensajes, marcarMensajeLeido, listarSolicitudesSede, resolverSolicitudSede,
-  listarUsuarios, restablecerClave, documentosPorSede,
+  listarUsuarios, restablecerClave, documentosPorSede, documentosPorSedeTodasLasEmpresas,
 };

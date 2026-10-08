@@ -1,4 +1,4 @@
-import { Outlet, useNavigate } from 'react-router-dom';
+import { Outlet, useNavigate, NavLink } from 'react-router-dom';
 import { LogOut, KeyRound } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -18,6 +18,10 @@ export default function Layout() {
           <span className="brand-mark">QORIA</span>
           <span className="brand-suffix">Central</span>
         </div>
+        <nav className="topbar-nav">
+          <NavLink to="/empresas" className={({ isActive }) => 'topbar-nav-link' + (isActive ? ' active' : '')}>Empresas</NavLink>
+          <NavLink to="/reportes" className={({ isActive }) => 'topbar-nav-link' + (isActive ? ' active' : '')}>Reportes</NavLink>
+        </nav>
         <div className="topbar-company">{admin?.full_name || admin?.email}</div>
         <div className="topbar-actions">
           <button type="button" className="icon-btn" title="Cambiar contraseña" onClick={() => navigate('/cambiar-contrasena')}>
