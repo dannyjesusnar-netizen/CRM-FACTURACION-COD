@@ -134,13 +134,16 @@ function round2(n) {
   return Math.round((n + Number.EPSILON) * 100) / 100;
 }
 
-// ¿Este "motivo" en realidad es la página de error cruda de un servidor
-// caído (502/500/timeout de la pasarela de SUNAT), no un mensaje real de
-// rechazo de SUNAT? Un rechazo real es una frase corta tipo "El RUC del
-// cliente es inválido" — esto detecta el patrón contrario: HTML completo o
-// el texto típico de un error de infraestructura.
+// ¿Este "motivo" en realidad es un error de infraestructura (servidor
+// caído, timeout de conexión, etc.), no un mensaje real de rechazo de
+// SUNAT? Un rechazo real es una frase corta en español tipo "El RUC del
+// cliente es inválido" — esto detecta el patrón contrario: HTML completo,
+// el texto típico de un servidor caído, o el nombre de una excepción de
+// bajo nivel (Nubefact antepone "[Error <Excepción>]" cuando la falla es
+// de conexión, no de validación — visto en producción tanto con
+// "HTTP error (502): <!DOCTYPE html>..." como con "Net::ReadTimeout").
 function pareceErrorDeInfraestructura(texto) {
-  return /<!DOCTYPE|<html[\s>]|<\/html>|http error|bad gateway|internal server error|\b50[0-9]\b.{0,10}(error|gateway)/i.test(texto || '');
+  return /^\s*\[Error\b|<!DOCTYPE|<html[\s>]|<\/html>|http error|bad gateway|internal server error|\btimeout\b|\bread\s*timeout\b|net::\w+|\bECONNRESET\b|\bECONNREFUSED\b|\bETIMEDOUT\b|\b50[0-9]\b.{0,10}(error|gateway)/i.test(texto || '');
 }
 
 // Traduce la respuesta cruda del OSE (misma forma tanto al emitir como al
