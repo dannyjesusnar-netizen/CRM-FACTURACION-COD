@@ -41,7 +41,23 @@ function SunatEstadoIcon({ inv, onSincronizar, sincronizando }) {
     return <span className="icon-link" style={{ color: 'var(--good)' }} title={inv.sunat_mensaje || 'Aceptado por SUNAT'}><CheckCircle2 size={18} /></span>;
   }
   if (inv.sunat_estado === 'rechazado') {
-    return <span className="icon-link" style={{ color: 'var(--critical)' }} title={inv.sunat_mensaje || 'Rechazado por SUNAT'}><XCircle size={18} /></span>;
+    // Es un botón, no solo un ícono, por el mismo motivo que 'error' y
+    // 'pendiente' más abajo: un rechazo que en realidad fue una caída
+    // momentánea de SUNAT (ver utils/facturacionElectronica.js) se queda
+    // así para siempre si nadie vuelve a consultar — este botón fuerza esa
+    // consulta sin esperar al job automático.
+    return (
+      <button
+        type="button"
+        className="icon-link"
+        style={{ color: 'var(--critical)', background: 'none', border: 'none', padding: 0, cursor: sincronizando ? 'wait' : 'pointer' }}
+        onClick={onSincronizar}
+        disabled={sincronizando}
+        title={`${inv.sunat_mensaje || 'Rechazado por SUNAT'} — clic para volver a consultar con SUNAT (por si en realidad fue una caída momentánea, no un rechazo real).`}
+      >
+        <XCircle size={18} />
+      </button>
+    );
   }
   if (inv.sunat_estado === 'error') {
     return (
