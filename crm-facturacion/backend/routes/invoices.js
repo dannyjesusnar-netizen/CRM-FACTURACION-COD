@@ -4,7 +4,7 @@ const { requireAuth, resolveSucursal } = require('../middleware/auth');
 const { buildInvoicePdf } = require('../utils/pdf');
 const { consumirStock, incrementarStock, ajustarStockSucursal, getStockSucursal, StockInsuficienteError } = require('../utils/stock');
 const { emitirComprobante, consultarComprobante, estaConfigurado } = require('../utils/facturacionElectronica');
-const { reenviarComprobante } = require('../utils/sincronizarSunat');
+const { reenviarComprobante, guardarResultado } = require('../utils/sincronizarSunat');
 const { requirePermiso, requireAccion, requireAlgunPermiso, tieneAccion, requireAccionSupervisor, tieneAccionSupervisor } = require('../utils/permisos');
 const { tieneTurnoAbierto } = require('../utils/cajaTurno');
 const { siguienteNumero } = require('../utils/series');
@@ -248,9 +248,13 @@ router.post('/:id/sincronizar-sunat', async (req, res) => {
   if (invoice.modo_emision !== 'real') {
     return res.status(400).json({ error: 'Este comprobante no se envió realmente a SUNAT (modo simulado).' });
   }
-  const resultado = invoice.sunat_estado === 'error'
-    ? await reenviarComprobante(invoice.id)
-    : await consultarComprobante(invoice);
+  let resultado;
+  if (invoice.sunat_estado === 'error') {
+    resultado = await reenviarComprobante(invoice.id); // ya deja guardado el resultado
+  } else {
+    resultado = await consultarComprobante(invoice);
+    if (resultado) guardarResultado(invoice, resultado); // consultarComprobante no guarda por su cuenta
+  }
   if (!resultado) {
     return res.status(502).json({ error: 'No se pudo comunicar con el OSE. Intenta de nuevo en un momento.' });
   }

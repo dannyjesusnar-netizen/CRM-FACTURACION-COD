@@ -106,4 +106,4 @@ async function sincronizarPendientesDeTodasLasEmpresas() {
   }
 }
 
-module.exports = { sincronizarPendientesDeEmpresa, sincronizarPendientesDeTodasLasEmpresas, reenviarComprobante };
+module.exports = { sincronizarPendientesDeEmpresa, sincronizarPendientesDeTodasLasEmpresas, reenviarComprobante, guardarResultado };
