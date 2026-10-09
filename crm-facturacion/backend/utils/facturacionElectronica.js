@@ -134,6 +134,15 @@ function round2(n) {
   return Math.round((n + Number.EPSILON) * 100) / 100;
 }
 
+// ¿Este "motivo" en realidad es la página de error cruda de un servidor
+// caído (502/500/timeout de la pasarela de SUNAT), no un mensaje real de
+// rechazo de SUNAT? Un rechazo real es una frase corta tipo "El RUC del
+// cliente es inválido" — esto detecta el patrón contrario: HTML completo o
+// el texto típico de un error de infraestructura.
+function pareceErrorDeInfraestructura(texto) {
+  return /<!DOCTYPE|<html[\s>]|<\/html>|http error|bad gateway|internal server error|\b50[0-9]\b.{0,10}(error|gateway)/i.test(texto || '');
+}
+
 // Traduce la respuesta cruda del OSE (misma forma tanto al emitir como al
 // volver a consultar un comprobante ya enviado) al estado que guardamos
 // nosotros. Separado de emitirComprobante para poder reusarlo en
@@ -159,8 +168,22 @@ function interpretarRespuestaOse(data) {
   // consultar a SUNAT, y esos tres campos quedan null para siempre.
   // Solo lo marcamos "rechazado" cuando de verdad viene un motivo.
   const motivoRechazo = data.sunat_description || data.sunat_note || data.sunat_soap_error || null;
-  if (motivoRechazo) {
+  if (motivoRechazo && !pareceErrorDeInfraestructura(motivoRechazo)) {
     return { modo_emision: 'real', sunat_estado: 'rechazado', sunat_mensaje: motivoRechazo };
+  }
+  // Una caída momentánea de la pasarela de SUNAT (502/500/timeout) a veces
+  // le llega a Nubefact como una página de error HTML cruda en vez de un
+  // mensaje real, y Nubefact la reenvía tal cual en esos mismos campos.
+  // Sin este filtro, ese texto se confundía con un motivo de rechazo
+  // real — un estado que ni el job automático (sincronizarSunat.js) ni el
+  // botón manual reintentan — y la venta quedaba "rechazada" para siempre
+  // por una caída de SUNAT, no por un problema real del comprobante.
+  if (motivoRechazo) {
+    return {
+      modo_emision: 'real',
+      sunat_estado: 'pendiente',
+      sunat_mensaje: 'SUNAT tuvo una falla momentánea al recibir este comprobante (caída de su propio servidor) — se reintentará automáticamente.',
+    };
   }
 
   return {
