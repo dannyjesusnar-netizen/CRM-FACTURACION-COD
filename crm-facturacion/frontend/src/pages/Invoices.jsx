@@ -25,6 +25,16 @@ function envioBadgeLabel(inv) {
   return 'Enviado a SUNAT';
 }
 
+// Detecta el mensaje que nosotros mismos dejamos (ver
+// utils/facturacionElectronica.js:pareceErrorDeInfraestructura) cuando lo
+// que llegó de SUNAT no fue un rechazo real sino una caída de su servidor
+// (502, timeout, etc.) — para distinguir ese caso del "pendiente" normal
+// (boleta recién emitida, SUNAT confirma al día siguiente) y mostrar un
+// botón de "Reintentar" más visible en vez del simple ícono de reloj.
+function esCaidaMomentaneaSunat(mensaje) {
+  return /falla moment.nea|ca.da de su propio servidor/i.test(mensaje || '');
+}
+
 // Columna "SUNAT": un símbolo en vez de texto, como en Nubefact/RapiFac — el
 // detalle (motivo de rechazo, etc.) sigue disponible al pasar el mouse. El
 // reloj (pendiente) es además un botón: sunat_estado solo se graba una vez,
@@ -70,6 +80,23 @@ function SunatEstadoIcon({ inv, onSincronizar, sincronizando }) {
         title={`${inv.sunat_mensaje || 'Error de envío'} — clic para reintentar el envío a SUNAT (no genera un número nuevo, reenvía con el mismo).`}
       >
         <AlertTriangle size={18} />
+      </button>
+    );
+  }
+  if (esCaidaMomentaneaSunat(inv.sunat_mensaje)) {
+    return (
+      <button
+        type="button"
+        style={{
+          color: '#b45309', background: 'rgba(217, 119, 6, 0.1)', border: '1px solid #d97706',
+          borderRadius: 6, padding: '3px 8px', display: 'inline-flex', alignItems: 'center', gap: 4,
+          fontSize: 12, fontWeight: 700, cursor: sincronizando ? 'wait' : 'pointer', whiteSpace: 'nowrap',
+        }}
+        onClick={onSincronizar}
+        disabled={sincronizando}
+        title={`${inv.sunat_mensaje} — clic para volver a consultar con SUNAT.`}
+      >
+        <AlertTriangle size={14} /> {sincronizando ? 'Consultando…' : 'Reintentar'}
       </button>
     );
   }
