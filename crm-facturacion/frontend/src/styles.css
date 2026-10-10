@@ -1059,6 +1059,22 @@ html.dark .btn-export { color: #04231e; }
 .reports-content { flex: 1; min-width: 0; padding: 24px 26px; }
 .reports-content .report-toolbar { margin-top: 0; }
 
+/* En móvil el riel de 220px (Empresa, Comprobantes, Descuentos...) no cabe
+   al lado del contenido — lo apachurraba contra el borde derecho, casi sin
+   espacio para leer nada. Mismo truco que .sidenav más arriba: pasa a ser
+   una barra horizontal angosta arriba, con scroll propio, y el contenido se
+   queda con todo el ancho debajo. */
+@media (max-width: 720px) {
+  .reports-shell { flex-direction: column; }
+  .reports-sidebar {
+    width: 100%; display: flex; overflow-x: auto; overflow-y: hidden; scrollbar-width: none;
+    border-right: none; border-bottom: 1px solid var(--border); padding: 6px 8px;
+  }
+  .reports-sidebar::-webkit-scrollbar { display: none; }
+  .reports-sidebar-item { border-left: none; border-radius: 10px; white-space: nowrap; flex-shrink: 0; }
+  .reports-content { padding: 16px 14px; }
+}
+
 /* ---------- Series y correlativos: Ventas en dos columnas ---------- */
 .series-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 0 32px; align-items: start; }
 @media (max-width: 720px) {

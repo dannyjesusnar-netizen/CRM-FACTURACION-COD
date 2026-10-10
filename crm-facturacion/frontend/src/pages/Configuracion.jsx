@@ -280,7 +280,8 @@ const SERIES_COMPRAS = ['orden_compra', 'orden_servicio'];
 function SerieTable({ tipos, series, updateSerieField }) {
   const filas = tipos.map((t) => series.find((s) => s.tipo_documento === t)).filter(Boolean);
   return (
-    <table className="data-table">
+    <div className="table-scroll">
+      <table className="data-table">
       <thead>
         <tr><th>Documento</th><th>Serie</th><th>Correlativo</th></tr>
       </thead>
@@ -305,6 +306,7 @@ function SerieTable({ tipos, series, updateSerieField }) {
         )}
       </tbody>
     </table>
+    </div>
   );
 }
 
@@ -1796,7 +1798,8 @@ export default function Configuracion() {
               )}
 
               <h4 style={{ marginTop: 24 }}>Tokens existentes</h4>
-              <table className="data-table" style={{ maxWidth: 640 }}>
+              <div className="table-scroll">
+                <table className="data-table" style={{ maxWidth: 640 }}>
                 <thead>
                   <tr><th>Nombre</th><th>Creado</th><th>Último uso</th><th></th></tr>
                 </thead>
@@ -1818,6 +1821,7 @@ export default function Configuracion() {
                   )}
                 </tbody>
               </table>
+              </div>
 
               <h4 style={{ marginTop: 24 }}>Cómo conectarlo en Power BI Desktop</h4>
               <ol style={{ paddingLeft: 20, fontSize: 13, lineHeight: 1.8, maxWidth: 640 }}>
@@ -2079,7 +2083,8 @@ export default function Configuracion() {
                     Ya usaste tus sedes libres. Para crear una sede adicional, envía una solicitud — la aprueba tu proveedor.
                   </p>
                 )}
-                <table className="data-table">
+                <div className="table-scroll">
+                  <table className="data-table">
                   <thead>
                     <tr><th>Nombre</th><th>Dirección</th><th>Estado</th><th></th></tr>
                   </thead>
@@ -2110,11 +2115,13 @@ export default function Configuracion() {
                     )}
                   </tbody>
                 </table>
+                </div>
 
                 {solicitudesSede.length > 0 && (
                   <>
                     <h4 style={{ marginTop: 24 }}>Mis solicitudes de sede</h4>
-                    <table className="data-table">
+                    <div className="table-scroll">
+                      <table className="data-table">
                       <thead>
                         <tr><th>Fecha</th><th>Sede solicitada</th><th>Dirección</th><th>Estado</th><th>Respuesta</th></tr>
                       </thead>
@@ -2134,6 +2141,7 @@ export default function Configuracion() {
                         ))}
                       </tbody>
                     </table>
+                    </div>
                   </>
                 )}
               </>
@@ -2310,7 +2318,8 @@ export default function Configuracion() {
                 {(categoriaFiltroUsuarios || sedeFiltroUsuarios) ? ' (con los filtros de categoría/sede aplicados)' : ''}
               </p>
 
-              <table className="data-table">
+              <div className="table-scroll">
+                <table className="data-table">
                 <thead>
                   <tr>
                     <th>Nombres</th><th>Apellidos</th><th>Rol</th><th>Sede</th><th>N° documento</th><th>Correo</th><th>Teléfono</th><th>Estado</th><th></th>
@@ -2349,6 +2358,7 @@ export default function Configuracion() {
                   )}
                 </tbody>
               </table>
+              </div>
 
               <div className="report-toolbar" style={{ marginTop: 28 }}>
                 <h3 style={{ margin: 0 }}>Entrenadores y Supervisores operativos</h3>
@@ -2409,7 +2419,8 @@ export default function Configuracion() {
                 {(categoriaFiltroOperativos || sedeFiltroOperativos) ? ' (con los filtros de categoría/sede aplicados)' : ''}
               </p>
 
-              <table className="data-table">
+              <div className="table-scroll">
+                <table className="data-table">
                 <thead>
                   <tr>
                     <th>Nombres</th><th>Apellidos</th><th>Categoría</th><th>Sede</th><th>N° documento</th><th>Turno</th><th>Estado</th><th></th>
@@ -2443,6 +2454,7 @@ export default function Configuracion() {
                   )}
                 </tbody>
               </table>
+              </div>
             </>
           )}
 
@@ -2474,7 +2486,8 @@ export default function Configuracion() {
                   </select>
                 </div>
               </div>
-              <table className="data-table">
+              <div className="table-scroll">
+                <table className="data-table">
                 <thead>
                   <tr>
                     <th>Sede</th><th>Categoría</th><th style={{ textAlign: 'right' }}>Empleados activos</th>
@@ -2590,6 +2603,7 @@ export default function Configuracion() {
                               cuota individual de la sede y sobre el cálculo por pool/dotación de arriba. Déjala
                               en blanco para que ese vendedor vuelva a la cuota de su sede.
                             </p>
+                            <div className="table-scroll">
                             <table className="data-table compact">
                               <thead>
                                 <tr>
@@ -2630,6 +2644,7 @@ export default function Configuracion() {
                                 )}
                               </tbody>
                             </table>
+                            </div>
                           </td>
                         </tr>
                       )}
@@ -2641,6 +2656,7 @@ export default function Configuracion() {
                   )}
                 </tbody>
               </table>
+              </div>
             </>
           )}
 
@@ -2654,7 +2670,8 @@ export default function Configuracion() {
                 Un % con nombre y vigencia (ej. "Descuento Gimnasio" 10%) que el vendedor elige de una lista al
                 registrar una venta, en vez de escribir el % a mano. Aplica sobre el total de toda la venta.
               </p>
-              <table className="data-table">
+              <div className="table-scroll">
+                <table className="data-table">
                 <thead>
                   <tr>
                     <th>Nombre</th><th style={{ textAlign: 'right' }}>Porcentaje</th><th>Sede</th>
@@ -2682,6 +2699,7 @@ export default function Configuracion() {
                   )}
                 </tbody>
               </table>
+              </div>
             </>
           )}
 
@@ -2691,7 +2709,8 @@ export default function Configuracion() {
                 <h3 style={{ margin: 0 }}>Roles de usuario</h3>
                 <button className="btn-primary" style={{ width: 'auto' }} onClick={() => navigate('/configuracion/roles/nuevo')}>Nuevo Rol de usuario</button>
               </div>
-              <table className="data-table">
+              <div className="table-scroll">
+                <table className="data-table">
                 <thead>
                   <tr><th>Nombre</th><th>Descripción</th><th>Estado</th><th></th></tr>
                 </thead>
@@ -2725,6 +2744,7 @@ export default function Configuracion() {
                   )}
                 </tbody>
               </table>
+              </div>
             </>
           )}
 
@@ -2786,7 +2806,8 @@ export default function Configuracion() {
               </form>
               {errorCanalMovimiento && <div className="form-error" style={{ maxWidth: 460 }}>{errorCanalMovimiento}</div>}
 
-              <table className="data-table" style={{ marginTop: 16, maxWidth: 460 }}>
+              <div className="table-scroll">
+                <table className="data-table" style={{ marginTop: 16, maxWidth: 460 }}>
                 <thead>
                   <tr><th>Nombre</th><th></th></tr>
                 </thead>
@@ -2804,6 +2825,7 @@ export default function Configuracion() {
                   )}
                 </tbody>
               </table>
+              </div>
             </>
           )}
 
@@ -2908,7 +2930,8 @@ export default function Configuracion() {
               >
                 {creandoRespaldo ? 'Creando...' : '+ Crear respaldo ahora'}
               </button>
-              <table className="data-table" style={{ maxWidth: 560, marginTop: 16 }}>
+              <div className="table-scroll">
+                <table className="data-table" style={{ maxWidth: 560, marginTop: 16 }}>
                 <thead>
                   <tr><th>Fecha</th><th>Tamaño</th><th></th></tr>
                 </thead>
@@ -2927,6 +2950,7 @@ export default function Configuracion() {
                   )}
                 </tbody>
               </table>
+              </div>
             </>
           )}
 
