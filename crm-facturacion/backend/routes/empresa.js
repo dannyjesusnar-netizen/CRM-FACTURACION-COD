@@ -21,7 +21,11 @@ router.get('/', (req, res) => {
   // restaurantes; sin RUC configurado todavía (instalación recién
   // desplegada) o sin match en el registro, default "general".
   const tenant = config?.ruc ? tenantRegistry.findTenant(config.ruc) : null;
-  res.json({ ...config, tipo_negocio: tenant?.tipo_negocio || 'general' });
+  // nubefact_token nunca sale de este endpoint general (lo consume
+  // cualquier pantalla que pida los datos de la empresa) — ver
+  // GET /nubefact más abajo, que lo enmascara a propósito.
+  const { nubefact_token, ...publico } = config || {};
+  res.json({ ...publico, tipo_negocio: tenant?.tipo_negocio || 'general' });
 });
 
 const LOGO_MAX_BYTES = 1.5 * 1024 * 1024; // ~1.5MB en base64
@@ -92,7 +96,47 @@ router.put('/', requireEmpresa, (req, res) => {
   if (!req.user?.ruc) {
     tenantRegistry.adoptarInstanciaBase({ ruc, razon_social: nombre_comercial || razon_social });
   }
-  res.json(db.prepare('SELECT * FROM empresa_config WHERE id = 1').get());
+  const { nubefact_token, ...actualizado } = db.prepare('SELECT * FROM empresa_config WHERE id = 1').get() || {};
+  res.json(actualizado);
+});
+
+// La cuenta de Nubefact (el OSE) de esta empresa — separado del formulario
+// principal de "Datos de la empresa" a propósito: el token es una
+// credencial sensible y este endpoint nunca la devuelve en claro una vez
+// guardada (solo los últimos 4 caracteres, para confirmar cuál está puesta
+// sin reexponerla por la red cada vez que se abre esta pantalla). Ver
+// utils/facturacionElectronica.js: si esta empresa no configura la suya,
+// el sistema sigue usando NUBEFACT_RUTA/TOKEN del servidor como antes.
+router.get('/nubefact', requireEmpresa, (req, res) => {
+  const config = db.prepare('SELECT nubefact_ruta, nubefact_token FROM empresa_config WHERE id = 1').get();
+  const token = config?.nubefact_token || '';
+  res.json({
+    nubefact_ruta: config?.nubefact_ruta || '',
+    token_configurado: Boolean(token),
+    token_enmascarado: token ? `••••${token.slice(-4)}` : null,
+    usando_variable_de_entorno: !config?.nubefact_ruta && !config?.nubefact_token && Boolean(process.env.NUBEFACT_RUTA && process.env.NUBEFACT_TOKEN),
+  });
+});
+
+router.put('/nubefact', requireEmpresa, (req, res) => {
+  const { nubefact_ruta, nubefact_token } = req.body || {};
+  const existing = db.prepare('SELECT nubefact_token FROM empresa_config WHERE id = 1').get();
+  db.prepare(
+    `UPDATE empresa_config SET nubefact_ruta = ?, nubefact_token = ?, updated_at = datetime('now'), updated_by = ? WHERE id = 1`
+  ).run(
+    nubefact_ruta ? nubefact_ruta.trim() : null,
+    // Campo vacío = "no cambiar" (el frontend nunca recibe el token real
+    // para poder reenviarlo tal cual); solo un valor nuevo lo reemplaza.
+    nubefact_token && nubefact_token.trim() ? nubefact_token.trim() : existing?.nubefact_token || null,
+    req.user?.id || null
+  );
+  const config = db.prepare('SELECT nubefact_ruta, nubefact_token FROM empresa_config WHERE id = 1').get();
+  const token = config?.nubefact_token || '';
+  res.json({
+    nubefact_ruta: config?.nubefact_ruta || '',
+    token_configurado: Boolean(token),
+    token_enmascarado: token ? `••••${token.slice(-4)}` : null,
+  });
 });
 
 // PUT /api/empresa/direccion { direccion_fiscal } -> edición rápida de la

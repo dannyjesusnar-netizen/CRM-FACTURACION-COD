@@ -193,15 +193,22 @@ hoy (modo simulado). Para activarlo:
    empresa (algo como `https://api.nubefact.com/api/v1/<id-de-tu-cuenta>`),
    no una URL genérica. Esa misma RUTA y TOKEN sirven igual en modo demo y en
    producción — no hay credenciales separadas para cada uno.
-3. Agrega estas variables de entorno al backend (en Render: Settings →
-   Environment):
+3. Carga esa RUTA y ese TOKEN en Configuración → Empresa → "Cuenta de
+   Nubefact" (se guardan por empresa en la base de datos — necesario en una
+   instancia que factura para más de una empresa, ver "Sedes libres..." más
+   abajo y `utils/facturacionElectronica.js`). Como alternativa, en una
+   instancia de una sola empresa también puedes agregar estas variables de
+   entorno al backend (en Render: Settings → Environment) — se usan solo si
+   la empresa no configuró las suyas desde la pantalla:
 
    | Variable | Valor |
    | --- | --- |
    | `NUBEFACT_RUTA` | la URL exacta que te muestra Nubefact en "API - Integración" |
    | `NUBEFACT_TOKEN` | el token que te muestra ahí mismo |
 
-4. Reinicia el servicio. Al emitir una Factura, Boleta o Nota de Crédito, el
+4. Si usaste variables de entorno, reinicia el servicio (cargar la cuenta
+   desde Configuración → Empresa aplica al instante, sin reinicio). Al
+   emitir una Factura, Boleta o Nota de Crédito, el
    sistema ahora intentará enviarla a SUNAT vía Nubefact automáticamente. La
    venta **siempre se guarda localmente primero** (stock, kardex, numeración);
    si el envío al OSE falla por cualquier motivo, la venta no se pierde —

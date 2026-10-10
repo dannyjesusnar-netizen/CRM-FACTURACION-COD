@@ -434,6 +434,24 @@ export default function Configuracion() {
   const [miIp, setMiIp] = useState('');
   const [cargandoMiIp, setCargandoMiIp] = useState(false);
 
+  // --- Cuenta de Nubefact (OSE) de esta empresa ---
+  // Separado de "empresa" porque el token nunca viaja en claro una vez
+  // guardado (ver GET/PUT /empresa/nubefact) — este estado solo guarda lo
+  // enmascarado para mostrar, más los inputs del formulario (que sí viajan
+  // en claro al guardar, nunca al cargar).
+  const [nubefactInfo, setNubefactInfo] = useState(null);
+  const [nubefactRutaInput, setNubefactRutaInput] = useState('');
+  const [nubefactTokenInput, setNubefactTokenInput] = useState('');
+  const [guardandoNubefact, setGuardandoNubefact] = useState(false);
+  const [errorNubefact, setErrorNubefact] = useState('');
+
+  function loadNubefact() {
+    api.get('/empresa/nubefact').then((res) => {
+      setNubefactInfo(res.data);
+      setNubefactRutaInput(res.data.nubefact_ruta || '');
+    });
+  }
+
   // --- Comprobantes (diseño del PDF) ---
   const [errorComprobantes, setErrorComprobantes] = useState('');
   const [savingComprobantes, setSavingComprobantes] = useState(false);
@@ -573,6 +591,7 @@ export default function Configuracion() {
 
   useEffect(() => {
     api.get('/empresa').then((res) => setEmpresa(res.data));
+    if (user?.role === 'gerencia' || user?.configuracion_acciones?.empresa) loadNubefact();
     loadSucursales();
     loadLimiteSucursales();
     loadMetodosPago();
@@ -1112,6 +1131,25 @@ export default function Configuracion() {
       setErrorEmpresa(err.response?.data?.error || 'No se pudo guardar.');
     } finally {
       setSavingEmpresa(false);
+    }
+  }
+
+  async function handleGuardarNubefact(e) {
+    e.preventDefault();
+    setErrorNubefact('');
+    setGuardandoNubefact(true);
+    try {
+      const res = await api.put('/empresa/nubefact', {
+        nubefact_ruta: nubefactRutaInput,
+        nubefact_token: nubefactTokenInput,
+      });
+      setNubefactInfo({ ...res.data, usando_variable_de_entorno: false });
+      setNubefactTokenInput('');
+      toast.success('Cuenta de Nubefact guardada.');
+    } catch (err) {
+      setErrorNubefact(err.response?.data?.error || 'No se pudo guardar.');
+    } finally {
+      setGuardandoNubefact(false);
     }
   }
 
@@ -1938,6 +1976,47 @@ export default function Configuracion() {
                     )}
                   </div>
                 </div>
+              </div>
+
+              <div className="panel" style={{ maxWidth: 560, marginTop: 20 }}>
+                <h3 style={{ marginTop: 0 }}>Cuenta de Nubefact (facturación electrónica real)</h3>
+                <p style={{ fontSize: 12, color: 'var(--ink-muted)' }}>
+                  La RUTA y el TOKEN que te da Nubefact al contratar tu cuenta (panel de Nubefact → "API - Integración").
+                  Cada empresa factura bajo su propio RUC, así que necesita su propia cuenta — esto NO se comparte con
+                  otras empresas que usen este mismo sistema. Sin esto configurado (ni aquí ni por variable de entorno
+                  del servidor), el sistema sigue en modo simulado: nunca se marca nada como aceptado por SUNAT sin una
+                  confirmación real de Nubefact.
+                </p>
+                {nubefactInfo?.usando_variable_de_entorno && (
+                  <p style={{ fontSize: 12, color: 'var(--brand-blue-dark)' }}>
+                    Por ahora estás usando la cuenta configurada por variable de entorno del servidor (NUBEFACT_RUTA/TOKEN).
+                    Si guardas una cuenta propia acá, esta la reemplaza.
+                  </p>
+                )}
+                {nubefactInfo?.token_configurado && (
+                  <p style={{ fontSize: 12, color: 'var(--good)' }}>
+                    Token guardado: {nubefactInfo.token_enmascarado}
+                  </p>
+                )}
+                <form onSubmit={handleGuardarNubefact}>
+                  <label>Ruta (URL) de Nubefact</label>
+                  <input
+                    value={nubefactRutaInput}
+                    onChange={(e) => setNubefactRutaInput(e.target.value)}
+                    placeholder="https://api.nubefact.com/api/v1/tu-id-de-cuenta"
+                  />
+                  <label>Token</label>
+                  <input
+                    type="password"
+                    value={nubefactTokenInput}
+                    onChange={(e) => setNubefactTokenInput(e.target.value)}
+                    placeholder={nubefactInfo?.token_configurado ? 'Déjalo en blanco para no cambiarlo' : 'Pégalo tal cual lo da Nubefact'}
+                  />
+                  {errorNubefact && <div className="form-error">{errorNubefact}</div>}
+                  <button type="submit" className="btn-primary" style={{ width: 'auto', marginTop: 12 }} disabled={guardandoNubefact}>
+                    {guardandoNubefact ? 'Guardando…' : 'Guardar cuenta de Nubefact'}
+                  </button>
+                </form>
               </div>
 
               <div className="panel" style={{ maxWidth: 560, marginTop: 20 }}>

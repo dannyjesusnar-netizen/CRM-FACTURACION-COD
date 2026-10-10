@@ -931,6 +931,16 @@ CREATE TABLE IF NOT EXISTS metas_venta_usuario (
     // (Dashboard → Hoja 1), independiente de color_acento (que es el color
     // de marca usado en los PDF de comprobantes).
     ['color_tablero_ventas', "TEXT DEFAULT '#16a34a'"],
+    // Credenciales propias del OSE (Nubefact) de ESTA empresa — antes se
+    // leían de una sola variable de entorno global del servidor
+    // (NUBEFACT_RUTA/NUBEFACT_TOKEN), lo que solo funcionaba para una
+    // empresa por instancia. En una instancia multi-empresa (ver
+    // tenantRegistry.js) cada una factura bajo su propio RUC y necesita su
+    // propia cuenta de Nubefact — ver utils/facturacionElectronica.js. Si
+    // quedan vacías, ese módulo sigue usando la variable de entorno como
+    // antes (compatibilidad con instancias ya configuradas así).
+    ['nubefact_ruta', 'TEXT'],
+    ['nubefact_token', 'TEXT'],
   ];
   for (const [col, def] of EMPRESA_NEW_COLUMNS) {
     if (!empresaColumns.includes(col)) {
