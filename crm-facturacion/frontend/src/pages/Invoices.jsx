@@ -205,7 +205,7 @@ export default function Invoices() {
   }
 
   async function handleExportar(formato) {
-    const header = ['Fecha', 'Serie', 'Nro', 'Comprobante', 'Nro Doc', 'Nombre o Razon Social', 'Importe', 'Total', 'Estado'];
+    const header = ['Fecha', 'Serie', 'Nro', 'Comprobante', 'Nro Doc', 'Nombre o Razon Social', 'Observaciones', 'Importe', 'Total', 'Estado'];
     const rows = invoices.map((inv) => [
       inv.fecha_emision,
       inv.serie,
@@ -213,6 +213,7 @@ export default function Invoices() {
       tipoLabel(inv),
       inv.cliente_documento,
       inv.cliente_nombre,
+      inv.observaciones || '',
       inv.subtotal,
       inv.total,
       inv.estado,
@@ -361,6 +362,7 @@ export default function Invoices() {
                 <th>Comprobante</th>
                 <th>Nro Doc</th>
                 <th>Nombre o Razón Social</th>
+                <th>Observaciones</th>
                 <th>Atribuido a</th>
                 <th style={{ textAlign: 'right' }}>Importe</th>
                 <th style={{ textAlign: 'right' }}>Total</th>
@@ -383,6 +385,9 @@ export default function Invoices() {
                   <td>{tipoLabel(inv)}</td>
                   <td>{inv.cliente_documento}</td>
                   <td>{inv.cliente_nombre}</td>
+                  <td style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={inv.observaciones || ''}>
+                    {inv.observaciones || '—'}
+                  </td>
                   <td>
                     {puedeReatribuir && entrenadores.length > 0 && inv.estado !== 'anulado' ? (
                       <select
