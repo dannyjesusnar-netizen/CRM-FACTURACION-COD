@@ -200,12 +200,17 @@ router.post('/', requireAccion('ventas', 'nota_venta'), requireTurnoCajaAbierto,
   // venta puede elegir que cuente para otro Trainer, Supervisor, Vendedor
   // o Gerencia de su misma sede en el Ranking del Tablero de Ventas.
   let atribuidoA = null;
+  // atribucion_tipo='referido' — mismo criterio que invoices.js POST /: se
+  // eligió acá, al registrar la venta, a diferencia de una reasignación
+  // posterior (ver PUT /:id/atribuido-a, que graba 'regalo').
+  let atribucionTipo = null;
   if (atribuido_a_id) {
     const entrenador = usuarioAtribuible(atribuido_a_id, req.sucursalId);
     if (!entrenador) {
       return res.status(400).json({ error: 'La persona seleccionada no existe o no pertenece a esta sede.' });
     }
     atribuidoA = entrenador.id;
+    atribucionTipo = 'referido';
   }
   for (const it of items) {
     const cantidad = Number(it.cantidad);
@@ -284,8 +289,8 @@ router.post('/', requireAccion('ventas', 'nota_venta'), requireTurnoCajaAbierto,
   const insertAll = db.transaction(() => {
     const numero = numeroManual ? Number(numeroManual) : numeroSugerido;
     const info = db.prepare(
-      `INSERT INTO notas_venta (serie, numero, client_id, created_by, sucursal_id, fecha_emision, moneda, descuento_global_pct, total, forma_pago, monto_pagado, estado, observaciones, atribuido_a, descuento_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'emitido', ?, ?, ?)`
+      `INSERT INTO notas_venta (serie, numero, client_id, created_by, sucursal_id, fecha_emision, moneda, descuento_global_pct, total, forma_pago, monto_pagado, estado, observaciones, atribuido_a, descuento_id, atribucion_tipo)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'emitido', ?, ?, ?, ?)`
     ).run(
       serie,
       numero,
@@ -300,7 +305,8 @@ router.post('/', requireAccion('ventas', 'nota_venta'), requireTurnoCajaAbierto,
       montoPagado,
       observaciones || null,
       atribuidoA,
-      descuento_id || null
+      descuento_id || null,
+      atribucionTipo
     );
     const notaVentaId = info.lastInsertRowid;
     const insertItem = db.prepare(
@@ -386,14 +392,18 @@ router.put('/:id/atribuido-a', requireAccionSupervisor('reatribuir_venta', 'No t
   }
   const { atribuido_a_id } = req.body || {};
   let atribuidoA = null;
+  // Igual que en invoices.js: esto es siempre una reasignación posterior,
+  // así que se graba como 'regalo' (no la refirió el entrenador).
+  let atribucionTipo = null;
   if (atribuido_a_id) {
     const entrenador = usuarioAtribuible(atribuido_a_id, nv.sucursal_id);
     if (!entrenador) {
       return res.status(400).json({ error: 'La persona seleccionada no existe o no pertenece a esta sede.' });
     }
     atribuidoA = entrenador.id;
+    atribucionTipo = 'regalo';
   }
-  db.prepare('UPDATE notas_venta SET atribuido_a = ? WHERE id = ?').run(atribuidoA, req.params.id);
+  db.prepare('UPDATE notas_venta SET atribuido_a = ?, atribucion_tipo = ? WHERE id = ?').run(atribuidoA, atribucionTipo, req.params.id);
   const updated = db.prepare(
     `SELECT nv.*, u.full_name AS vendedor_nombre, au.full_name AS atribuido_nombre
      FROM notas_venta nv LEFT JOIN users u ON u.id = nv.created_by LEFT JOIN users au ON au.id = nv.atribuido_a
