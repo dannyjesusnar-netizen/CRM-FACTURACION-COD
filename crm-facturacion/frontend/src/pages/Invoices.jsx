@@ -211,7 +211,7 @@ export default function Invoices() {
   }
 
   async function handleExportar(formato) {
-    const header = ['Fecha', 'Serie', 'Nro', 'Comprobante', 'Nro Doc', 'Nombre o Razon Social', 'Observaciones', 'Atribuido a', 'Atribucion', 'Importe', 'Total', 'Estado'];
+    const header = ['Fecha', 'Serie', 'Nro', 'Comprobante', 'Nro Doc', 'Nombre o Razon Social', 'Observaciones', 'Atribuido a', 'Atribucion', 'Asesor de tienda que vendio', 'Importe', 'Total', 'Estado'];
     const rows = invoicesFiltrados.map((inv) => [
       inv.fecha_emision,
       inv.serie,
@@ -221,7 +221,8 @@ export default function Invoices() {
       inv.cliente_nombre,
       inv.observaciones || '',
       inv.atribuido_nombre || inv.vendedor_nombre || '',
-      inv.atribucion_tipo === 'regalo' ? 'Regalada por tienda' : inv.atribucion_tipo === 'referido' ? 'Referido real' : '',
+      inv.atribucion_tipo === 'regalo' ? 'Asignada por tienda' : inv.atribucion_tipo === 'referido' ? 'Referido real' : '',
+      inv.atribucion_tipo === 'regalo' ? (inv.vendedor_nombre || '') : '',
       inv.subtotal,
       inv.total,
       inv.estado,
@@ -361,7 +362,7 @@ export default function Invoices() {
           <select value={filtroAtribucion} onChange={(e) => setFiltroAtribucion(e.target.value)}>
             <option value="">Todas</option>
             <option value="referido">🤝 Referido real</option>
-            <option value="regalo">🎁 Regalada por tienda</option>
+            <option value="regalo">🎁 Asignada por tienda</option>
           </select>
         </div>
         <div className="filter-actions">
@@ -423,10 +424,13 @@ export default function Invoices() {
                       inv.atribuido_nombre || inv.vendedor_nombre || '—'
                     )}
                     {inv.atribucion_tipo === 'regalo' && (
-                      <span title="Regalada: reasignada después de emitida, no la refirió el entrenador" style={{ marginLeft: 6, fontSize: 13 }}>🎁</span>
+                      <span title="Asignada por tienda: reasignada después de emitida, no la refirió el entrenador" style={{ marginLeft: 6, fontSize: 13 }}>🎁</span>
                     )}
                     {inv.atribucion_tipo === 'referido' && (
                       <span title="Referido real: se eligió al registrar la venta" style={{ marginLeft: 6, fontSize: 13 }}>🤝</span>
+                    )}
+                    {inv.atribucion_tipo === 'regalo' && inv.vendedor_nombre && (
+                      <div style={{ fontSize: 11, color: 'var(--ink-muted)' }}>Vendió: {inv.vendedor_nombre}</div>
                     )}
                   </td>
                   <td style={{ textAlign: 'right' }}>S/ {Number(inv.subtotal).toFixed(2)}</td>
