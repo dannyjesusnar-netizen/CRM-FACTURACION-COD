@@ -967,6 +967,21 @@ CREATE TABLE IF NOT EXISTS metas_venta_usuario (
   if (!notaVentaColumns.includes('atribuido_a')) {
     db.exec('ALTER TABLE notas_venta ADD COLUMN atribuido_a INTEGER REFERENCES users(id)');
   }
+  // atribucion_tipo: de dónde salió el atribuido_a de arriba — no para el
+  // Ranking (que no distingue), sino para que Gerencia pueda diferenciar
+  // ventas que un entrenador de verdad refirió (el vendedor eligió el
+  // atribuido_a AL REGISTRAR la venta, ver routes/invoices.js POST / y
+  // routes/notasVenta.js POST /) de ventas que se hicieron en tienda sin
+  // referido y que Gerencia decidió "regalarle" al entrenador después (se
+  // reasigna desde la tabla de Ventas, ver PUT /:id/atribuido-a — ese mismo
+  // endpoint es el único lugar que graba 'regalo'). NULL = sin atribuir
+  // (cuenta para quien la registró) o dato de antes de este campo.
+  if (!invoiceColumns.includes('atribucion_tipo')) {
+    db.exec('ALTER TABLE invoices ADD COLUMN atribucion_tipo TEXT');
+  }
+  if (!notaVentaColumns.includes('atribucion_tipo')) {
+    db.exec('ALTER TABLE notas_venta ADD COLUMN atribucion_tipo TEXT');
+  }
   const purchaseColumns = db.prepare("PRAGMA table_info(purchases)").all().map((c) => c.name);
   if (!purchaseColumns.includes('sucursal_id')) {
     db.exec('ALTER TABLE purchases ADD COLUMN sucursal_id INTEGER REFERENCES sucursales(id)');

@@ -146,6 +146,12 @@ export default function Invoices() {
   const [hasta, setHasta] = useState(todayStr());
   const [documento, setDocumento] = useState('');
   const [formaPago, setFormaPago] = useState('');
+  // 'referido' = el entrenador/vendedor fue elegido al registrar la venta
+  // (la refirió de verdad). 'regalo' = se reasignó después desde esta misma
+  // tabla (Gerencia se la "regaló" a alguien que no la refirió). Filtro en
+  // el propio cliente -- no hace falta ir y volver al backend, ya se tiene
+  // todo el rango de fechas cargado (ver "invoices" más abajo).
+  const [filtroAtribucion, setFiltroAtribucion] = useState('');
 
   // Las Notas de Venta (sin IGV) viven en una tabla/endpoint aparte de las
   // facturas/boletas/notas de crédito — se traen en paralelo y se mezclan
@@ -205,8 +211,8 @@ export default function Invoices() {
   }
 
   async function handleExportar(formato) {
-    const header = ['Fecha', 'Serie', 'Nro', 'Comprobante', 'Nro Doc', 'Nombre o Razon Social', 'Observaciones', 'Importe', 'Total', 'Estado'];
-    const rows = invoices.map((inv) => [
+    const header = ['Fecha', 'Serie', 'Nro', 'Comprobante', 'Nro Doc', 'Nombre o Razon Social', 'Observaciones', 'Atribuido a', 'Atribucion', 'Asesor de tienda que vendio', 'Importe', 'Total', 'Estado'];
+    const rows = invoicesFiltrados.map((inv) => [
       inv.fecha_emision,
       inv.serie,
       String(inv.numero).padStart(6, '0'),
@@ -214,6 +220,9 @@ export default function Invoices() {
       inv.cliente_documento,
       inv.cliente_nombre,
       inv.observaciones || '',
+      inv.atribuido_nombre || inv.vendedor_nombre || '',
+      inv.atribucion_tipo === 'regalo' ? 'Asignada por tienda' : inv.atribucion_tipo === 'referido' ? 'Referido real' : '',
+      inv.atribucion_tipo === 'regalo' ? (inv.vendedor_nombre || '') : '',
       inv.subtotal,
       inv.total,
       inv.estado,
@@ -256,7 +265,7 @@ export default function Invoices() {
       const res = await api.put(`${base}/${inv.id}/atribuido-a`, { atribuido_a_id: atribuidoAId || null });
       setInvoices((rows) => rows.map((r) => (
         r._source === inv._source && r.id === inv.id
-          ? { ...r, atribuido_a: res.data.atribuido_a, atribuido_nombre: res.data.atribuido_nombre }
+          ? { ...r, atribuido_a: res.data.atribuido_a, atribuido_nombre: res.data.atribuido_nombre, atribucion_tipo: res.data.atribucion_tipo }
           : r
       )));
       toast.success('Venta reatribuida.');
@@ -296,7 +305,10 @@ export default function Invoices() {
     }
   }
 
-  const vigentes = invoices.filter((i) => i.estado === 'emitido');
+  const invoicesFiltrados = filtroAtribucion
+    ? invoices.filter((i) => i.atribucion_tipo === filtroAtribucion)
+    : invoices;
+  const vigentes = invoicesFiltrados.filter((i) => i.estado === 'emitido');
   const sumaSoles = vigentes.filter((i) => i.moneda !== 'USD').reduce((s, i) => s + i.total, 0);
   const sumaDolares = vigentes.filter((i) => i.moneda === 'USD').reduce((s, i) => s + i.total, 0);
 
@@ -345,6 +357,14 @@ export default function Invoices() {
             {metodosPago.map((m) => <option key={m.codigo} value={m.codigo}>{m.icono} {m.nombre}</option>)}
           </select>
         </div>
+        <div className="filter-field">
+          <label>Atribución</label>
+          <select value={filtroAtribucion} onChange={(e) => setFiltroAtribucion(e.target.value)}>
+            <option value="">Todas</option>
+            <option value="referido">🤝 Referido real</option>
+            <option value="regalo">🎁 Asignada por tienda</option>
+          </select>
+        </div>
         <div className="filter-actions">
           <button type="submit" className="btn-secondary">Buscar</button>
           <ExportButton onExport={handleExportar} />
@@ -377,7 +397,7 @@ export default function Invoices() {
               </tr>
             </thead>
             <tbody>
-              {invoices.map((inv) => (
+              {invoicesFiltrados.map((inv) => (
                 <tr key={`${inv._source}-${inv.id}`}>
                   <td>{inv.fecha_emision}</td>
                   <td>{inv.serie}</td>
@@ -402,6 +422,15 @@ export default function Invoices() {
                       </select>
                     ) : (
                       inv.atribuido_nombre || inv.vendedor_nombre || '—'
+                    )}
+                    {inv.atribucion_tipo === 'regalo' && (
+                      <span title="Asignada por tienda: reasignada después de emitida, no la refirió el entrenador" style={{ marginLeft: 6, fontSize: 13 }}>🎁</span>
+                    )}
+                    {inv.atribucion_tipo === 'referido' && (
+                      <span title="Referido real: se eligió al registrar la venta" style={{ marginLeft: 6, fontSize: 13 }}>🤝</span>
+                    )}
+                    {inv.atribucion_tipo === 'regalo' && inv.vendedor_nombre && (
+                      <div style={{ fontSize: 11, color: 'var(--ink-muted)' }}>Vendió: {inv.vendedor_nombre}</div>
                     )}
                   </td>
                   <td style={{ textAlign: 'right' }}>S/ {Number(inv.subtotal).toFixed(2)}</td>

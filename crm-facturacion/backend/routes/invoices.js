@@ -353,12 +353,19 @@ router.post('/', async (req, res) => {
   // de para él mismo, solo para el ranking del Tablero de Ventas (ver
   // comentario de la columna en db.js).
   let atribuidoA = null;
+  // atribucion_tipo='referido': se eligió a esta persona AQUÍ, al registrar
+  // la venta — a diferencia de una reasignación posterior desde la tabla de
+  // Ventas (ver PUT /:id/atribuido-a más abajo, que graba 'regalo'). Permite
+  // a Gerencia distinguir después cuántas ventas le "regaló" a un
+  // entrenador de cuántas el entrenador de verdad refirió.
+  let atribucionTipo = null;
   if (atribuido_a_id) {
     const entrenador = usuarioAtribuible(atribuido_a_id, req.sucursalId);
     if (!entrenador) {
       return res.status(400).json({ error: 'La persona seleccionada no existe o no pertenece a esta sede.' });
     }
     atribuidoA = entrenador.id;
+    atribucionTipo = 'referido';
   }
 
   if (tipo_comprobante === 'factura' && client.tipo_documento !== 'RUC') {
@@ -390,6 +397,7 @@ router.post('/', async (req, res) => {
     // no tiene sentido que el vendedor que la emite elija a mano a quién
     // "restarle" la venta; debe restarse a quien se la llevó originalmente.
     atribuidoA = notaCreditoOriginal.atribuido_a;
+    atribucionTipo = notaCreditoOriginal.atribucion_tipo;
   }
 
   const esAbonado = forma_pago === 'abonado';
@@ -512,8 +520,8 @@ router.post('/', async (req, res) => {
       `INSERT INTO invoices (
          tipo_comprobante, serie, numero, client_id, created_by, fecha_emision, moneda,
          subtotal, igv, descuento_global_pct, total, estado, observaciones, forma_pago, monto_pagado,
-         modifica_tipo, modifica_serie, modifica_numero, tipo_nota, sucursal_id, atribuido_a, descuento_id
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'emitido', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         modifica_tipo, modifica_serie, modifica_numero, tipo_nota, sucursal_id, atribuido_a, descuento_id, atribucion_tipo
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'emitido', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       tipo_comprobante,
       serie,
@@ -535,7 +543,8 @@ router.post('/', async (req, res) => {
       tipo_comprobante === 'nota_credito' ? (tipo_nota || null) : null,
       req.sucursalId,
       atribuidoA,
-      descuento_id || null
+      descuento_id || null,
+      atribucionTipo
     );
     const invoiceId = info.lastInsertRowid;
     const insertItem = db.prepare(
@@ -846,14 +855,21 @@ router.put('/:id/atribuido-a', requireAccionSupervisor('reatribuir_venta', 'No t
   }
   const { atribuido_a_id } = req.body || {};
   let atribuidoA = null;
+  // A diferencia de POST / (donde el propio vendedor elige el atribuido al
+  // emitir — 'referido'), esto es SIEMPRE una reasignación posterior, así
+  // que se graba como 'regalo': esta venta no la refirió el entrenador, se
+  // hizo en tienda y Gerencia decidió después que cuente para él. Ver el
+  // comentario de la columna en db.js.
+  let atribucionTipo = null;
   if (atribuido_a_id) {
     const entrenador = usuarioAtribuible(atribuido_a_id, invoice.sucursal_id);
     if (!entrenador) {
       return res.status(400).json({ error: 'La persona seleccionada no existe o no pertenece a esta sede.' });
     }
     atribuidoA = entrenador.id;
+    atribucionTipo = 'regalo';
   }
-  db.prepare('UPDATE invoices SET atribuido_a = ? WHERE id = ?').run(atribuidoA, req.params.id);
+  db.prepare('UPDATE invoices SET atribuido_a = ?, atribucion_tipo = ? WHERE id = ?').run(atribuidoA, atribucionTipo, req.params.id);
   const updated = db.prepare(
     `SELECT i.*, u.full_name AS vendedor_nombre, au.full_name AS atribuido_nombre
      FROM invoices i LEFT JOIN users u ON u.id = i.created_by LEFT JOIN users au ON au.id = i.atribuido_a
