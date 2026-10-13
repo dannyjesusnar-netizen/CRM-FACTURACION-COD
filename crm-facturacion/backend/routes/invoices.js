@@ -633,10 +633,10 @@ router.post('/', async (req, res) => {
   // de intentar el envío a SUNAT: un fallo del OSE no debe perder la venta,
   // solo queda registrada como no validada (sunat_estado='error').
   if (estaConfigurado()) {
-    const itemsConCodigo = invoiceItems.map((it) => ({
-      ...it,
-      codigo_producto: it.product_id ? db.prepare('SELECT codigo FROM products WHERE id = ?').get(it.product_id)?.codigo : null,
-    }));
+    const itemsConCodigo = invoiceItems.map((it) => {
+      const prod = it.product_id ? db.prepare('SELECT codigo, afectacion_igv FROM products WHERE id = ?').get(it.product_id) : null;
+      return { ...it, codigo_producto: prod?.codigo || null, afectacion_igv: prod?.afectacion_igv || null };
+    });
     const resultado = await emitirComprobante(invoice, itemsConCodigo, client);
     db.prepare(
       `UPDATE invoices SET modo_emision = ?, sunat_estado = ?, sunat_hash = ?, sunat_pdf_url = ?,
