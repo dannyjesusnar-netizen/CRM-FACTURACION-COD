@@ -84,9 +84,23 @@ function fechaDDMMYYYY(fechaISO) {
 // cada item antes de llamar a emitirComprobante/reenviarComprobante.
 const TIPO_IGV_POR_AFECTACION = { gravado: 1, gratuito: 1, exonerado: 8, inafecto: 10 };
 
+// Una promoción puede dejar una línea en S/0.00 (ej. 100% de descuento — un
+// obsequio dentro de la venta, ver resolverDescuentoItemPct). SUNAT rechaza
+// el comprobante si un item del XML tiene total S/0.00 ("Item - total no
+// puede estar en blanco, no puede ser menor a 0, Item - total debe ser
+// mayor que 0"); declararlo correctamente como "ítem gratuito" exige otro
+// armado de campos que no está documentado acá — por ahora, a pedido del
+// negocio, un obsequio así simplemente NO se reporta a SUNAT como línea del
+// comprobante (no es parte del valor de la venta). Sigue apareciendo en el
+// PDF/comprobante local y descontándose del stock como siempre — esto solo
+// cambia qué se le manda al OSE.
+function sinValorVenta(it) {
+  return Math.abs(it.subtotal) < 0.01;
+}
+
 function construirPayload(invoice, items, client) {
   const tipoComprobanteId = TIPO_COMPROBANTE_NUBEFACT[invoice.tipo_comprobante];
-  const itemsPayload = items.map((it) => {
+  const itemsPayload = items.filter((it) => !sinValorVenta(it)).map((it) => {
     // afectacion_igv puede faltar (comprobantes emitidos antes de que se
     // empezara a adjuntar, o un item sin product_id) — en ese caso se cae
     // al criterio viejo (si se le calculó IGV a la línea, se asume
@@ -250,6 +264,13 @@ async function emitirComprobante(invoice, items, client) {
   }
   if (!TIPO_COMPROBANTE_NUBEFACT[invoice.tipo_comprobante]) {
     return { modo_emision: 'real', sunat_estado: 'error', sunat_mensaje: `Tipo de comprobante "${invoice.tipo_comprobante}" no soportado por el OSE.` };
+  }
+  // Caso extremo: TODOS los items de la venta son obsequios (S/0.00) — no
+  // queda nada que declarar como valor de venta ante SUNAT (ver
+  // sinValorVenta más arriba). No debería pasar en una venta real con algo
+  // cobrado, pero evita mandarle a Nubefact un comprobante sin items.
+  if (items.every(sinValorVenta)) {
+    return { modo_emision: 'real', sunat_estado: 'error', sunat_mensaje: 'Esta venta no tiene ningún ítem con valor — no se puede declarar ante SUNAT así.' };
   }
 
   try {
