@@ -78,10 +78,20 @@ function fechaDDMMYYYY(fechaISO) {
   return `${d}-${m}-${y}`;
 }
 
+// Catálogo 07 SUNAT (Afectación del IGV) — códigos que de verdad usa este
+// sistema. afectacion_igv es un atributo del PRODUCTO (Inventario →
+// Productos), no de la venta — ver routes/invoices.js, donde se adjunta a
+// cada item antes de llamar a emitirComprobante/reenviarComprobante.
+const TIPO_IGV_POR_AFECTACION = { gravado: 1, gratuito: 1, exonerado: 8, inafecto: 10 };
+
 function construirPayload(invoice, items, client) {
   const tipoComprobanteId = TIPO_COMPROBANTE_NUBEFACT[invoice.tipo_comprobante];
   const itemsPayload = items.map((it) => {
-    const gravado = it.igv_item > 0;
+    // afectacion_igv puede faltar (comprobantes emitidos antes de que se
+    // empezara a adjuntar, o un item sin product_id) — en ese caso se cae
+    // al criterio viejo (si se le calculó IGV a la línea, se asume
+    // gravado; si no, exonerado) para no romper nada ya emitido.
+    const tipoDeIgv = TIPO_IGV_POR_AFECTACION[it.afectacion_igv] || (it.igv_item > 0 ? 1 : 8);
     return {
       unidad_de_medida: 'NIU',
       codigo: it.codigo_producto || String(it.product_id || 'ITEM'),
@@ -101,12 +111,21 @@ function construirPayload(invoice, items, client) {
       precio_unitario: round2(it.subtotal / it.cantidad),
       descuento: '',
       subtotal: it.subtotal - it.igv_item,
-      tipo_de_igv: gravado ? 1 : 8, // 1 = Gravado - Op. Onerosa, 8 = Exonerado (catálogo 07 SUNAT)
+      tipo_de_igv: tipoDeIgv,
       igv: it.igv_item,
       total: it.subtotal,
       anticipo_regularizacion: false,
     };
   });
+
+  // Totales del comprobante por afectación: tienen que cuadrar con la suma
+  // de los items de cada categoría de arriba o SUNAT rechaza el envío (ej.
+  // "Total EXONERADA debe ser mayor a cero" cuando hay una línea exonerada
+  // pero este total se mandaba siempre en 0, con TODO el subtotal metido en
+  // total_gravada sin importar la afectación real de cada línea).
+  const totalGravada = round2(itemsPayload.filter((it) => it.tipo_de_igv === 1).reduce((s, it) => s + it.subtotal, 0));
+  const totalExonerada = round2(itemsPayload.filter((it) => it.tipo_de_igv === 8).reduce((s, it) => s + it.subtotal, 0));
+  const totalInafecta = round2(itemsPayload.filter((it) => it.tipo_de_igv === 10).reduce((s, it) => s + it.subtotal, 0));
 
   const payload = {
     operacion: 'generar_comprobante',
@@ -124,13 +143,9 @@ function construirPayload(invoice, items, client) {
     porcentaje_de_igv: 18.00,
     descuento_global: '',
     total_descuento: 0,
-    // Este sistema no desglosa el subtotal por afectación a nivel de
-    // comprobante (solo por línea vía igv_item); se reporta todo como
-    // gravado. Si hay líneas exoneradas/inafectas, ajustar aquí sumando
-    // items[].subtotal según tipo_de_igv antes de enviar a producción.
-    total_gravada: round2(invoice.subtotal),
-    total_inafecta: 0,
-    total_exonerada: 0,
+    total_gravada: totalGravada,
+    total_inafecta: totalInafecta,
+    total_exonerada: totalExonerada,
     total_igv: round2(invoice.igv),
     total_gratuita: 0,
     total_otros_cargos: 0,

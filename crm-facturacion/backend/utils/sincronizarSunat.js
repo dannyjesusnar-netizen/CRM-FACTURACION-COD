@@ -41,10 +41,10 @@ function guardarResultado(invoice, resultado) {
 async function reenviarComprobante(invoiceId) {
   const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(invoiceId);
   if (!invoice) return null;
-  const items = db.prepare('SELECT * FROM invoice_items WHERE invoice_id = ?').all(invoiceId).map((it) => ({
-    ...it,
-    codigo_producto: it.product_id ? db.prepare('SELECT codigo FROM products WHERE id = ?').get(it.product_id)?.codigo : null,
-  }));
+  const items = db.prepare('SELECT * FROM invoice_items WHERE invoice_id = ?').all(invoiceId).map((it) => {
+    const prod = it.product_id ? db.prepare('SELECT codigo, afectacion_igv FROM products WHERE id = ?').get(it.product_id) : null;
+    return { ...it, codigo_producto: prod?.codigo || null, afectacion_igv: prod?.afectacion_igv || null };
+  });
   const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(invoice.client_id);
   const resultado = await emitirComprobante(invoice, items, client);
   guardarResultado(invoice, resultado);
