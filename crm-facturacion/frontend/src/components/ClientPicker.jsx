@@ -7,6 +7,19 @@ function emptyClient() {
   return { tipo_documento: 'DNI', numero_documento: '', nombre: '', direccion: '', telefono: '', email: '' };
 }
 
+// Perú: DNI 8 dígitos, Carnet de Extranjería 9, RUC 11 — el backend ya lo
+// valida (ver routes/clients.js), esto solo evita el viaje al servidor para
+// avisar más rápido.
+const LARGO_NUMERO_DOCUMENTO = { DNI: 8, CE: 9, RUC: 11 };
+function errorNumeroDocumento(tipo, numero) {
+  const largo = LARGO_NUMERO_DOCUMENTO[tipo];
+  if (!largo) return null;
+  if (!new RegExp(`^\\d{${largo}}$`).test((numero || '').trim())) {
+    return `${tipo} debe tener exactamente ${largo} dígitos numéricos.`;
+  }
+  return null;
+}
+
 // Buscador de cliente con alta rápida ("Cliente Nuevo"). value = cliente seleccionado (objeto) o null.
 export default function ClientPicker({ value, onChange, required }) {
   const toast = useToast();
@@ -74,6 +87,11 @@ export default function ClientPicker({ value, onChange, required }) {
       toast.error('Número de documento y nombre son requeridos.');
       return;
     }
+    const errorDoc = errorNumeroDocumento(newClient.tipo_documento, newClient.numero_documento);
+    if (errorDoc) {
+      toast.error(errorDoc);
+      return;
+    }
     try {
       const res = await api.post('/clients', newClient);
       onChange(res.data);
@@ -133,7 +151,12 @@ export default function ClientPicker({ value, onChange, required }) {
                 </div>
                 <div>
                   <label>Número documento</label>
-                  <input required value={newClient.numero_documento} onChange={(e) => setNewClient((c) => ({ ...c, numero_documento: e.target.value }))} />
+                  <input
+                    required
+                    value={newClient.numero_documento}
+                    maxLength={LARGO_NUMERO_DOCUMENTO[newClient.tipo_documento] || undefined}
+                    onChange={(e) => setNewClient((c) => ({ ...c, numero_documento: e.target.value.replace(/\D/g, '') }))}
+                  />
                 </div>
               </div>
               <label>Nombre / Razón social{buscandoDoc ? ' — buscando...' : ''}</label>
