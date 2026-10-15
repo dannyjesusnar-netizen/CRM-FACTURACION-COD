@@ -47,6 +47,14 @@ function SunatEstadoIcon({ inv, onSincronizar, sincronizando }) {
   if (inv.modo_emision !== 'real') {
     return <span className="icon-link muted" title="Sin conexión real a SUNAT"><Minus size={16} /></span>;
   }
+  // Anulado: nunca es un botón, sin importar en qué sunat_estado se haya
+  // quedado — reenviar o volver a consultar un comprobante ya anulado no
+  // tiene sentido (y el backend lo rechaza, ver /:id/sincronizar-sunat).
+  if (inv.estado === 'anulado') {
+    const colorAnulado = inv.sunat_estado === 'aceptado' ? 'var(--good)' : 'var(--critical)';
+    const Icono = inv.sunat_estado === 'aceptado' ? CheckCircle2 : XCircle;
+    return <span className="icon-link" style={{ color: colorAnulado }} title={`${inv.sunat_mensaje || 'Comprobante anulado'} (comprobante anulado)`}><Icono size={18} /></span>;
+  }
   if (inv.sunat_estado === 'aceptado') {
     return <span className="icon-link" style={{ color: 'var(--good)' }} title={inv.sunat_mensaje || 'Aceptado por SUNAT'}><CheckCircle2 size={18} /></span>;
   }

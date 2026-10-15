@@ -245,6 +245,9 @@ router.get('/:id', (req, res) => {
 router.post('/:id/sincronizar-sunat', async (req, res) => {
   const invoice = db.prepare('SELECT * FROM invoices WHERE id = ? AND sucursal_id = ?').get(req.params.id, req.sucursalId);
   if (!invoice) return res.status(404).json({ error: 'Comprobante no encontrado.' });
+  if (invoice.estado === 'anulado') {
+    return res.status(400).json({ error: 'Este comprobante está anulado — no se puede reenviar ni volver a consultar con SUNAT.' });
+  }
   if (invoice.modo_emision !== 'real') {
     return res.status(400).json({ error: 'Este comprobante no se envió realmente a SUNAT (modo simulado).' });
   }
