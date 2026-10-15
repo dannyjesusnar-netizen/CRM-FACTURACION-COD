@@ -9,6 +9,22 @@ const router = express.Router();
 router.use(requireAuth);
 router.use(requirePermiso('clientes'));
 
+// Perú: DNI tiene 8 dígitos, Carnet de Extranjería 9, RUC 11 — todos
+// numéricos. Antes no se validaba nada acá, así que un DNI tipeado con 7 u
+// 9 dígitos por error quedaba guardado tal cual, y recién rebotaba después
+// como rechazo real de SUNAT al intentar facturar. Un tipo_documento que no
+// esté en esta lista (ninguno hoy, pero por si se agrega otro a futuro) no
+// se valida, para no romper nada.
+const LARGO_NUMERO_DOCUMENTO = { DNI: 8, CE: 9, RUC: 11 };
+function errorNumeroDocumento(tipoDocumento, numeroDocumento) {
+  const largo = LARGO_NUMERO_DOCUMENTO[tipoDocumento];
+  if (!largo) return null;
+  if (!new RegExp(`^\\d{${largo}}$`).test(String(numeroDocumento || '').trim())) {
+    return `${tipoDocumento} debe tener exactamente ${largo} dígitos numéricos.`;
+  }
+  return null;
+}
+
 function sucursalIdOrError(sucursalId) {
   if (sucursalId === undefined || sucursalId === null || sucursalId === '') return { value: null };
   const suc = db.prepare('SELECT id FROM sucursales WHERE id = ? AND activo = 1').get(Number(sucursalId));
@@ -109,6 +125,8 @@ router.post('/', requireAccion('clientes', 'crear_editar'), (req, res) => {
   if (!numero_documento || !nombre) {
     return res.status(400).json({ error: 'numero_documento y nombre son requeridos.' });
   }
+  const errorDoc = errorNumeroDocumento(tipo_documento || 'DNI', numero_documento);
+  if (errorDoc) return res.status(400).json({ error: errorDoc });
   const sucursal = sucursalIdOrError(sucursal_id);
   if (sucursal.error) return res.status(400).json({ error: sucursal.error });
   try {
@@ -133,6 +151,8 @@ router.put('/:id', requireAccion('clientes', 'crear_editar'), (req, res) => {
   const existing = db.prepare('SELECT * FROM clients WHERE id = ?').get(req.params.id);
   if (!existing) return res.status(404).json({ error: 'Cliente no encontrado.' });
   const { tipo_documento, numero_documento, nombre, direccion, telefono, email, notas, sucursal_id, turno, referencia, contacto } = req.body || {};
+  const errorDoc = errorNumeroDocumento(tipo_documento ?? existing.tipo_documento, numero_documento ?? existing.numero_documento);
+  if (errorDoc) return res.status(400).json({ error: errorDoc });
   let sucursalId = existing.sucursal_id;
   if (sucursal_id !== undefined) {
     const sucursal = sucursalIdOrError(sucursal_id);
@@ -198,6 +218,8 @@ router.post('/carga-masiva', requireAccion('clientes', 'crear_editar'), (req, re
         continue;
       }
       const tipoDocumento = (r.tipo_documento || 'DNI').toString().trim() || 'DNI';
+      const errorDoc = errorNumeroDocumento(tipoDocumento, numeroDocumento);
+      if (errorDoc) { errores.push({ numero_documento: numeroDocumento, error: errorDoc }); continue; }
       const sede = sedeNombreASucursalId(r.sede);
       if (sede.error) { errores.push({ numero_documento: numeroDocumento, error: sede.error }); continue; }
       const direccion = (r.direccion || '').toString().trim() || null;

@@ -4,6 +4,19 @@ import { useToast } from '../context/ToastContext';
 
 const EMPTY_FORM = { tipo_documento: 'DNI', numero_documento: '', nombre: '', direccion: '', telefono: '', email: '', notas: '', sucursal_id: '', turno: '', referencia: '', contacto: '' };
 
+// Perú: DNI 8 dígitos, Carnet de Extranjería 9, RUC 11 — el backend ya lo
+// valida (ver routes/clients.js), esto solo evita el viaje al servidor para
+// avisar más rápido.
+const LARGO_NUMERO_DOCUMENTO = { DNI: 8, CE: 9, RUC: 11 };
+function errorNumeroDocumento(tipo, numero) {
+  const largo = LARGO_NUMERO_DOCUMENTO[tipo];
+  if (!largo) return null;
+  if (!new RegExp(`^\\d{${largo}}$`).test((numero || '').trim())) {
+    return `${tipo} debe tener exactamente ${largo} dígitos numéricos.`;
+  }
+  return null;
+}
+
 export default function Clients() {
   const toast = useToast();
   const [clients, setClients] = useState([]);
@@ -106,6 +119,8 @@ export default function Clients() {
   async function handleSubmit(e) {
     e.preventDefault();
     setError('');
+    const errorDoc = errorNumeroDocumento(form.tipo_documento, form.numero_documento);
+    if (errorDoc) { setError(errorDoc); return; }
     try {
       if (editingId) {
         await api.put(`/clients/${editingId}`, form);
@@ -254,7 +269,12 @@ export default function Clients() {
                 </div>
                 <div>
                   <label>Número de documento</label>
-                  <input required value={form.numero_documento} onChange={(e) => setForm({ ...form, numero_documento: e.target.value })} />
+                  <input
+                    required
+                    value={form.numero_documento}
+                    maxLength={LARGO_NUMERO_DOCUMENTO[form.tipo_documento] || undefined}
+                    onChange={(e) => setForm({ ...form, numero_documento: e.target.value.replace(/\D/g, '') })}
+                  />
                 </div>
               </div>
               <label>Nombre / Razón social{buscandoDoc ? ' — buscando...' : ''}</label>
