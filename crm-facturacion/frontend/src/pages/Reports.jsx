@@ -2,10 +2,11 @@ import { useEffect, useState } from 'react';
 import { Bar } from 'react-chartjs-2';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Tooltip, Legend } from 'chart.js';
 import {
-  ShoppingCart, Calculator, User, TrendingUp, Package, BarChart3, Users, Wallet, FileText,
+  ShoppingCart, Calculator, User, TrendingUp, Package, BarChart3, Users, Wallet, FileText, AlertTriangle,
 } from 'lucide-react';
 import api from '../api';
 import { hoyPeru } from '../utils/fechas';
+import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import ExportButton from '../components/ExportButton';
 import { exportarTabla } from '../utils/excelImport';
@@ -45,7 +46,11 @@ const SECCIONES = [
   { key: 'top_clientes', label: 'Top clientes', Icon: Users },
   { key: 'resumen_comprobante', label: 'Resumen por comprobante', Icon: BarChart3 },
   { key: 'cierre_caja', label: 'Cierre de Caja', Icon: Wallet },
+  { key: 'sunat_rechazados', label: 'Documentos rechazados SUNAT', Icon: AlertTriangle },
 ];
+
+const SUNAT_ESTADO_LABEL = { rechazado: 'Rechazado', error: 'Error de envío' };
+const SUNAT_ESTADO_BADGE = { rechazado: 'badge-critical', error: 'badge-critical' };
 
 function todayStr() {
   return hoyPeru();
@@ -71,6 +76,8 @@ function SucursalYAnio({ anio, setAnio, extra }) {
 
 export default function Reports() {
   const toast = useToast();
+  const { user } = useAuth();
+  const esGerencia = user?.role === 'gerencia';
   const [seccion, setSeccion] = useState('ventas_mes');
 
   const [topClientes, setTopClientes] = useState([]);
@@ -116,6 +123,11 @@ export default function Reports() {
   const [cierreEmpleadoId, setCierreEmpleadoId] = useState('');
   const [cierreEmpleados, setCierreEmpleados] = useState([]);
   const [cierreCaja, setCierreCaja] = useState(null);
+
+  const [sunatDesde, setSunatDesde] = useState('');
+  const [sunatHasta, setSunatHasta] = useState(todayStr());
+  const [sunatTodasLasSedes, setSunatTodasLasSedes] = useState(false);
+  const [sunatRechazados, setSunatRechazados] = useState([]);
 
   useEffect(() => {
     api.get('/reports/top-clientes').then((res) => setTopClientes(res.data));
@@ -165,6 +177,17 @@ export default function Reports() {
     if (cierreEmpleadoId) params.empleado_id = cierreEmpleadoId;
     api.get('/reports/cierre-caja', { params }).then((res) => setCierreCaja(res.data)).catch(() => setCierreCaja(null));
   }, [cierreFecha, cierreEmpleadoId]);
+
+  useEffect(() => {
+    const params = {};
+    if (sunatDesde) params.desde = sunatDesde;
+    if (sunatHasta) params.hasta = sunatHasta;
+    if (esGerencia && sunatTodasLasSedes) params.todas_las_sedes = '1';
+    api.get('/reports/sunat-rechazados', { params })
+      .then((res) => setSunatRechazados(res.data))
+      .catch(() => { setSunatRechazados([]); toast.error('No se pudo cargar el detalle de documentos rechazados.'); });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sunatDesde, sunatHasta, sunatTodasLasSedes, esGerencia]);
 
   useEffect(() => {
     if (!kardexProducto) { setKardexData(null); return; }
@@ -868,6 +891,72 @@ export default function Reports() {
                   </table>
                 </>
               )}
+            </>
+          )}
+
+          {seccion === 'sunat_rechazados' && (
+            <>
+              <div className="report-toolbar">
+                <h3 style={{ margin: 0 }}>Documentos rechazados SUNAT</h3>
+                <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
+                  <div className="filter-field">
+                    <label>Desde</label>
+                    <input type="date" value={sunatDesde} onChange={(e) => setSunatDesde(e.target.value)} />
+                  </div>
+                  <div className="filter-field">
+                    <label>Hasta</label>
+                    <input type="date" value={sunatHasta} onChange={(e) => setSunatHasta(e.target.value)} />
+                  </div>
+                  {esGerencia && (
+                    <div className="filter-field">
+                      <label>Sede</label>
+                      <select
+                        value={sunatTodasLasSedes ? 'todas' : 'actual'}
+                        onChange={(e) => setSunatTodasLasSedes(e.target.value === 'todas')}
+                      >
+                        <option value="actual">Sede actual</option>
+                        <option value="todas">Todas las sedes</option>
+                      </select>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -6 }}>
+                Boletas, facturas y notas de crédito que SUNAT rechazó o que no se pudieron enviar por una falla de
+                conexión. Para reintentar el envío de un documento, ve a Ventas y haz clic en su icono de alerta
+                (si está en otra sede, cambia primero de sede desde la barra superior).
+              </p>
+              <div className="table-scroll">
+                <table className="data-table compact">
+                  <thead>
+                    <tr>
+                      <th>Fecha</th><th>Tipo</th><th>Documento</th><th>Cliente</th>
+                      {(esGerencia && sunatTodasLasSedes) && <th>Sede</th>}
+                      <th>Estado</th><th>Motivo</th><th>Vendedor</th><th>Atribuido a</th>
+                      <th style={{ textAlign: 'right' }}>Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sunatRechazados.map((r) => (
+                      <tr key={r.id}>
+                        <td>{r.fecha_emision}</td>
+                        <td>{r.tipo_comprobante}</td>
+                        <td>{r.serie}-{r.numero}</td>
+                        <td>{r.cliente_nombre}</td>
+                        {(esGerencia && sunatTodasLasSedes) && <td>{r.sede}</td>}
+                        <td><span className={'badge ' + (SUNAT_ESTADO_BADGE[r.sunat_estado] || 'badge-neutral')}>{SUNAT_ESTADO_LABEL[r.sunat_estado] || r.sunat_estado}</span></td>
+                        <td>{r.sunat_mensaje || '—'}</td>
+                        <td>{r.vendedor_nombre || '—'}</td>
+                        <td>{r.atribuido_nombre || '—'}</td>
+                        <td style={{ textAlign: 'right' }}>{money(r.total)}</td>
+                      </tr>
+                    ))}
+                    {sunatRechazados.length === 0 && (
+                      <tr><td colSpan={9} className="empty-row">Sin documentos rechazados en el periodo seleccionado.</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </>
           )}
         </div>
