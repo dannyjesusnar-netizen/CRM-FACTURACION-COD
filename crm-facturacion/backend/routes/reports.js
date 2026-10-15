@@ -715,4 +715,44 @@ router.get('/kardex', requireReportes, requireAccion('reportes', 'financieros'),
   res.json({ producto, saldo_inicial: saldoInicial, movimientos: movimientosConSaldo });
 });
 
+// GET /reports/sunat-rechazados?desde=&hasta=&sucursal_id=
+// Comprobantes (boleta/factura/nota de crédito) con sunat_estado 'rechazado'
+// o 'error' — los que de verdad necesitan que alguien los mire, a
+// diferencia de 'pendiente' (normal, SUNAT aún no confirma) o 'aceptado'.
+// Las Notas de Venta Interna no tienen sunat_estado (no son fiscales, ver
+// db.js) y por eso no aparecen acá.
+//
+// Sede: por defecto, la sede donde está "parado" el usuario en este momento
+// (req.sucursalId, resuelta por resolveSucursal — igual que el resto de
+// Reportes). Gerencia, además, puede pedir ?sucursal_id= vacío/omitido con
+// todas_las_sedes=1 para ver el detalle cruzando TODAS las sedes de la
+// empresa de una sola vez; cualquier otro rol se queda siempre con su sede
+// activa, sin excepción (mismo criterio que utils/rankingPersonal y
+// routes/tablero.js:sedeFiltro).
+router.get('/sunat-rechazados', requireReportes, (req, res) => {
+  const verTodasLasSedes = req.user.role === 'gerencia' && req.query.todas_las_sedes === '1';
+  const { desde, hasta } = req.query;
+
+  let sql = `
+    SELECT i.id, i.fecha_emision, i.tipo_comprobante, i.serie, i.numero,
+           i.sunat_estado, i.sunat_mensaje, i.total, i.sucursal_id,
+           suc.nombre AS sede, c.nombre AS cliente_nombre,
+           u.full_name AS vendedor_nombre, au.full_name AS atribuido_nombre
+    FROM invoices i
+    JOIN sucursales suc ON suc.id = i.sucursal_id
+    JOIN clients c ON c.id = i.client_id
+    LEFT JOIN users u ON u.id = i.created_by
+    LEFT JOIN users au ON au.id = i.atribuido_a
+    WHERE i.estado = 'emitido' AND i.sunat_estado IN ('rechazado', 'error')
+  `;
+  const params = [];
+  if (!verTodasLasSedes) { sql += ' AND i.sucursal_id = ?'; params.push(req.sucursalId); }
+  if (desde) { sql += ' AND date(i.fecha_emision) >= date(?)'; params.push(desde); }
+  if (hasta) { sql += ' AND date(i.fecha_emision) <= date(?)'; params.push(hasta); }
+  sql += ' ORDER BY i.fecha_emision DESC, i.id DESC';
+
+  const rows = db.prepare(sql).all(...params);
+  res.json(rows.map((r) => ({ ...r, total: round2(r.total) })));
+});
+
 module.exports = router;
