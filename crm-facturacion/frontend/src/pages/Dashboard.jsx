@@ -34,7 +34,10 @@ const COLORS = {
 };
 
 function money(n) {
-  return `S/ ${Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  // Espacio irrompible entre "S/" y el monto — en pantallas angostas (celular)
+  // un espacio normal dejaba que el navegador cortara la línea justo ahí,
+  // partiendo "S/" del número en dos renglones.
+  return `S/ ${Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 // Fila "Total" al pie de un ranking: suma de venta, suma de meta (incluye
