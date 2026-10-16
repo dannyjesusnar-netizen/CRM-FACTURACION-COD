@@ -34,7 +34,7 @@ const COLORS = {
 };
 
 function money(n) {
-  return `S/ ${Number(n || 0).toFixed(2)}`;
+  return `S/ ${Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 // Fila "Total" al pie de un ranking: suma de venta, suma de meta (incluye
