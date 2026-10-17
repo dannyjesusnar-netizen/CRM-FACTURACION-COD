@@ -70,6 +70,7 @@ export default function Products() {
   const [q, setQ] = useState('');
   const [categoriaFiltro, setCategoriaFiltro] = useState('');
   const [lineaFiltro, setLineaFiltro] = useState('');
+  const [proveedorFiltro, setProveedorFiltro] = useState('');
   // Ver el stock sumado de todas las sedes en vez del de la sede activa —
   // solo Gerencia/Supervisor (mismo criterio que el Tablero de Ventas,
   // user.puede_ver_tablero). El backend ya manda ambos valores en cada fila
@@ -106,6 +107,7 @@ export default function Products() {
     if (q) params.q = q;
     if (categoriaFiltro) params.categoria = categoriaFiltro;
     if (lineaFiltro) params.linea = lineaFiltro;
+    if (proveedorFiltro) params.proveedor_id = proveedorFiltro;
     api.get('/products', { params }).then((res) => setProducts(res.data));
   }
 
@@ -370,6 +372,13 @@ export default function Products() {
             <option value="">Todas</option>
             <option value="organic">Organic</option>
             <option value="fit">Fit</option>
+          </select>
+        </div>
+        <div className="filter-field">
+          <label>Proveedor</label>
+          <select value={proveedorFiltro} onChange={(e) => setProveedorFiltro(e.target.value)}>
+            <option value="">Todos</option>
+            {suppliers.map((s) => <option key={s.id} value={s.id}>{s.nombre}</option>)}
           </select>
         </div>
         <div className="filter-actions">

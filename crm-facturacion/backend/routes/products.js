@@ -64,6 +64,7 @@ router.get('/', (req, res) => {
   const q = (req.query.q || '').trim();
   const categoria = (req.query.categoria || '').trim();
   const linea = (req.query.linea || '').trim().toLowerCase();
+  const proveedorId = (req.query.proveedor_id || '').trim();
   let sql = `SELECT p.*, ${PROVEEDOR_SUBQUERY}, ${CANAL_SUBQUERY} FROM products p WHERE p.activo = 1`;
   const params = [req.sucursalId];
   if (categoria) {
@@ -73,6 +74,10 @@ router.get('/', (req, res) => {
   if (linea) {
     sql += ' AND p.linea = ?';
     params.push(linea);
+  }
+  if (proveedorId) {
+    sql += ' AND p.proveedor_id = ?';
+    params.push(Number(proveedorId));
   }
   sql += ' ORDER BY p.nombre ASC';
   let rows = db.prepare(sql).all(...params);
