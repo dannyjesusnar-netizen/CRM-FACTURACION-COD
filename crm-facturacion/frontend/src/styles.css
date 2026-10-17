@@ -886,7 +886,33 @@ html.dark .btn-export { color: #04231e; }
 .view-tab-btn:hover { border-color: var(--brand-blue); color: var(--ink); }
 .view-tab-btn.active { background: var(--brand-blue); border-color: var(--brand-blue); color: #fff; }
 
+/* ---------- Dashboard: Tablero de Ventas — filtro "Ver" con switches ---------- */
+.ver-paneles-btn {
+  width: 100%; padding: 9px 11px; border: 1px solid var(--border); border-radius: 8px;
+  font-size: 14px; font-family: inherit; color: var(--ink); background: var(--surface);
+  cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  white-space: nowrap; transition: border-color 0.15s var(--ease-out);
+}
+.ver-paneles-btn:hover { border-color: #c9d2e0; }
+html.dark .ver-paneles-btn:hover { border-color: #3d4657; }
+.ver-paneles-caret { color: var(--ink-muted); font-size: 11px; flex-shrink: 0; }
+.ver-paneles-dropdown {
+  position: absolute; top: calc(100% + 6px); left: 0; min-width: 260px; z-index: 50;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: var(--shadow-lg); padding: 6px; max-height: 320px; overflow-y: auto;
+}
+.ver-paneles-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 8px 10px; font-size: 13px; color: var(--ink); border-radius: 6px;
+}
+.ver-paneles-row:hover { background: var(--surface-hover); }
+.ver-paneles-row-todos { font-weight: 700; border-bottom: 1px solid var(--border); border-radius: 0; margin-bottom: 4px; padding-bottom: 10px; }
+
 /* ---------- Dashboard: Tablero de Ventas — franja de color por panel ---------- */
+/* Borde bien marcado (var(--ink): casi negro en modo claro, casi blanco en
+   modo oscuro) para que se note dónde termina cada cuadro — el borde gris
+   clarito de .panel por defecto casi no se veía. */
+.dashboard-tablero .panel, .dashboard-tablero .stat-card { border-color: var(--ink); }
 .panel-banda { position: relative; margin: -20px -22px 16px; padding: 12px 22px; border-radius: 12px 12px 0 0; text-align: center; }
 .panel-banda h3 { margin: 0; color: #fff; text-align: center; }
 .panel-banda-actions {

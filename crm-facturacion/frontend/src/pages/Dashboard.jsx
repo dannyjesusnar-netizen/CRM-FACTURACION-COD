@@ -246,7 +246,32 @@ export default function Dashboard() {
   const [tableroAnio, setTableroAnio] = useState(hoy.getFullYear());
   const [tableroMes, setTableroMes] = useState(hoy.getMonth() + 1);
   const [tableroSedeId, setTableroSedeId] = useState('');
-  const [panelFiltro, setPanelFiltro] = useState('');
+  // Qué paneles del Tablero están apagados (switches "como en Roles") — un
+  // Set vacío es el default: todos prendidos/visibles. Se guarda lo OCULTO
+  // en vez de lo visible para que un panel nuevo que se agregue a futuro
+  // nazca visible sin tener que listarlo a mano acá.
+  const [panelesOcultos, setPanelesOcultos] = useState(() => new Set());
+  const [verDropdownAbierto, setVerDropdownAbierto] = useState(false);
+  const verDropdownRef = useRef(null);
+  const panelVisible = (key) => !panelesOcultos.has(key);
+  function togglePanelVisible(key) {
+    setPanelesOcultos((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  }
+  const todosLosPanelesVisibles = panelesOcultos.size === 0;
+  function toggleTodosLosPaneles() {
+    setPanelesOcultos(todosLosPanelesVisibles ? new Set(PANELES_TABLERO.map((p) => p.key)) : new Set());
+  }
+  useEffect(() => {
+    function onClickFuera(e) {
+      if (verDropdownRef.current && !verDropdownRef.current.contains(e.target)) setVerDropdownAbierto(false);
+    }
+    document.addEventListener('mousedown', onClickFuera);
+    return () => document.removeEventListener('mousedown', onClickFuera);
+  }, []);
   const [sucursalesTablero, setSucursalesTablero] = useState([]);
   const [rankingTrainers, setRankingTrainers] = useState([]);
   const [rankingVendedores, setRankingVendedores] = useState([]);
@@ -476,12 +501,50 @@ export default function Dashboard() {
                   ))}
                 </select>
               </div>
-              <div className="filter-field">
+              <div className="filter-field" ref={verDropdownRef} style={{ position: 'relative' }}>
                 <label>Ver</label>
-                <select value={panelFiltro} onChange={(e) => setPanelFiltro(e.target.value)}>
-                  <option value="">Todos los paneles</option>
-                  {PANELES_TABLERO.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
-                </select>
+                <button
+                  type="button"
+                  className="ver-paneles-btn"
+                  onClick={() => setVerDropdownAbierto((v) => !v)}
+                  aria-expanded={verDropdownAbierto}
+                >
+                  {todosLosPanelesVisibles
+                    ? 'Todos los paneles'
+                    : panelesOcultos.size === PANELES_TABLERO.length
+                      ? 'Ningún panel'
+                      : `${PANELES_TABLERO.length - panelesOcultos.size} de ${PANELES_TABLERO.length} paneles`}
+                  <span className="ver-paneles-caret">▾</span>
+                </button>
+                {verDropdownAbierto && (
+                  <div className="ver-paneles-dropdown">
+                    <div className="ver-paneles-row ver-paneles-row-todos">
+                      <span>Todos los paneles</span>
+                      <button
+                        type="button"
+                        className={'toggle-switch small' + (todosLosPanelesVisibles ? ' on' : '')}
+                        onClick={toggleTodosLosPaneles}
+                        aria-pressed={todosLosPanelesVisibles}
+                        title="Prende o apaga todos los paneles a la vez"
+                      >
+                        <span className="toggle-knob" />
+                      </button>
+                    </div>
+                    {PANELES_TABLERO.map((p) => (
+                      <div key={p.key} className="ver-paneles-row">
+                        <span>{p.label}</span>
+                        <button
+                          type="button"
+                          className={'toggle-switch small' + (panelVisible(p.key) ? ' on' : '')}
+                          onClick={() => togglePanelVisible(p.key)}
+                          aria-pressed={panelVisible(p.key)}
+                        >
+                          <span className="toggle-knob" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
               {user?.role === 'gerencia' && (
                 <div className="filter-field">
@@ -517,14 +580,18 @@ export default function Dashboard() {
             <>
               {/* Orden pedido por Gerencia: 1) total vendido, 2) Fit/Organic
                   (+ Marca/Producto), 3) por sede, 4) trainers y vendedores.
-                  anchoCompleto: cuando el filtro "Ver" aísla un solo panel,
-                  los que normalmente comparten columna pasan a ocupar todo
-                  el ancho (no tiene sentido dejarlos a media pantalla solos). */}
+                  Cada pareja que normalmente comparte columna (Línea/Marca,
+                  Resumen Sedes/Ventas del día, Trainers/Vendedores) pasa a
+                  ocupar todo el ancho si el usuario apagó uno de los dos con
+                  los switches de "Ver" (no tiene sentido dejar uno solo a
+                  media pantalla). */}
               {(() => {
-                const anchoCompleto = panelFiltro !== '' ? { gridColumn: '1 / -1' } : undefined;
+                const parTotalCompleto = (panelVisible('total_linea') && panelVisible('total_marca')) ? undefined : { gridColumn: '1 / -1' };
+                const parSedeCompleto = (panelVisible('resumen_sedes') && panelVisible('ventas_dia_sede')) ? undefined : { gridColumn: '1 / -1' };
+                const parRankingCompleto = (panelVisible('ranking_trainers') && panelVisible('ranking_vendedores')) ? undefined : { gridColumn: '1 / -1' };
                 return (
                   <>
-                    {(panelFiltro === '' || panelFiltro === 'ventas_totales') && (
+                    {panelVisible('ventas_totales') && (
                       <div className="stat-card" style={{ marginBottom: 20, maxWidth: 420 }} ref={ventasTotalesRef}>
                         <div className="stat-card-banda" style={{ background: colorTablero }}>
                           Ventas Totales
@@ -561,10 +628,10 @@ export default function Dashboard() {
                       </div>
                     )}
 
-                    {(panelFiltro === '' || panelFiltro === 'total_linea' || panelFiltro === 'total_marca' || panelFiltro === 'total_producto') && (
+                    {(panelVisible('total_linea') || panelVisible('total_marca') || panelVisible('total_producto')) && (
                       <div className="chart-grid">
-                        {(panelFiltro === '' || panelFiltro === 'total_linea') && (
-                          <div className="panel" ref={totalLineaRef} style={anchoCompleto}>
+                        {panelVisible('total_linea') && (
+                          <div className="panel" ref={totalLineaRef} style={parTotalCompleto}>
                             <PanelHeader
                               color={colorTablero}
                               onCopiar={() => copiarPanelComoImagen(totalLineaRef, 'total-por-linea.png', toast)}
@@ -595,8 +662,8 @@ export default function Dashboard() {
                             </table>
                           </div>
                         )}
-                        {(panelFiltro === '' || panelFiltro === 'total_marca') && (
-                          <div className="panel" ref={totalMarcaRef} style={anchoCompleto}>
+                        {panelVisible('total_marca') && (
+                          <div className="panel" ref={totalMarcaRef} style={parTotalCompleto}>
                             <PanelHeader
                               color={colorTablero}
                               onCopiar={() => copiarPanelComoImagen(totalMarcaRef, 'total-por-marca.png', toast)}
@@ -627,7 +694,7 @@ export default function Dashboard() {
                             </table>
                           </div>
                         )}
-                        {(panelFiltro === '' || panelFiltro === 'total_producto') && (
+                        {panelVisible('total_producto') && (
                           <div className="panel" ref={totalProductoRef} style={{ gridColumn: '1 / -1' }}>
                             <PanelHeader
                               color={colorTablero}
@@ -662,10 +729,10 @@ export default function Dashboard() {
                       </div>
                     )}
 
-                    {(panelFiltro === '' || panelFiltro === 'resumen_sedes' || panelFiltro === 'ventas_dia_sede') && (
+                    {(panelVisible('resumen_sedes') || panelVisible('ventas_dia_sede')) && (
                       <div className="chart-grid" style={{ marginTop: 20 }}>
-                    {(panelFiltro === '' || panelFiltro === 'resumen_sedes') && (
-                      <div className="panel" ref={resumenSedesRef} style={anchoCompleto}>
+                    {panelVisible('resumen_sedes') && (
+                      <div className="panel" ref={resumenSedesRef} style={parSedeCompleto}>
                         <PanelHeader
                           color={colorTablero}
                           onCopiar={() => copiarPanelComoImagen(resumenSedesRef, 'resumen-sedes.png', toast)}
@@ -710,8 +777,8 @@ export default function Dashboard() {
                       </div>
                     )}
 
-                    {(panelFiltro === '' || panelFiltro === 'ventas_dia_sede') && (
-                      <div className="panel" ref={ventasDiaPorSedeRef} style={anchoCompleto}>
+                    {panelVisible('ventas_dia_sede') && (
+                      <div className="panel" ref={ventasDiaPorSedeRef} style={parSedeCompleto}>
                         <PanelHeader
                           color={colorTablero}
                           onCopiar={() => copiarPanelComoImagen(ventasDiaPorSedeRef, 'ventas-dia-por-sede.png', toast)}
@@ -760,10 +827,10 @@ export default function Dashboard() {
                       </div>
                     )}
 
-                    {(panelFiltro === '' || panelFiltro === 'ranking_trainers' || panelFiltro === 'ranking_vendedores' || panelFiltro === 'ranking_supervisores') && (
+                    {(panelVisible('ranking_trainers') || panelVisible('ranking_vendedores') || panelVisible('ranking_supervisores')) && (
                       <div className="chart-grid" style={{ marginTop: 20 }}>
-                        {(panelFiltro === '' || panelFiltro === 'ranking_trainers') && (
-                          <div className="panel" ref={rankingTrainersRef} style={anchoCompleto}>
+                        {panelVisible('ranking_trainers') && (
+                          <div className="panel" ref={rankingTrainersRef} style={parRankingCompleto}>
                             <PanelHeader
                               color={colorTablero}
                               onCopiar={() => copiarPanelComoImagen(rankingTrainersRef, 'ranking-trainers.png', toast)}
@@ -820,8 +887,8 @@ export default function Dashboard() {
                           </div>
                         )}
 
-                        {(panelFiltro === '' || panelFiltro === 'ranking_vendedores') && (
-                          <div className="panel" ref={rankingVendedoresRef} style={anchoCompleto}>
+                        {panelVisible('ranking_vendedores') && (
+                          <div className="panel" ref={rankingVendedoresRef} style={parRankingCompleto}>
                             <PanelHeader
                               color={colorTablero}
                               onCopiar={() => copiarPanelComoImagen(rankingVendedoresRef, 'ranking-vendedores.png', toast)}
@@ -868,7 +935,7 @@ export default function Dashboard() {
                           </div>
                         )}
 
-                        {(panelFiltro === '' || panelFiltro === 'ranking_supervisores') && (
+                        {panelVisible('ranking_supervisores') && (
                           <div className="panel" ref={rankingSupervisoresRef} style={{ gridColumn: '1 / -1' }}>
                             <PanelHeader
                               color={colorTablero}
