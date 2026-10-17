@@ -54,6 +54,21 @@ const MESES = [
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
 ];
 
+// Filtro "Ver panel" del Tablero de Ventas: con '' (Todos) se muestran todos
+// los paneles en el orden de abajo; eligiendo uno se oculta el resto, para
+// cuando Gerencia solo quiere mirar/copiar un panel puntual.
+const PANELES_TABLERO = [
+  { key: 'ventas_totales', label: 'Total vendido' },
+  { key: 'total_linea', label: 'Total por Línea (Fit/Organic)' },
+  { key: 'total_marca', label: 'Total por Marca' },
+  { key: 'total_producto', label: 'Total por Producto' },
+  { key: 'resumen_sedes', label: 'Resumen Sedes' },
+  { key: 'ventas_dia_sede', label: 'Ventas del día por sede' },
+  { key: 'ranking_trainers', label: 'Ranking Trainers' },
+  { key: 'ranking_vendedores', label: 'Ranking Vendedores' },
+  { key: 'ranking_supervisores', label: 'Ranking Supervisores' },
+];
+
 // Símbolo + color según el % de cumplimiento de meta, igual al criterio de
 // Power BI: rombo rojo (<80%), triángulo ámbar (80%–99.99%), círculo verde
 // (100% en adelante).
@@ -231,6 +246,7 @@ export default function Dashboard() {
   const [tableroAnio, setTableroAnio] = useState(hoy.getFullYear());
   const [tableroMes, setTableroMes] = useState(hoy.getMonth() + 1);
   const [tableroSedeId, setTableroSedeId] = useState('');
+  const [panelFiltro, setPanelFiltro] = useState('');
   const [sucursalesTablero, setSucursalesTablero] = useState([]);
   const [rankingTrainers, setRankingTrainers] = useState([]);
   const [rankingVendedores, setRankingVendedores] = useState([]);
@@ -460,6 +476,13 @@ export default function Dashboard() {
                   ))}
                 </select>
               </div>
+              <div className="filter-field">
+                <label>Ver</label>
+                <select value={panelFiltro} onChange={(e) => setPanelFiltro(e.target.value)}>
+                  <option value="">Todos los paneles</option>
+                  {PANELES_TABLERO.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
+                </select>
+              </div>
               {user?.role === 'gerencia' && (
                 <div className="filter-field">
                   <label>Color del tablero</label>
@@ -492,381 +515,414 @@ export default function Dashboard() {
             <div className="page-loading"><span className="spinner" /> Cargando tablero de ventas...</div>
           ) : (
             <>
-              <div className="chart-grid">
-                <div className="panel" ref={rankingTrainersRef}>
-                  <PanelHeader
-                    color={colorTablero}
-                    onCopiar={() => copiarPanelComoImagen(rankingTrainersRef, 'ranking-trainers.png', toast)}
-                    onDescargarExcel={() => descargarPanelComoExcel(
-                      'ranking-trainers.xlsx',
-                      ['Trainer', 'Sede', 'Turno', 'Venta', 'Meta', '%'],
-                      rankingTrainers.map((r) => [r.nombre, r.sede || '', r.turno === 'manana' ? 'Mañana' : r.turno === 'tarde' ? 'Tarde' : '', r.venta, r.meta, r.porcentaje ?? ''
-                      ]),
-                      toast
+              {/* Orden pedido por Gerencia: 1) total vendido, 2) Fit/Organic
+                  (+ Marca/Producto), 3) por sede, 4) trainers y vendedores.
+                  anchoCompleto: cuando el filtro "Ver" aísla un solo panel,
+                  los que normalmente comparten columna pasan a ocupar todo
+                  el ancho (no tiene sentido dejarlos a media pantalla solos). */}
+              {(() => {
+                const anchoCompleto = panelFiltro !== '' ? { gridColumn: '1 / -1' } : undefined;
+                return (
+                  <>
+                    {(panelFiltro === '' || panelFiltro === 'ventas_totales') && (
+                      <div className="stat-card" style={{ marginBottom: 20 }} ref={ventasTotalesRef}>
+                        <div className="stat-card-banda" style={{ background: colorTablero }}>
+                          Ventas Totales
+                          <div className="panel-banda-actions">
+                            <button
+                              type="button"
+                              className="panel-banda-copy-btn"
+                              onClick={() => descargarPanelComoExcel(
+                                'ventas-totales.xlsx',
+                                ['Período', 'Sede', 'Ventas Totales'],
+                                [[`${MESES[tableroMes - 1]} ${tableroAnio}`, tableroSedeId ? (sucursalesTablero.find((s) => String(s.id) === String(tableroSedeId))?.nombre || '') : 'Todas las sedes', resumenSedes.ventas_totales]],
+                                toast
+                              )}
+                              title="Descargar en Excel"
+                            >
+                              <Download size={14} />
+                            </button>
+                            <button
+                              type="button"
+                              className="panel-banda-copy-btn"
+                              onClick={() => copiarPanelComoImagen(ventasTotalesRef, 'ventas-totales.png', toast)}
+                              title="Copiar como imagen (para enviar por WhatsApp)"
+                            >
+                              <Camera size={14} />
+                            </button>
+                          </div>
+                        </div>
+                        <div className="stat-value" style={{ textAlign: 'center' }}>{money(resumenSedes.ventas_totales)}</div>
+                        <div className="stat-sub">
+                          {MESES[tableroMes - 1]} {tableroAnio} — {tableroSedeId
+                            ? (sucursalesTablero.find((s) => String(s.id) === String(tableroSedeId))?.nombre || 'sede seleccionada')
+                            : 'todas las sedes'}
+                        </div>
+                      </div>
                     )}
-                    onDescargarDetalle={() => descargarDetalleRankingComoExcel(
-                      'trainer',
-                      'detalle-ventas-trainers.xlsx',
-                      'Trainer',
-                      { anio: tableroAnio, mes: tableroMes, sucursal_id: tableroSedeId || undefined },
-                      toast
-                    )}
-                  >Ranking Trainers</PanelHeader>
-                  <table className="data-table">
-                    <thead>
-                      <tr><th>Trainer</th><th>Sede</th><th>Turno</th><th style={{ textAlign: 'right' }}>Venta</th><th style={{ textAlign: 'right' }}>Meta</th><th>%</th></tr>
-                    </thead>
-                    <tbody>
-                      {rankingTrainers.map((r) => (
-                        <tr key={r.user_id} style={r.faltante ? { color: 'var(--ink-muted)', fontStyle: 'italic' } : undefined}>
-                          <td>{r.nombre}</td>
-                          <td>{r.sede || '—'}</td>
-                          <td>{r.turno === 'manana' ? 'Mañana' : r.turno === 'tarde' ? 'Tarde' : '—'}</td>
-                          <td style={{ textAlign: 'right' }}>{money(r.venta)}</td>
-                          <td style={{ textAlign: 'right' }}>{money(r.meta)}</td>
-                          <td>{pctBadge(r.porcentaje)}</td>
-                        </tr>
-                      ))}
-                      {rankingTrainers.length === 0 && (
-                        <tr><td colSpan={6} className="empty-row">No hay trainers con ventas en el período.</td></tr>
-                      )}
-                    </tbody>
-                    {rankingTrainers.length > 0 && (() => {
-                      const t = totalesRanking(rankingTrainers);
-                      return (
-                        <tfoot>
-                          <tr className="totals-footer">
-                            <td>Total</td>
-                            <td></td>
-                            <td></td>
-                            <td style={{ textAlign: 'right' }}>{money(t.venta)}</td>
-                            <td style={{ textAlign: 'right' }}>{money(t.meta)}</td>
-                            <td>{pctBadge(t.porcentaje)}</td>
-                          </tr>
-                        </tfoot>
-                      );
-                    })()}
-                  </table>
-                </div>
 
-                <div className="panel" ref={rankingVendedoresRef}>
-                  <PanelHeader
-                    color={colorTablero}
-                    onCopiar={() => copiarPanelComoImagen(rankingVendedoresRef, 'ranking-vendedores.png', toast)}
-                    onDescargarExcel={() => descargarPanelComoExcel(
-                      'ranking-vendedores.xlsx',
-                      ['Vendedor', 'Sede', 'Venta', 'Meta', '%'],
-                      rankingVendedores.map((r) => [r.nombre, r.sede || '', r.venta, r.meta, r.porcentaje ?? '']),
-                      toast
-                    )}
-                  >Ranking Vendedores</PanelHeader>
-                  <table className="data-table">
-                    <thead>
-                      <tr><th>Vendedor</th><th>Sede</th><th style={{ textAlign: 'right' }}>Venta</th><th style={{ textAlign: 'right' }}>Meta</th><th>%</th></tr>
-                    </thead>
-                    <tbody>
-                      {rankingVendedores.map((r) => (
-                        <tr key={r.user_id} style={r.faltante ? { color: 'var(--ink-muted)', fontStyle: 'italic' } : undefined}>
-                          <td>{r.nombre}</td>
-                          <td>{r.sede || '—'}</td>
-                          <td style={{ textAlign: 'right' }}>{money(r.venta)}</td>
-                          <td style={{ textAlign: 'right' }}>{money(r.meta)}</td>
-                          <td>{pctBadge(r.porcentaje)}</td>
-                        </tr>
-                      ))}
-                      {rankingVendedores.length === 0 && (
-                        <tr><td colSpan={5} className="empty-row">No hay vendedores con ventas en el período.</td></tr>
-                      )}
-                    </tbody>
-                    {rankingVendedores.length > 0 && (() => {
-                      const t = totalesRanking(rankingVendedores);
-                      return (
-                        <tfoot>
-                          <tr className="totals-footer">
-                            <td>Total</td>
-                            <td></td>
-                            <td style={{ textAlign: 'right' }}>{money(t.venta)}</td>
-                            <td style={{ textAlign: 'right' }}>{money(t.meta)}</td>
-                            <td>{pctBadge(t.porcentaje)}</td>
-                          </tr>
-                        </tfoot>
-                      );
-                    })()}
-                  </table>
-                </div>
-
-                <div className="panel" ref={rankingSupervisoresRef} style={{ gridColumn: '1 / -1' }}>
-                  <PanelHeader
-                    color={colorTablero}
-                    onCopiar={() => copiarPanelComoImagen(rankingSupervisoresRef, 'ranking-supervisores.png', toast)}
-                    onDescargarExcel={() => descargarPanelComoExcel(
-                      'ranking-supervisores.xlsx',
-                      ['Supervisor', 'Sede', 'Venta', 'Meta', '%'],
-                      rankingSupervisores.map((r) => [r.nombre, r.sede || '', r.venta, r.meta, r.porcentaje ?? '']),
-                      toast
-                    )}
-                    onDescargarDetalle={() => descargarDetalleRankingComoExcel(
-                      'supervisor',
-                      'detalle-ventas-supervisores.xlsx',
-                      'Supervisor',
-                      { anio: tableroAnio, mes: tableroMes, sucursal_id: tableroSedeId || undefined },
-                      toast
-                    )}
-                  >Ranking Supervisores</PanelHeader>
-                  <table className="data-table">
-                    <thead>
-                      <tr><th>Supervisor</th><th>Sede</th><th style={{ textAlign: 'right' }}>Venta</th><th style={{ textAlign: 'right' }}>Meta</th><th>%</th></tr>
-                    </thead>
-                    <tbody>
-                      {rankingSupervisores.map((r) => (
-                        <tr key={r.user_id} style={r.faltante ? { color: 'var(--ink-muted)', fontStyle: 'italic' } : undefined}>
-                          <td>{r.nombre}</td>
-                          <td>{r.sede || '—'}</td>
-                          <td style={{ textAlign: 'right' }}>{money(r.venta)}</td>
-                          <td style={{ textAlign: 'right' }}>{money(r.meta)}</td>
-                          <td>{pctBadge(r.porcentaje)}</td>
-                        </tr>
-                      ))}
-                      {rankingSupervisores.length === 0 && (
-                        <tr><td colSpan={5} className="empty-row">No hay supervisores con ventas en el período.</td></tr>
-                      )}
-                    </tbody>
-                    {rankingSupervisores.length > 0 && (() => {
-                      const t = totalesRanking(rankingSupervisores);
-                      return (
-                        <tfoot>
-                          <tr className="totals-footer">
-                            <td>Total</td>
-                            <td></td>
-                            <td style={{ textAlign: 'right' }}>{money(t.venta)}</td>
-                            <td style={{ textAlign: 'right' }}>{money(t.meta)}</td>
-                            <td>{pctBadge(t.porcentaje)}</td>
-                          </tr>
-                        </tfoot>
-                      );
-                    })()}
-                  </table>
-                </div>
-              </div>
-
-              <div className="chart-grid">
-                <div className="panel" ref={totalMarcaRef}>
-                  <PanelHeader
-                    color={colorTablero}
-                    onCopiar={() => copiarPanelComoImagen(totalMarcaRef, 'total-por-marca.png', toast)}
-                    onDescargarExcel={() => descargarPanelComoExcel(
-                      'total-por-marca.xlsx',
-                      ['Marca', 'Cantidad', 'Venta', '% Venta'],
-                      totalMarca.map((m) => [m.marca, m.cantidad, m.venta, m.porcentaje]),
-                      toast
-                    )}
-                  >Total por Marca</PanelHeader>
-                  <table className="data-table">
-                    <thead>
-                      <tr><th>Marca</th><th style={{ textAlign: 'right' }}>Cantidad</th><th style={{ textAlign: 'right' }}>Venta</th><th style={{ textAlign: 'right' }}>% Venta</th></tr>
-                    </thead>
-                    <tbody>
-                      {totalMarca.map((m) => (
-                        <tr key={m.marca}>
-                          <td>{m.marca}</td>
-                          <td style={{ textAlign: 'right' }}>{m.cantidad}</td>
-                          <td style={{ textAlign: 'right' }}>{money(m.venta)}</td>
-                          <td style={{ textAlign: 'right' }}>{m.porcentaje.toFixed(2)}%</td>
-                        </tr>
-                      ))}
-                      {totalMarca.length === 0 && (
-                        <tr><td colSpan={4} className="empty-row">Sin ventas en el período.</td></tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-                <div className="panel" ref={totalLineaRef}>
-                  <PanelHeader
-                    color={colorTablero}
-                    onCopiar={() => copiarPanelComoImagen(totalLineaRef, 'total-por-linea.png', toast)}
-                    onDescargarExcel={() => descargarPanelComoExcel(
-                      'total-por-linea.xlsx',
-                      ['Línea', 'Cantidad', 'Venta', '% Venta'],
-                      totalLinea.map((l) => [l.label, l.cantidad, l.venta, l.porcentaje]),
-                      toast
-                    )}
-                  >Total por Línea (Organic / Fit)</PanelHeader>
-                  <table className="data-table">
-                    <thead>
-                      <tr><th>Línea</th><th style={{ textAlign: 'right' }}>Cantidad</th><th style={{ textAlign: 'right' }}>Venta</th><th style={{ textAlign: 'right' }}>% Venta</th></tr>
-                    </thead>
-                    <tbody>
-                      {totalLinea.map((l) => (
-                        <tr key={l.linea}>
-                          <td>{l.label}</td>
-                          <td style={{ textAlign: 'right' }}>{l.cantidad}</td>
-                          <td style={{ textAlign: 'right' }}>{money(l.venta)}</td>
-                          <td style={{ textAlign: 'right' }}>{l.porcentaje.toFixed(2)}%</td>
-                        </tr>
-                      ))}
-                      {totalLinea.length === 0 && (
-                        <tr><td colSpan={4} className="empty-row">Sin ventas en el período.</td></tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-                <div className="panel" ref={totalProductoRef} style={{ gridColumn: '1 / -1' }}>
-                  <PanelHeader
-                    color={colorTablero}
-                    onCopiar={() => copiarPanelComoImagen(totalProductoRef, 'total-por-producto.png', toast)}
-                    onDescargarExcel={() => descargarPanelComoExcel(
-                      'total-por-producto.xlsx',
-                      ['Categoría', 'Cantidad', 'Venta', '% Venta'],
-                      totalProducto.map((p) => [p.categoria, p.cantidad, p.venta, p.porcentaje]),
-                      toast
-                    )}
-                  >Total por Producto</PanelHeader>
-                  <table className="data-table">
-                    <thead>
-                      <tr><th>Categoría</th><th style={{ textAlign: 'right' }}>Cantidad</th><th style={{ textAlign: 'right' }}>Venta</th><th style={{ textAlign: 'right' }}>% Venta</th></tr>
-                    </thead>
-                    <tbody>
-                      {totalProducto.map((p) => (
-                        <tr key={p.categoria}>
-                          <td>{p.categoria}</td>
-                          <td style={{ textAlign: 'right' }}>{p.cantidad}</td>
-                          <td style={{ textAlign: 'right' }}>{money(p.venta)}</td>
-                          <td style={{ textAlign: 'right' }}>{p.porcentaje.toFixed(2)}%</td>
-                        </tr>
-                      ))}
-                      {totalProducto.length === 0 && (
-                        <tr><td colSpan={4} className="empty-row">Sin ventas en el período.</td></tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              <div className="chart-grid">
-                <div className="panel" ref={resumenSedesRef}>
-                  <PanelHeader
-                    color={colorTablero}
-                    onCopiar={() => copiarPanelComoImagen(resumenSedesRef, 'resumen-sedes.png', toast)}
-                    onDescargarExcel={() => descargarPanelComoExcel(
-                      'resumen-sedes.xlsx',
-                      ['Sede', 'Venta', 'Meta', '% Meta'],
-                      [
-                        ...resumenSedes.sedes.map((s) => [s.sede, s.venta, s.meta, s.porcentaje ?? '']),
-                        ...(resumenSedes.total ? [['Total', resumenSedes.total.venta, resumenSedes.total.meta, resumenSedes.total.porcentaje ?? '']] : []),
-                      ],
-                      toast
-                    )}
-                  >Resumen Sedes</PanelHeader>
-                  <table className="data-table">
-                    <thead>
-                      <tr><th>Sede</th><th style={{ textAlign: 'right' }}>Venta</th><th style={{ textAlign: 'right' }}>Meta</th><th>% Meta</th></tr>
-                    </thead>
-                    <tbody>
-                      {resumenSedes.sedes.map((s) => (
-                        <tr key={s.sucursal_id}>
-                          <td>{s.sede}</td>
-                          <td style={{ textAlign: 'right' }}>{money(s.venta)}</td>
-                          <td style={{ textAlign: 'right' }}>{money(s.meta)}</td>
-                          <td>{pctBadge(s.porcentaje)}</td>
-                        </tr>
-                      ))}
-                      {resumenSedes.sedes.length === 0 && (
-                        <tr><td colSpan={4} className="empty-row">Sin sedes activas.</td></tr>
-                      )}
-                    </tbody>
-                    {resumenSedes.total && (
-                      <tfoot>
-                        <tr className="totals-footer">
-                          <td>Total</td>
-                          <td style={{ textAlign: 'right' }}>{money(resumenSedes.total.venta)}</td>
-                          <td style={{ textAlign: 'right' }}>{money(resumenSedes.total.meta)}</td>
-                          <td>{pctBadge(resumenSedes.total.porcentaje)}</td>
-                        </tr>
-                      </tfoot>
-                    )}
-                  </table>
-                </div>
-                <div className="stat-card" style={{ alignSelf: 'start' }} ref={ventasTotalesRef}>
-                  <div className="stat-card-banda" style={{ background: colorTablero }}>
-                    Ventas Totales
-                    <div className="panel-banda-actions">
-                      <button
-                        type="button"
-                        className="panel-banda-copy-btn"
-                        onClick={() => descargarPanelComoExcel(
-                          'ventas-totales.xlsx',
-                          ['Período', 'Sede', 'Ventas Totales'],
-                          [[`${MESES[tableroMes - 1]} ${tableroAnio}`, tableroSedeId ? (sucursalesTablero.find((s) => String(s.id) === String(tableroSedeId))?.nombre || '') : 'Todas las sedes', resumenSedes.ventas_totales]],
-                          toast
+                    {(panelFiltro === '' || panelFiltro === 'total_linea' || panelFiltro === 'total_marca' || panelFiltro === 'total_producto') && (
+                      <div className="chart-grid">
+                        {(panelFiltro === '' || panelFiltro === 'total_linea') && (
+                          <div className="panel" ref={totalLineaRef} style={anchoCompleto}>
+                            <PanelHeader
+                              color={colorTablero}
+                              onCopiar={() => copiarPanelComoImagen(totalLineaRef, 'total-por-linea.png', toast)}
+                              onDescargarExcel={() => descargarPanelComoExcel(
+                                'total-por-linea.xlsx',
+                                ['Línea', 'Cantidad', 'Venta', '% Venta'],
+                                totalLinea.map((l) => [l.label, l.cantidad, l.venta, l.porcentaje]),
+                                toast
+                              )}
+                            >Total por Línea (Organic / Fit)</PanelHeader>
+                            <table className="data-table">
+                              <thead>
+                                <tr><th>Línea</th><th style={{ textAlign: 'right' }}>Cantidad</th><th style={{ textAlign: 'right' }}>Venta</th><th style={{ textAlign: 'right' }}>% Venta</th></tr>
+                              </thead>
+                              <tbody>
+                                {totalLinea.map((l) => (
+                                  <tr key={l.linea}>
+                                    <td>{l.label}</td>
+                                    <td style={{ textAlign: 'right' }}>{l.cantidad}</td>
+                                    <td style={{ textAlign: 'right' }}>{money(l.venta)}</td>
+                                    <td style={{ textAlign: 'right' }}>{l.porcentaje.toFixed(2)}%</td>
+                                  </tr>
+                                ))}
+                                {totalLinea.length === 0 && (
+                                  <tr><td colSpan={4} className="empty-row">Sin ventas en el período.</td></tr>
+                                )}
+                              </tbody>
+                            </table>
+                          </div>
                         )}
-                        title="Descargar en Excel"
-                      >
-                        <Download size={14} />
-                      </button>
-                      <button
-                        type="button"
-                        className="panel-banda-copy-btn"
-                        onClick={() => copiarPanelComoImagen(ventasTotalesRef, 'ventas-totales.png', toast)}
-                        title="Copiar como imagen (para enviar por WhatsApp)"
-                      >
-                        <Camera size={14} />
-                      </button>
-                    </div>
-                  </div>
-                  <div className="stat-value" style={{ textAlign: 'center' }}>{money(resumenSedes.ventas_totales)}</div>
-                  <div className="stat-sub">
-                    {MESES[tableroMes - 1]} {tableroAnio} — {tableroSedeId
-                      ? (sucursalesTablero.find((s) => String(s.id) === String(tableroSedeId))?.nombre || 'sede seleccionada')
-                      : 'todas las sedes'}
-                  </div>
-                </div>
-              </div>
-
-              <div className="panel" ref={ventasDiaPorSedeRef} style={{ marginTop: 20 }}>
-                <PanelHeader
-                  color={colorTablero}
-                  onCopiar={() => copiarPanelComoImagen(ventasDiaPorSedeRef, 'ventas-dia-por-sede.png', toast)}
-                  onDescargarExcel={() => descargarPanelComoExcel(
-                    'ventas-dia-por-sede.xlsx',
-                    ['Sede', 'Venta'],
-                    [
-                      ...ventasDiaPorSede.sedes.map((s) => [s.sede, s.venta]),
-                      ['Total', ventasDiaPorSede.total.venta],
-                    ],
-                    toast
-                  )}
-                >
-                  Ventas del día por sede
-                  <input
-                    type="date"
-                    value={ventasDiaFecha}
-                    onChange={(e) => setVentasDiaFecha(e.target.value)}
-                    style={{ marginLeft: 12, width: 'auto', fontSize: 13 }}
-                  />
-                </PanelHeader>
-                <table className="data-table">
-                  <thead>
-                    <tr><th>Sede</th><th style={{ textAlign: 'right' }}>Venta</th></tr>
-                  </thead>
-                  <tbody>
-                    {ventasDiaPorSede.sedes.map((s) => (
-                      <tr key={s.sucursal_id}>
-                        <td>{s.sede}</td>
-                        <td style={{ textAlign: 'right' }}>{money(s.venta)}</td>
-                      </tr>
-                    ))}
-                    {ventasDiaPorSede.sedes.length === 0 && (
-                      <tr><td colSpan={2} className="empty-row">Sin sedes activas.</td></tr>
+                        {(panelFiltro === '' || panelFiltro === 'total_marca') && (
+                          <div className="panel" ref={totalMarcaRef} style={anchoCompleto}>
+                            <PanelHeader
+                              color={colorTablero}
+                              onCopiar={() => copiarPanelComoImagen(totalMarcaRef, 'total-por-marca.png', toast)}
+                              onDescargarExcel={() => descargarPanelComoExcel(
+                                'total-por-marca.xlsx',
+                                ['Marca', 'Cantidad', 'Venta', '% Venta'],
+                                totalMarca.map((m) => [m.marca, m.cantidad, m.venta, m.porcentaje]),
+                                toast
+                              )}
+                            >Total por Marca</PanelHeader>
+                            <table className="data-table">
+                              <thead>
+                                <tr><th>Marca</th><th style={{ textAlign: 'right' }}>Cantidad</th><th style={{ textAlign: 'right' }}>Venta</th><th style={{ textAlign: 'right' }}>% Venta</th></tr>
+                              </thead>
+                              <tbody>
+                                {totalMarca.map((m) => (
+                                  <tr key={m.marca}>
+                                    <td>{m.marca}</td>
+                                    <td style={{ textAlign: 'right' }}>{m.cantidad}</td>
+                                    <td style={{ textAlign: 'right' }}>{money(m.venta)}</td>
+                                    <td style={{ textAlign: 'right' }}>{m.porcentaje.toFixed(2)}%</td>
+                                  </tr>
+                                ))}
+                                {totalMarca.length === 0 && (
+                                  <tr><td colSpan={4} className="empty-row">Sin ventas en el período.</td></tr>
+                                )}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                        {(panelFiltro === '' || panelFiltro === 'total_producto') && (
+                          <div className="panel" ref={totalProductoRef} style={{ gridColumn: '1 / -1' }}>
+                            <PanelHeader
+                              color={colorTablero}
+                              onCopiar={() => copiarPanelComoImagen(totalProductoRef, 'total-por-producto.png', toast)}
+                              onDescargarExcel={() => descargarPanelComoExcel(
+                                'total-por-producto.xlsx',
+                                ['Categoría', 'Cantidad', 'Venta', '% Venta'],
+                                totalProducto.map((p) => [p.categoria, p.cantidad, p.venta, p.porcentaje]),
+                                toast
+                              )}
+                            >Total por Producto</PanelHeader>
+                            <table className="data-table">
+                              <thead>
+                                <tr><th>Categoría</th><th style={{ textAlign: 'right' }}>Cantidad</th><th style={{ textAlign: 'right' }}>Venta</th><th style={{ textAlign: 'right' }}>% Venta</th></tr>
+                              </thead>
+                              <tbody>
+                                {totalProducto.map((p) => (
+                                  <tr key={p.categoria}>
+                                    <td>{p.categoria}</td>
+                                    <td style={{ textAlign: 'right' }}>{p.cantidad}</td>
+                                    <td style={{ textAlign: 'right' }}>{money(p.venta)}</td>
+                                    <td style={{ textAlign: 'right' }}>{p.porcentaje.toFixed(2)}%</td>
+                                  </tr>
+                                ))}
+                                {totalProducto.length === 0 && (
+                                  <tr><td colSpan={4} className="empty-row">Sin ventas en el período.</td></tr>
+                                )}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
                     )}
-                  </tbody>
-                  <tfoot>
-                    <tr className="totals-footer">
-                      <td>Total</td>
-                      <td style={{ textAlign: 'right' }}>{money(ventasDiaPorSede.total.venta)}</td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
+
+                    {(panelFiltro === '' || panelFiltro === 'resumen_sedes') && (
+                      <div className="panel" ref={resumenSedesRef} style={{ marginTop: 20 }}>
+                        <PanelHeader
+                          color={colorTablero}
+                          onCopiar={() => copiarPanelComoImagen(resumenSedesRef, 'resumen-sedes.png', toast)}
+                          onDescargarExcel={() => descargarPanelComoExcel(
+                            'resumen-sedes.xlsx',
+                            ['Sede', 'Venta', 'Meta', '% Meta'],
+                            [
+                              ...resumenSedes.sedes.map((s) => [s.sede, s.venta, s.meta, s.porcentaje ?? '']),
+                              ...(resumenSedes.total ? [['Total', resumenSedes.total.venta, resumenSedes.total.meta, resumenSedes.total.porcentaje ?? '']] : []),
+                            ],
+                            toast
+                          )}
+                        >Resumen Sedes</PanelHeader>
+                        <table className="data-table">
+                          <thead>
+                            <tr><th>Sede</th><th style={{ textAlign: 'right' }}>Venta</th><th style={{ textAlign: 'right' }}>Meta</th><th>% Meta</th></tr>
+                          </thead>
+                          <tbody>
+                            {resumenSedes.sedes.map((s) => (
+                              <tr key={s.sucursal_id}>
+                                <td>{s.sede}</td>
+                                <td style={{ textAlign: 'right' }}>{money(s.venta)}</td>
+                                <td style={{ textAlign: 'right' }}>{money(s.meta)}</td>
+                                <td>{pctBadge(s.porcentaje)}</td>
+                              </tr>
+                            ))}
+                            {resumenSedes.sedes.length === 0 && (
+                              <tr><td colSpan={4} className="empty-row">Sin sedes activas.</td></tr>
+                            )}
+                          </tbody>
+                          {resumenSedes.total && (
+                            <tfoot>
+                              <tr className="totals-footer">
+                                <td>Total</td>
+                                <td style={{ textAlign: 'right' }}>{money(resumenSedes.total.venta)}</td>
+                                <td style={{ textAlign: 'right' }}>{money(resumenSedes.total.meta)}</td>
+                                <td>{pctBadge(resumenSedes.total.porcentaje)}</td>
+                              </tr>
+                            </tfoot>
+                          )}
+                        </table>
+                      </div>
+                    )}
+
+                    {(panelFiltro === '' || panelFiltro === 'ventas_dia_sede') && (
+                      <div className="panel" ref={ventasDiaPorSedeRef} style={{ marginTop: 20 }}>
+                        <PanelHeader
+                          color={colorTablero}
+                          onCopiar={() => copiarPanelComoImagen(ventasDiaPorSedeRef, 'ventas-dia-por-sede.png', toast)}
+                          onDescargarExcel={() => descargarPanelComoExcel(
+                            'ventas-dia-por-sede.xlsx',
+                            ['Sede', 'Venta'],
+                            [
+                              ...ventasDiaPorSede.sedes.map((s) => [s.sede, s.venta]),
+                              ['Total', ventasDiaPorSede.total.venta],
+                            ],
+                            toast
+                          )}
+                        >
+                          Ventas del día por sede
+                          <input
+                            type="date"
+                            value={ventasDiaFecha}
+                            onChange={(e) => setVentasDiaFecha(e.target.value)}
+                            style={{ marginLeft: 12, width: 'auto', fontSize: 13 }}
+                          />
+                        </PanelHeader>
+                        <table className="data-table">
+                          <thead>
+                            <tr><th>Sede</th><th style={{ textAlign: 'right' }}>Venta</th></tr>
+                          </thead>
+                          <tbody>
+                            {ventasDiaPorSede.sedes.map((s) => (
+                              <tr key={s.sucursal_id}>
+                                <td>{s.sede}</td>
+                                <td style={{ textAlign: 'right' }}>{money(s.venta)}</td>
+                              </tr>
+                            ))}
+                            {ventasDiaPorSede.sedes.length === 0 && (
+                              <tr><td colSpan={2} className="empty-row">Sin sedes activas.</td></tr>
+                            )}
+                          </tbody>
+                          <tfoot>
+                            <tr className="totals-footer">
+                              <td>Total</td>
+                              <td style={{ textAlign: 'right' }}>{money(ventasDiaPorSede.total.venta)}</td>
+                            </tr>
+                          </tfoot>
+                        </table>
+                      </div>
+                    )}
+
+                    {(panelFiltro === '' || panelFiltro === 'ranking_trainers' || panelFiltro === 'ranking_vendedores' || panelFiltro === 'ranking_supervisores') && (
+                      <div className="chart-grid" style={{ marginTop: 20 }}>
+                        {(panelFiltro === '' || panelFiltro === 'ranking_trainers') && (
+                          <div className="panel" ref={rankingTrainersRef} style={anchoCompleto}>
+                            <PanelHeader
+                              color={colorTablero}
+                              onCopiar={() => copiarPanelComoImagen(rankingTrainersRef, 'ranking-trainers.png', toast)}
+                              onDescargarExcel={() => descargarPanelComoExcel(
+                                'ranking-trainers.xlsx',
+                                ['Trainer', 'Sede', 'Turno', 'Venta', 'Meta', '%'],
+                                rankingTrainers.map((r) => [r.nombre, r.sede || '', r.turno === 'manana' ? 'Mañana' : r.turno === 'tarde' ? 'Tarde' : '', r.venta, r.meta, r.porcentaje ?? ''
+                                ]),
+                                toast
+                              )}
+                              onDescargarDetalle={() => descargarDetalleRankingComoExcel(
+                                'trainer',
+                                'detalle-ventas-trainers.xlsx',
+                                'Trainer',
+                                { anio: tableroAnio, mes: tableroMes, sucursal_id: tableroSedeId || undefined },
+                                toast
+                              )}
+                            >Ranking Trainers</PanelHeader>
+                            <table className="data-table">
+                              <thead>
+                                <tr><th>Trainer</th><th>Sede</th><th>Turno</th><th style={{ textAlign: 'right' }}>Venta</th><th style={{ textAlign: 'right' }}>Meta</th><th>%</th></tr>
+                              </thead>
+                              <tbody>
+                                {rankingTrainers.map((r) => (
+                                  <tr key={r.user_id} style={r.faltante ? { color: 'var(--ink-muted)', fontStyle: 'italic' } : undefined}>
+                                    <td>{r.nombre}</td>
+                                    <td>{r.sede || '—'}</td>
+                                    <td>{r.turno === 'manana' ? 'Mañana' : r.turno === 'tarde' ? 'Tarde' : '—'}</td>
+                                    <td style={{ textAlign: 'right' }}>{money(r.venta)}</td>
+                                    <td style={{ textAlign: 'right' }}>{money(r.meta)}</td>
+                                    <td>{pctBadge(r.porcentaje)}</td>
+                                  </tr>
+                                ))}
+                                {rankingTrainers.length === 0 && (
+                                  <tr><td colSpan={6} className="empty-row">No hay trainers con ventas en el período.</td></tr>
+                                )}
+                              </tbody>
+                              {rankingTrainers.length > 0 && (() => {
+                                const t = totalesRanking(rankingTrainers);
+                                return (
+                                  <tfoot>
+                                    <tr className="totals-footer">
+                                      <td>Total</td>
+                                      <td></td>
+                                      <td></td>
+                                      <td style={{ textAlign: 'right' }}>{money(t.venta)}</td>
+                                      <td style={{ textAlign: 'right' }}>{money(t.meta)}</td>
+                                      <td>{pctBadge(t.porcentaje)}</td>
+                                    </tr>
+                                  </tfoot>
+                                );
+                              })()}
+                            </table>
+                          </div>
+                        )}
+
+                        {(panelFiltro === '' || panelFiltro === 'ranking_vendedores') && (
+                          <div className="panel" ref={rankingVendedoresRef} style={anchoCompleto}>
+                            <PanelHeader
+                              color={colorTablero}
+                              onCopiar={() => copiarPanelComoImagen(rankingVendedoresRef, 'ranking-vendedores.png', toast)}
+                              onDescargarExcel={() => descargarPanelComoExcel(
+                                'ranking-vendedores.xlsx',
+                                ['Vendedor', 'Sede', 'Venta', 'Meta', '%'],
+                                rankingVendedores.map((r) => [r.nombre, r.sede || '', r.venta, r.meta, r.porcentaje ?? '']),
+                                toast
+                              )}
+                            >Ranking Vendedores</PanelHeader>
+                            <table className="data-table">
+                              <thead>
+                                <tr><th>Vendedor</th><th>Sede</th><th style={{ textAlign: 'right' }}>Venta</th><th style={{ textAlign: 'right' }}>Meta</th><th>%</th></tr>
+                              </thead>
+                              <tbody>
+                                {rankingVendedores.map((r) => (
+                                  <tr key={r.user_id} style={r.faltante ? { color: 'var(--ink-muted)', fontStyle: 'italic' } : undefined}>
+                                    <td>{r.nombre}</td>
+                                    <td>{r.sede || '—'}</td>
+                                    <td style={{ textAlign: 'right' }}>{money(r.venta)}</td>
+                                    <td style={{ textAlign: 'right' }}>{money(r.meta)}</td>
+                                    <td>{pctBadge(r.porcentaje)}</td>
+                                  </tr>
+                                ))}
+                                {rankingVendedores.length === 0 && (
+                                  <tr><td colSpan={5} className="empty-row">No hay vendedores con ventas en el período.</td></tr>
+                                )}
+                              </tbody>
+                              {rankingVendedores.length > 0 && (() => {
+                                const t = totalesRanking(rankingVendedores);
+                                return (
+                                  <tfoot>
+                                    <tr className="totals-footer">
+                                      <td>Total</td>
+                                      <td></td>
+                                      <td style={{ textAlign: 'right' }}>{money(t.venta)}</td>
+                                      <td style={{ textAlign: 'right' }}>{money(t.meta)}</td>
+                                      <td>{pctBadge(t.porcentaje)}</td>
+                                    </tr>
+                                  </tfoot>
+                                );
+                              })()}
+                            </table>
+                          </div>
+                        )}
+
+                        {(panelFiltro === '' || panelFiltro === 'ranking_supervisores') && (
+                          <div className="panel" ref={rankingSupervisoresRef} style={{ gridColumn: '1 / -1' }}>
+                            <PanelHeader
+                              color={colorTablero}
+                              onCopiar={() => copiarPanelComoImagen(rankingSupervisoresRef, 'ranking-supervisores.png', toast)}
+                              onDescargarExcel={() => descargarPanelComoExcel(
+                                'ranking-supervisores.xlsx',
+                                ['Supervisor', 'Sede', 'Venta', 'Meta', '%'],
+                                rankingSupervisores.map((r) => [r.nombre, r.sede || '', r.venta, r.meta, r.porcentaje ?? '']),
+                                toast
+                              )}
+                              onDescargarDetalle={() => descargarDetalleRankingComoExcel(
+                                'supervisor',
+                                'detalle-ventas-supervisores.xlsx',
+                                'Supervisor',
+                                { anio: tableroAnio, mes: tableroMes, sucursal_id: tableroSedeId || undefined },
+                                toast
+                              )}
+                            >Ranking Supervisores</PanelHeader>
+                            <table className="data-table">
+                              <thead>
+                                <tr><th>Supervisor</th><th>Sede</th><th style={{ textAlign: 'right' }}>Venta</th><th style={{ textAlign: 'right' }}>Meta</th><th>%</th></tr>
+                              </thead>
+                              <tbody>
+                                {rankingSupervisores.map((r) => (
+                                  <tr key={r.user_id} style={r.faltante ? { color: 'var(--ink-muted)', fontStyle: 'italic' } : undefined}>
+                                    <td>{r.nombre}</td>
+                                    <td>{r.sede || '—'}</td>
+                                    <td style={{ textAlign: 'right' }}>{money(r.venta)}</td>
+                                    <td style={{ textAlign: 'right' }}>{money(r.meta)}</td>
+                                    <td>{pctBadge(r.porcentaje)}</td>
+                                  </tr>
+                                ))}
+                                {rankingSupervisores.length === 0 && (
+                                  <tr><td colSpan={5} className="empty-row">No hay supervisores con ventas en el período.</td></tr>
+                                )}
+                              </tbody>
+                              {rankingSupervisores.length > 0 && (() => {
+                                const t = totalesRanking(rankingSupervisores);
+                                return (
+                                  <tfoot>
+                                    <tr className="totals-footer">
+                                      <td>Total</td>
+                                      <td></td>
+                                      <td style={{ textAlign: 'right' }}>{money(t.venta)}</td>
+                                      <td style={{ textAlign: 'right' }}>{money(t.meta)}</td>
+                                      <td>{pctBadge(t.porcentaje)}</td>
+                                    </tr>
+                                  </tfoot>
+                                );
+                              })()}
+                            </table>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
             </>
           )}
         </div>
