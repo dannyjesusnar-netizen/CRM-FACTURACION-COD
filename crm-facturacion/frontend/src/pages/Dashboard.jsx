@@ -54,18 +54,19 @@ const MESES = [
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
 ];
 
-// Filtro "Ver panel" del Tablero de Ventas: con '' (Todos) se muestran todos
-// los paneles en el orden de abajo; eligiendo uno se oculta el resto, para
-// cuando Gerencia solo quiere mirar/copiar un panel puntual.
+// Filtro "Ver panel" del Tablero de Ventas — orden de la lista del dropdown
+// (no cambia el orden en que los paneles aparecen en el Tablero, solo en
+// qué orden se listan acá). Gerencia pidió que los primeros 4 sean Total
+// vendido, Total por Línea, Resumen Sedes y Ranking Vendedores.
 const PANELES_TABLERO = [
   { key: 'ventas_totales', label: 'Total vendido' },
   { key: 'total_linea', label: 'Total por Línea (Fit/Organic)' },
+  { key: 'resumen_sedes', label: 'Resumen Sedes' },
+  { key: 'ranking_vendedores', label: 'Ranking Vendedores' },
   { key: 'total_marca', label: 'Total por Marca' },
   { key: 'total_producto', label: 'Total por Producto' },
-  { key: 'resumen_sedes', label: 'Resumen Sedes' },
   { key: 'ventas_dia_sede', label: 'Ventas del día por sede' },
   { key: 'ranking_trainers', label: 'Ranking Trainers' },
-  { key: 'ranking_vendedores', label: 'Ranking Vendedores' },
   { key: 'ranking_supervisores', label: 'Ranking Supervisores' },
 ];
 
