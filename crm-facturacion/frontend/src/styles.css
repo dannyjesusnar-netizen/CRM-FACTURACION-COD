@@ -624,6 +624,9 @@ html.dark .badge-soon { background: rgba(148, 163, 184, 0.14); }
 .stat-sub { font-size: 11px; color: var(--ink-muted); margin-top: 4px; }
 
 .chart-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
+@media (max-width: 720px) {
+  .chart-grid { grid-template-columns: 1fr; }
+}
 
 /* ---------- Tables ---------- */
 
