@@ -525,7 +525,7 @@ export default function Dashboard() {
                 return (
                   <>
                     {(panelFiltro === '' || panelFiltro === 'ventas_totales') && (
-                      <div className="stat-card" style={{ marginBottom: 20 }} ref={ventasTotalesRef}>
+                      <div className="stat-card" style={{ marginBottom: 20, maxWidth: 420 }} ref={ventasTotalesRef}>
                         <div className="stat-card-banda" style={{ background: colorTablero }}>
                           Ventas Totales
                           <div className="panel-banda-actions">
@@ -662,8 +662,10 @@ export default function Dashboard() {
                       </div>
                     )}
 
+                    {(panelFiltro === '' || panelFiltro === 'resumen_sedes' || panelFiltro === 'ventas_dia_sede') && (
+                      <div className="chart-grid" style={{ marginTop: 20 }}>
                     {(panelFiltro === '' || panelFiltro === 'resumen_sedes') && (
-                      <div className="panel" ref={resumenSedesRef} style={{ marginTop: 20 }}>
+                      <div className="panel" ref={resumenSedesRef} style={anchoCompleto}>
                         <PanelHeader
                           color={colorTablero}
                           onCopiar={() => copiarPanelComoImagen(resumenSedesRef, 'resumen-sedes.png', toast)}
@@ -709,7 +711,7 @@ export default function Dashboard() {
                     )}
 
                     {(panelFiltro === '' || panelFiltro === 'ventas_dia_sede') && (
-                      <div className="panel" ref={ventasDiaPorSedeRef} style={{ marginTop: 20 }}>
+                      <div className="panel" ref={ventasDiaPorSedeRef} style={anchoCompleto}>
                         <PanelHeader
                           color={colorTablero}
                           onCopiar={() => copiarPanelComoImagen(ventasDiaPorSedeRef, 'ventas-dia-por-sede.png', toast)}
@@ -753,6 +755,8 @@ export default function Dashboard() {
                             </tr>
                           </tfoot>
                         </table>
+                      </div>
+                    )}
                       </div>
                     )}
 
