@@ -1100,11 +1100,17 @@ html.dark .ver-paneles-btn:hover { border-color: #3d4657; }
    queda con todo el ancho debajo. */
 @media (max-width: 720px) {
   .reports-shell { flex-direction: column; }
+  /* Antes era una franja angosta con scroll horizontal propio (overflow-x:
+     auto) — con ~22 secciones ahí dentro, arrancar el swipe justo sobre esa
+     franja hacía que el teléfono "agarrara" el scroll horizontal de la
+     franja en vez del scroll vertical de la página, y quedaba trabado sin
+     poder bajar. Ahora las pestañas se acomodan en varias filas (flex-wrap)
+     y no tienen su propio scroll — participan del scroll normal de la
+     página, como cualquier otro contenido. */
   .reports-sidebar {
-    width: 100%; display: flex; overflow-x: auto; overflow-y: hidden; scrollbar-width: none;
-    border-right: none; border-bottom: 1px solid var(--border); padding: 6px 8px;
+    width: 100%; display: flex; flex-wrap: wrap; gap: 4px; overflow: visible;
+    border-right: none; border-bottom: 1px solid var(--border); padding: 8px;
   }
-  .reports-sidebar::-webkit-scrollbar { display: none; }
   .reports-sidebar-item { border-left: none; border-radius: 10px; white-space: nowrap; flex-shrink: 0; }
   .reports-content { padding: 16px 14px; }
 }
