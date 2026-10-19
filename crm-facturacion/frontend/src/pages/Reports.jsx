@@ -93,7 +93,11 @@ function money(n) {
 
 // Toolbar compartida de los 10 reportes avanzados: Desde/Hasta (solo para
 // los que agrupan ventas/compras en un rango) + selector de sede (Gerencia).
-function FiltroAvanzado({ titulo, conFecha, desde, setDesde, hasta, setHasta, esGerencia, todasLasSedes, setTodasLasSedes }) {
+// El selector de sede deja elegir, además de "Sede actual" y "Todas las
+// sedes", cualquier sede puntual de la empresa (ej. ver San Borja estando
+// parado en Miraflores) — mismo criterio que el selector de sede del
+// Tablero de Ventas en Dashboard.jsx.
+function FiltroAvanzado({ titulo, conFecha, desde, setDesde, hasta, setHasta, esGerencia, sedeId, setSedeId, sucursales }) {
   return (
     <div className="report-toolbar">
       <h3 style={{ margin: 0 }}>{titulo}</h3>
@@ -113,9 +117,10 @@ function FiltroAvanzado({ titulo, conFecha, desde, setDesde, hasta, setHasta, es
         {esGerencia && (
           <div className="filter-field">
             <label>Sede</label>
-            <select value={todasLasSedes ? 'todas' : 'actual'} onChange={(e) => setTodasLasSedes(e.target.value === 'todas')}>
-              <option value="actual">Sede actual</option>
+            <select value={sedeId} onChange={(e) => setSedeId(e.target.value)}>
+              <option value="">Sede actual</option>
               <option value="todas">Todas las sedes</option>
+              {(sucursales || []).map((s) => <option key={s.id} value={String(s.id)}>{s.nombre}</option>)}
             </select>
           </div>
         )}
@@ -200,9 +205,16 @@ export default function Reports() {
   // reportes como para pedirlos todos de una.
   const [avanzadoDesde, setAvanzadoDesde] = useState('');
   const [avanzadoHasta, setAvanzadoHasta] = useState(todayStr());
-  const [avanzadoTodasLasSedes, setAvanzadoTodasLasSedes] = useState(false);
+  // '' = sede actual, 'todas' = consolidado de toda la empresa, o el id de
+  // una sede puntual — ver comentario de FiltroAvanzado.
+  const [avanzadoSedeId, setAvanzadoSedeId] = useState('');
+  const [sucursalesAvanzado, setSucursalesAvanzado] = useState([]);
   const [avanzadoData, setAvanzadoData] = useState({});
   const [avanzadoLoading, setAvanzadoLoading] = useState(false);
+
+  useEffect(() => {
+    if (esGerencia) api.get('/sucursales').then((res) => setSucursalesAvanzado(res.data)).catch(() => {});
+  }, [esGerencia]);
 
   useEffect(() => {
     const endpoint = ENDPOINT_POR_SECCION_AVANZADA[seccion];
@@ -212,14 +224,17 @@ export default function Reports() {
       if (avanzadoDesde) params.desde = avanzadoDesde;
       if (avanzadoHasta) params.hasta = avanzadoHasta;
     }
-    if (esGerencia && avanzadoTodasLasSedes) params.todas_las_sedes = '1';
+    if (esGerencia && seccion !== 'proximos_vencer') {
+      if (avanzadoSedeId === 'todas') params.todas_las_sedes = '1';
+      else if (avanzadoSedeId) params.sucursal_id = avanzadoSedeId;
+    }
     setAvanzadoLoading(true);
     api.get(`/reportes-avanzados/${endpoint}`, { params })
       .then((res) => setAvanzadoData((d) => ({ ...d, [seccion]: res.data })))
       .catch(() => toast.error('No se pudo cargar el reporte.'))
       .finally(() => setAvanzadoLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [seccion, avanzadoDesde, avanzadoHasta, avanzadoTodasLasSedes, esGerencia]);
+  }, [seccion, avanzadoDesde, avanzadoHasta, avanzadoSedeId, esGerencia]);
 
   useEffect(() => {
     api.get('/reports/top-clientes').then((res) => setTopClientes(res.data));
@@ -1057,7 +1072,7 @@ export default function Reports() {
               <FiltroAvanzado
                 titulo="Top 20 productos" conFecha
                 desde={avanzadoDesde} setDesde={setAvanzadoDesde} hasta={avanzadoHasta} setHasta={setAvanzadoHasta}
-                esGerencia={esGerencia} todasLasSedes={avanzadoTodasLasSedes} setTodasLasSedes={setAvanzadoTodasLasSedes}
+                esGerencia={esGerencia} sedeId={avanzadoSedeId} setSedeId={setAvanzadoSedeId} sucursales={sucursalesAvanzado}
               />
               <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -6 }}>Qué productos lideran las ventas en el período, ordenados por monto vendido.</p>
               <table className="data-table">
@@ -1079,7 +1094,7 @@ export default function Reports() {
               <FiltroAvanzado
                 titulo="Productos más rentables" conFecha
                 desde={avanzadoDesde} setDesde={setAvanzadoDesde} hasta={avanzadoHasta} setHasta={setAvanzadoHasta}
-                esGerencia={esGerencia} todasLasSedes={avanzadoTodasLasSedes} setTodasLasSedes={setAvanzadoTodasLasSedes}
+                esGerencia={esGerencia} sedeId={avanzadoSedeId} setSedeId={setAvanzadoSedeId} sucursales={sucursalesAvanzado}
               />
               <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -6 }}>
                 Margen = venta - costo de compra. Ordenado de mayor a menor margen (no por cantidad vendida) — un producto puede vender poco y dejar más plata que uno que se vende mucho a margen chico.
@@ -1110,7 +1125,7 @@ export default function Reports() {
             <>
               <FiltroAvanzado
                 titulo="Stock crítico"
-                esGerencia={esGerencia} todasLasSedes={avanzadoTodasLasSedes} setTodasLasSedes={setAvanzadoTodasLasSedes}
+                esGerencia={esGerencia} sedeId={avanzadoSedeId} setSedeId={setAvanzadoSedeId} sucursales={sucursalesAvanzado}
               />
               <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -6 }}>
                 Productos con stock igual o por debajo de su "Stock mínimo" (configurado en Inventario → editar producto). Solo aparecen productos que tienen un mínimo configurado (mayor a 0).
@@ -1138,7 +1153,7 @@ export default function Reports() {
             <>
               <FiltroAvanzado
                 titulo="Inventario inmovilizado"
-                esGerencia={esGerencia} todasLasSedes={avanzadoTodasLasSedes} setTodasLasSedes={setAvanzadoTodasLasSedes}
+                esGerencia={esGerencia} sedeId={avanzadoSedeId} setSedeId={setAvanzadoSedeId} sucursales={sucursalesAvanzado}
               />
               <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -6 }}>
                 Productos con stock que no registran una venta en los últimos 60 días — dinero detenido en el estante. "Última venta" vacío significa que nunca se vendió.
@@ -1164,12 +1179,9 @@ export default function Reports() {
 
           {seccion === 'proximos_vencer' && (
             <>
-              <FiltroAvanzado
-                titulo="Próximos a vencer"
-                esGerencia={esGerencia} todasLasSedes={avanzadoTodasLasSedes} setTodasLasSedes={setAvanzadoTodasLasSedes}
-              />
+              <FiltroAvanzado titulo="Próximos a vencer" />
               <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -6 }}>
-                Lotes vencidos o que vencen dentro de 30 días, agrupados por producto (el detalle lote por lote está en Inventario → Lotes y Series).
+                Lotes vencidos o que vencen dentro de 30 días, agrupados por producto (el detalle lote por lote está en Inventario → Lotes y Series). Este reporte es de toda la empresa — los lotes no se registran por sede.
               </p>
               <table className="data-table">
                 <thead><tr><th>Código</th><th>Producto</th><th style={{ textAlign: 'right' }}>Cantidad</th><th>Vence</th><th>Estado</th><th style={{ textAlign: 'right' }}>Valor</th></tr></thead>
@@ -1195,7 +1207,7 @@ export default function Reports() {
             <>
               <FiltroAvanzado
                 titulo="Compras sugeridas"
-                esGerencia={esGerencia} todasLasSedes={avanzadoTodasLasSedes} setTodasLasSedes={setAvanzadoTodasLasSedes}
+                esGerencia={esGerencia} sedeId={avanzadoSedeId} setSedeId={setAvanzadoSedeId} sucursales={sucursalesAvanzado}
               />
               <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -6 }}>
                 Productos bajo su stock mínimo. "Cantidad sugerida" cubre 15 días de venta (según el promedio de los últimos 30 días) más lo que falta para volver al mínimo — es una sugerencia, no un pedido automático.
@@ -1226,7 +1238,7 @@ export default function Reports() {
                 <FiltroAvanzado
                   titulo="Ventas por hora y día" conFecha
                   desde={avanzadoDesde} setDesde={setAvanzadoDesde} hasta={avanzadoHasta} setHasta={setAvanzadoHasta}
-                  esGerencia={esGerencia} todasLasSedes={avanzadoTodasLasSedes} setTodasLasSedes={setAvanzadoTodasLasSedes}
+                  esGerencia={esGerencia} sedeId={avanzadoSedeId} setSedeId={setAvanzadoSedeId} sucursales={sucursalesAvanzado}
                 />
                 <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -6 }}>Para identificar los horarios y días más fuertes y organizar turnos/promociones en función de eso.</p>
                 <div className="chart-grid">
@@ -1270,7 +1282,7 @@ export default function Reports() {
                 <FiltroAvanzado
                   titulo="Ticket promedio" conFecha
                   desde={avanzadoDesde} setDesde={setAvanzadoDesde} hasta={avanzadoHasta} setHasta={setAvanzadoHasta}
-                  esGerencia={esGerencia} todasLasSedes={avanzadoTodasLasSedes} setTodasLasSedes={setAvanzadoTodasLasSedes}
+                  esGerencia={esGerencia} sedeId={avanzadoSedeId} setSedeId={setAvanzadoSedeId} sucursales={sucursalesAvanzado}
                 />
                 <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -6 }}>Cuánto gasta en promedio cada venta — en general y por cliente (top 20).</p>
                 <div className="stat-grid" style={{ marginBottom: 16 }}>
@@ -1298,7 +1310,7 @@ export default function Reports() {
               <FiltroAvanzado
                 titulo="Combos más vendidos" conFecha
                 desde={avanzadoDesde} setDesde={setAvanzadoDesde} hasta={avanzadoHasta} setHasta={setAvanzadoHasta}
-                esGerencia={esGerencia} todasLasSedes={avanzadoTodasLasSedes} setTodasLasSedes={setAvanzadoTodasLasSedes}
+                esGerencia={esGerencia} sedeId={avanzadoSedeId} setSedeId={setAvanzadoSedeId} sucursales={sucursalesAvanzado}
               />
               <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -6 }}>
                 Solo promociones tipo "Combo" (Promociones → Nueva promoción), no ofertas simples de un producto. Sirve para diseñar nuevas promociones basadas en lo que de verdad se vende junto.
@@ -1322,7 +1334,7 @@ export default function Reports() {
               <FiltroAvanzado
                 titulo="Rendimiento por proveedor" conFecha
                 desde={avanzadoDesde} setDesde={setAvanzadoDesde} hasta={avanzadoHasta} setHasta={setAvanzadoHasta}
-                esGerencia={esGerencia} todasLasSedes={avanzadoTodasLasSedes} setTodasLasSedes={setAvanzadoTodasLasSedes}
+                esGerencia={esGerencia} sedeId={avanzadoSedeId} setSedeId={setAvanzadoSedeId} sucursales={sucursalesAvanzado}
               />
               <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -6 }}>Volumen y frecuencia de compra por proveedor, en base a Compras registradas — sirve para negociar mejores condiciones con quien más le compras.</p>
               <table className="data-table">
