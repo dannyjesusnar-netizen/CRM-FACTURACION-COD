@@ -4,6 +4,7 @@ import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Tooltip, Lege
 import {
   ShoppingCart, Calculator, User, TrendingUp, Package, BarChart3, Users, Wallet, FileText, AlertTriangle,
   Trophy, DollarSign, AlertOctagon, Archive, CalendarClock, ClipboardList, Clock, Receipt, Tags, Truck,
+  Search, ChevronRight,
 } from 'lucide-react';
 import api from '../api';
 import { hoyPeru } from '../utils/fechas';
@@ -59,6 +60,31 @@ const SECCIONES = [
   { key: 'combos_vendidos', label: 'Combos más vendidos', Icon: Tags },
   { key: 'rendimiento_proveedor', label: 'Rendimiento por proveedor', Icon: Truck },
 ];
+const SECCIONES_BY_KEY = Object.fromEntries(SECCIONES.map((s) => [s.key, s]));
+
+// Las ~23 secciones de reportes ya no caben cómodas en una sola lista plana
+// (era lo que había antes) — se agrupan por categoría, cada una con su
+// color, para que el sidebar se pueda escanear de un vistazo y colapsar.
+const GRUPOS = [
+  {
+    id: 'ventas', label: 'Ventas', color: '#6366f1',
+    keys: ['ventas_mes', 'vendedor', 'producto', 'detalle_producto', 'top_clientes', 'resumen_comprobante',
+      'top_productos', 'productos_rentables', 'ventas_hora_dia', 'ticket_promedio', 'combos_vendidos'],
+  },
+  {
+    id: 'inventario', label: 'Inventario', color: '#0d9488',
+    keys: ['inventarios', 'kardex', 'stock_critico', 'inventario_inmovilizado', 'proximos_vencer',
+      'compras_sugeridas', 'rendimiento_proveedor'],
+  },
+  {
+    id: 'finanzas', label: 'Finanzas', color: '#ea580c',
+    keys: ['tributario', 'compras_mes', 'ingreso_gastos', 'cierre_caja'],
+  },
+  {
+    id: 'cumplimiento', label: 'Cumplimiento', color: '#dc2626',
+    keys: ['sunat_rechazados'],
+  },
+];
 
 // Reportes que filtran por rango de fechas (Desde/Hasta) — los de
 // inventario/estado actual (stock crítico, inmovilizado, por vencer,
@@ -97,7 +123,10 @@ function money(n) {
 // sedes", cualquier sede puntual de la empresa (ej. ver San Borja estando
 // parado en Miraflores) — mismo criterio que el selector de sede del
 // Tablero de Ventas en Dashboard.jsx.
-function FiltroAvanzado({ titulo, conFecha, desde, setDesde, hasta, setHasta, esGerencia, sedeId, setSedeId, sucursales }) {
+function FiltroAvanzado({
+  titulo, conFecha, desde, setDesde, hasta, setHasta, esGerencia, sedeId, setSedeId, sucursales,
+  conLinea, linea, setLinea,
+}) {
   return (
     <div className="report-toolbar">
       <h3 style={{ margin: 0 }}>{titulo}</h3>
@@ -113,6 +142,16 @@ function FiltroAvanzado({ titulo, conFecha, desde, setDesde, hasta, setHasta, es
               <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} />
             </div>
           </>
+        )}
+        {conLinea && (
+          <div className="filter-field">
+            <label>Línea</label>
+            <select value={linea} onChange={(e) => setLinea(e.target.value)}>
+              <option value="">Todas</option>
+              <option value="organic">Organic</option>
+              <option value="fit">Fit</option>
+            </select>
+          </div>
         )}
         {esGerencia && (
           <div className="filter-field">
@@ -148,6 +187,8 @@ export default function Reports() {
   const { user } = useAuth();
   const esGerencia = user?.role === 'gerencia';
   const [seccion, setSeccion] = useState('ventas_mes');
+  const [seccionBusqueda, setSeccionBusqueda] = useState('');
+  const [grupoAbierto, setGrupoAbierto] = useState('ventas');
 
   const [topClientes, setTopClientes] = useState([]);
   const [ventasPorTipo, setVentasPorTipo] = useState([]);
@@ -209,6 +250,10 @@ export default function Reports() {
   // una sede puntual — ver comentario de FiltroAvanzado.
   const [avanzadoSedeId, setAvanzadoSedeId] = useState('');
   const [sucursalesAvanzado, setSucursalesAvanzado] = useState([]);
+  // Solo se usa en "Ticket promedio" — deja ver el ticket calculado solo
+  // sobre lo vendido de una línea de producto (Organic and Fit S.A.C. vende
+  // ambas líneas y una misma boleta puede mezclarlas).
+  const [avanzadoLinea, setAvanzadoLinea] = useState('');
   const [avanzadoData, setAvanzadoData] = useState({});
   const [avanzadoLoading, setAvanzadoLoading] = useState(false);
 
@@ -228,13 +273,14 @@ export default function Reports() {
       if (avanzadoSedeId === 'todas') params.todas_las_sedes = '1';
       else if (avanzadoSedeId) params.sucursal_id = avanzadoSedeId;
     }
+    if (seccion === 'ticket_promedio' && avanzadoLinea) params.linea = avanzadoLinea;
     setAvanzadoLoading(true);
     api.get(`/reportes-avanzados/${endpoint}`, { params })
       .then((res) => setAvanzadoData((d) => ({ ...d, [seccion]: res.data })))
       .catch(() => toast.error('No se pudo cargar el reporte.'))
       .finally(() => setAvanzadoLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [seccion, avanzadoDesde, avanzadoHasta, avanzadoSedeId, esGerencia]);
+  }, [seccion, avanzadoDesde, avanzadoHasta, avanzadoSedeId, avanzadoLinea, esGerencia]);
 
   useEffect(() => {
     api.get('/reports/top-clientes').then((res) => setTopClientes(res.data));
@@ -415,24 +461,68 @@ export default function Reports() {
     return acc;
   }, { ventas_netas: 0, compras_netas: 0, igv_ventas: 0, igv_compras: 0, renta: 0, utilidad_contable: 0 });
 
+  const seccionBusquedaLower = seccionBusqueda.trim().toLowerCase();
+  const gruposFiltrados = GRUPOS.map((g) => {
+    const items = g.keys.map((k) => SECCIONES_BY_KEY[k]).filter(Boolean);
+    const filtrados = seccionBusquedaLower
+      ? items.filter((s) => s.label.toLowerCase().includes(seccionBusquedaLower))
+      : items;
+    return { ...g, items: filtrados };
+  }).filter((g) => g.items.length > 0);
+
   return (
     <div>
       <h1 className="page-title">Reportes</h1>
 
       <div className="reports-shell">
         <div className="reports-sidebar">
-          {SECCIONES.map((s) => (
-            <div
-              key={s.key}
-              className={'reports-sidebar-item' + (seccion === s.key ? ' active' : '')}
-              onClick={() => setSeccion(s.key)}
-              role="button"
-              tabIndex={0}
-            >
-              <s.Icon size={16} />
-              <span>{s.label}</span>
-            </div>
-          ))}
+          <div className="reports-sidebar-search">
+            <Search size={14} className="reports-sidebar-search-icon" />
+            <input
+              type="text"
+              placeholder="Buscar un reporte..."
+              value={seccionBusqueda}
+              onChange={(e) => setSeccionBusqueda(e.target.value)}
+            />
+          </div>
+          <div className="reports-sidebar-groups">
+            {gruposFiltrados.map((g) => {
+              const abierto = !!seccionBusqueda || grupoAbierto === g.id;
+              return (
+                <div key={g.id} style={{ '--grupo-color': g.color }}>
+                  <button
+                    type="button"
+                    className="reports-group-header"
+                    onClick={() => setGrupoAbierto((cur) => (cur === g.id ? null : g.id))}
+                  >
+                    <span className="reports-group-dot" />
+                    <span className="reports-group-label">{g.label}</span>
+                    <span className="reports-group-count">{g.items.length}</span>
+                    <ChevronRight size={13} className={'reports-group-chevron' + (abierto ? ' open' : '')} />
+                  </button>
+                  {abierto && (
+                    <div className="reports-sidebar-items">
+                      {g.items.map((s) => (
+                        <div
+                          key={s.key}
+                          className={'reports-sidebar-item' + (seccion === s.key ? ' active' : '')}
+                          onClick={() => { setSeccion(s.key); setGrupoAbierto(g.id); setSeccionBusqueda(''); }}
+                          role="button"
+                          tabIndex={0}
+                        >
+                          <s.Icon size={15} />
+                          <span>{s.label}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            {gruposFiltrados.length === 0 && (
+              <div style={{ padding: '14px 16px', fontSize: 13, color: 'var(--ink-muted)' }}>Sin resultados.</div>
+            )}
+          </div>
         </div>
 
         <div className="reports-content">
@@ -1283,8 +1373,12 @@ export default function Reports() {
                   titulo="Ticket promedio" conFecha
                   desde={avanzadoDesde} setDesde={setAvanzadoDesde} hasta={avanzadoHasta} setHasta={setAvanzadoHasta}
                   esGerencia={esGerencia} sedeId={avanzadoSedeId} setSedeId={setAvanzadoSedeId} sucursales={sucursalesAvanzado}
+                  conLinea linea={avanzadoLinea} setLinea={setAvanzadoLinea}
                 />
-                <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -6 }}>Cuánto gasta en promedio cada venta — en general y por cliente (top 20).</p>
+                <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -6 }}>
+                  Cuánto gasta en promedio cada venta — en general y por cliente (top 20).
+                  {avanzadoLinea && ' Calculado solo sobre lo vendido de la línea ' + (avanzadoLinea === 'organic' ? 'Organic' : 'Fit') + '.'}
+                </p>
                 <div className="stat-grid" style={{ marginBottom: 16 }}>
                   <div className="stat-card"><div className="stat-label">Ticket promedio general</div><div className="stat-value">{money(datos.general.ticket_promedio)}</div></div>
                   <div className="stat-card"><div className="stat-label">Cantidad de ventas</div><div className="stat-value">{datos.general.cantidad_ventas}</div></div>
