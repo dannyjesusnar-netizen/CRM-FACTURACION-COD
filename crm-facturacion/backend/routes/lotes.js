@@ -68,11 +68,27 @@ router.get('/', (req, res) => {
   res.json(withStatus);
 });
 
+// Año de 4 dígitos entre 2000 y 2100 — sin esto, un <input type="date"> al
+// que alguien le tipeó el año a mano (en vez de usar el selector) podía
+// guardar un año incompleto tal cual, ej. "0022-09-30" en vez de
+// "2022-09-30" (visto en producción: desordenaba "Próximos a vencer" y lo
+// marcaba vencido desde el año 22 d.C.). No hay forma de editar un lote ya
+// creado, así que mejor nunca dejar que entre así.
+function fechaVencimientoInvalida(fecha) {
+  if (!fecha) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) return 'La fecha de vencimiento no tiene un formato válido.';
+  const anio = Number(fecha.slice(0, 4));
+  if (anio < 2000 || anio > 2100) return `El año "${fecha.slice(0, 4)}" de la fecha de vencimiento no es válido — revisa que el año esté completo (ej. 2026, no 26).`;
+  return null;
+}
+
 router.post('/', requireAccion('inventario', 'lotes'), (req, res) => {
   const { product_id, codigo_lote, tipo, fecha_vencimiento, cantidad_inicial } = req.body || {};
   if (!product_id || !codigo_lote || !cantidad_inicial) {
     return res.status(400).json({ error: 'product_id, codigo_lote y cantidad_inicial son requeridos.' });
   }
+  const errorFecha = fechaVencimientoInvalida(fecha_vencimiento);
+  if (errorFecha) return res.status(400).json({ error: errorFecha });
   const product = db.prepare('SELECT * FROM products WHERE id = ?').get(product_id);
   if (!product) return res.status(404).json({ error: 'Producto no encontrado.' });
   if (product.tipo !== 'producto') {
@@ -101,6 +117,23 @@ router.post('/', requireAccion('inventario', 'lotes'), (req, res) => {
   const loteId = insertAll();
   const row = db.prepare('SELECT * FROM lotes WHERE id = ?').get(loteId);
   res.status(201).json(row);
+});
+
+// Antes no existía ninguna forma de corregir un lote ya creado (ni editar,
+// ni desactivar) — si alguien se equivocaba al tipear la fecha de
+// vencimiento (ver fechaVencimientoInvalida arriba) quedaba mal para
+// siempre. Solo permite corregir datos de identificación/vencimiento, no
+// la cantidad (esa se mueve con movimientos de stock, no a mano).
+router.put('/:id', requireAccion('inventario', 'lotes'), (req, res) => {
+  const lote = db.prepare('SELECT * FROM lotes WHERE id = ?').get(req.params.id);
+  if (!lote) return res.status(404).json({ error: 'Lote no encontrado.' });
+  const { codigo_lote, tipo, fecha_vencimiento } = req.body || {};
+  if (!codigo_lote) return res.status(400).json({ error: 'codigo_lote es requerido.' });
+  const errorFecha = fechaVencimientoInvalida(fecha_vencimiento);
+  if (errorFecha) return res.status(400).json({ error: errorFecha });
+  db.prepare('UPDATE lotes SET codigo_lote = ?, tipo = ?, fecha_vencimiento = ? WHERE id = ?')
+    .run(codigo_lote, tipo || 'lote', fecha_vencimiento || null, req.params.id);
+  res.json(db.prepare('SELECT * FROM lotes WHERE id = ?').get(req.params.id));
 });
 
 module.exports = router;

@@ -25,6 +25,7 @@ export default function Lotes() {
 
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
+  const [editingId, setEditingId] = useState(null);
   const [error, setError] = useState('');
 
   function load() {
@@ -49,6 +50,17 @@ export default function Lotes() {
 
   function openNew() {
     setForm(EMPTY_FORM);
+    setEditingId(null);
+    setError('');
+    setShowForm(true);
+  }
+
+  function openEdit(l) {
+    setForm({
+      product_id: l.product_id, codigo_lote: l.codigo_lote, tipo: l.tipo,
+      fecha_vencimiento: l.fecha_vencimiento || '', cantidad_inicial: l.cantidad_inicial,
+    });
+    setEditingId(l.id);
     setError('');
     setShowForm(true);
   }
@@ -61,17 +73,26 @@ export default function Lotes() {
       return;
     }
     try {
-      await api.post('/lotes', {
-        ...form,
-        product_id: Number(form.product_id),
-        cantidad_inicial: Number(form.cantidad_inicial),
-        fecha_vencimiento: form.fecha_vencimiento || null,
-      });
-      toast.success('Lote registrado correctamente.');
+      if (editingId) {
+        // La cantidad no se edita acá — se mueve con movimientos de stock,
+        // no a mano; solo se puede corregir código, tipo y vencimiento.
+        await api.put(`/lotes/${editingId}`, {
+          codigo_lote: form.codigo_lote, tipo: form.tipo, fecha_vencimiento: form.fecha_vencimiento || null,
+        });
+        toast.success('Lote actualizado correctamente.');
+      } else {
+        await api.post('/lotes', {
+          ...form,
+          product_id: Number(form.product_id),
+          cantidad_inicial: Number(form.cantidad_inicial),
+          fecha_vencimiento: form.fecha_vencimiento || null,
+        });
+        toast.success('Lote registrado correctamente.');
+      }
       setShowForm(false);
       load();
     } catch (err) {
-      setError(err.response?.data?.error || 'Error al registrar el lote.');
+      setError(err.response?.data?.error || 'Error al guardar el lote.');
     }
   }
 
@@ -144,6 +165,7 @@ export default function Lotes() {
                 <th style={{ textAlign: 'right' }}>Stock actual</th>
                 <th>Fecha de vencimiento</th>
                 <th>Estado</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
@@ -160,10 +182,11 @@ export default function Lotes() {
                   </td>
                   <td>{l.fecha_vencimiento || 'Sin vencimiento'}</td>
                   <td><span className={'badge ' + (ESTADO_BADGE[l.estado_vencimiento] || 'badge-neutral')}>{ESTADO_LABEL[l.estado_vencimiento] || l.estado_vencimiento}</span></td>
+                  <td className="row-actions"><button className="btn-link" onClick={() => openEdit(l)}>Editar</button></td>
                 </tr>
               ))}
               {lotes.length === 0 && (
-                <tr><td colSpan={9} className="empty-row">No hay lotes o series registrados con estos filtros.</td></tr>
+                <tr><td colSpan={10} className="empty-row">No hay lotes o series registrados con estos filtros.</td></tr>
               )}
             </tbody>
           </table>
@@ -173,10 +196,10 @@ export default function Lotes() {
       {showForm && (
         <div className="modal-overlay" onClick={() => setShowForm(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h2>Nuevo lote / serie</h2>
+            <h2>{editingId ? 'Editar lote / serie' : 'Nuevo lote / serie'}</h2>
             <form onSubmit={handleSubmit}>
               <label>Producto</label>
-              <select required value={form.product_id} onChange={(e) => setForm({ ...form, product_id: e.target.value })}>
+              <select required disabled={!!editingId} value={form.product_id} onChange={(e) => setForm({ ...form, product_id: e.target.value })}>
                 <option value="">Selecciona un producto...</option>
                 {productos.map((p) => <option key={p.id} value={p.id}>{p.codigo} — {p.nombre}</option>)}
               </select>
@@ -196,17 +219,29 @@ export default function Lotes() {
               <div className="form-row">
                 <div>
                   <label>Fecha de vencimiento (opcional)</label>
-                  <input type="date" value={form.fecha_vencimiento} onChange={(e) => setForm({ ...form, fecha_vencimiento: e.target.value })} />
+                  <input
+                    type="date" min="2000-01-01" max="2100-12-31"
+                    value={form.fecha_vencimiento} onChange={(e) => setForm({ ...form, fecha_vencimiento: e.target.value })}
+                  />
                 </div>
                 <div>
                   <label>Cantidad inicial</label>
-                  <input required type="number" step="1" value={form.cantidad_inicial} onChange={(e) => setForm({ ...form, cantidad_inicial: e.target.value })} />
+                  <input
+                    required type="number" step="1" disabled={!!editingId}
+                    value={form.cantidad_inicial} onChange={(e) => setForm({ ...form, cantidad_inicial: e.target.value })}
+                    title={editingId ? 'La cantidad no se edita acá — usa Movimientos para ajustar el stock.' : undefined}
+                  />
                 </div>
               </div>
+              {editingId && (
+                <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -6 }}>
+                  El producto y la cantidad no se pueden editar acá — para eso usa Inventario → Movimientos. Solo se corrige código, tipo y fecha de vencimiento.
+                </p>
+              )}
               {error && <div className="form-error">{error}</div>}
               <div className="modal-actions">
                 <button type="button" className="btn-secondary" onClick={() => setShowForm(false)}>Cancelar</button>
-                <button type="submit" className="btn-primary">Registrar lote</button>
+                <button type="submit" className="btn-primary">{editingId ? 'Guardar cambios' : 'Registrar lote'}</button>
               </div>
             </form>
           </div>
