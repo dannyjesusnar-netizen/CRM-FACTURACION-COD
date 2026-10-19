@@ -3,6 +3,7 @@ import { Bar } from 'react-chartjs-2';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Tooltip, Legend } from 'chart.js';
 import {
   ShoppingCart, Calculator, User, TrendingUp, Package, BarChart3, Users, Wallet, FileText, AlertTriangle,
+  Trophy, DollarSign, AlertOctagon, Archive, CalendarClock, ClipboardList, Clock, Receipt, Tags, Truck,
 } from 'lucide-react';
 import api from '../api';
 import { hoyPeru } from '../utils/fechas';
@@ -47,7 +48,37 @@ const SECCIONES = [
   { key: 'resumen_comprobante', label: 'Resumen por comprobante', Icon: BarChart3 },
   { key: 'cierre_caja', label: 'Cierre de Caja', Icon: Wallet },
   { key: 'sunat_rechazados', label: 'Documentos rechazados SUNAT', Icon: AlertTriangle },
+  { key: 'top_productos', label: 'Top 20 productos', Icon: Trophy },
+  { key: 'productos_rentables', label: 'Productos más rentables', Icon: DollarSign },
+  { key: 'stock_critico', label: 'Stock crítico', Icon: AlertOctagon },
+  { key: 'inventario_inmovilizado', label: 'Inventario inmovilizado', Icon: Archive },
+  { key: 'proximos_vencer', label: 'Próximos a vencer', Icon: CalendarClock },
+  { key: 'compras_sugeridas', label: 'Compras sugeridas', Icon: ClipboardList },
+  { key: 'ventas_hora_dia', label: 'Ventas por hora y día', Icon: Clock },
+  { key: 'ticket_promedio', label: 'Ticket promedio', Icon: Receipt },
+  { key: 'combos_vendidos', label: 'Combos más vendidos', Icon: Tags },
+  { key: 'rendimiento_proveedor', label: 'Rendimiento por proveedor', Icon: Truck },
 ];
+
+// Reportes que filtran por rango de fechas (Desde/Hasta) — los de
+// inventario/estado actual (stock crítico, inmovilizado, por vencer,
+// compras sugeridas) son una foto del momento, sin rango de fechas.
+const SECCIONES_AVANZADAS_CON_FECHA = new Set([
+  'top_productos', 'productos_rentables', 'ventas_hora_dia', 'ticket_promedio', 'combos_vendidos', 'rendimiento_proveedor',
+]);
+const ENDPOINT_POR_SECCION_AVANZADA = {
+  top_productos: 'top-productos',
+  productos_rentables: 'productos-rentables',
+  stock_critico: 'stock-critico',
+  inventario_inmovilizado: 'inventario-inmovilizado',
+  proximos_vencer: 'proximos-vencer',
+  compras_sugeridas: 'compras-sugeridas',
+  ventas_hora_dia: 'ventas-por-hora-dia',
+  ticket_promedio: 'ticket-promedio',
+  combos_vendidos: 'combos-mas-vendidos',
+  rendimiento_proveedor: 'rendimiento-proveedor',
+};
+const DIAS_SEMANA_LABEL = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 
 const SUNAT_ESTADO_LABEL = { rechazado: 'Rechazado', error: 'Error de envío' };
 const SUNAT_ESTADO_BADGE = { rechazado: 'badge-critical', error: 'badge-critical' };
@@ -58,6 +89,39 @@ function todayStr() {
 
 function money(n) {
   return `S/ ${Number(n || 0).toFixed(2)}`;
+}
+
+// Toolbar compartida de los 10 reportes avanzados: Desde/Hasta (solo para
+// los que agrupan ventas/compras en un rango) + selector de sede (Gerencia).
+function FiltroAvanzado({ titulo, conFecha, desde, setDesde, hasta, setHasta, esGerencia, todasLasSedes, setTodasLasSedes }) {
+  return (
+    <div className="report-toolbar">
+      <h3 style={{ margin: 0 }}>{titulo}</h3>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
+        {conFecha && (
+          <>
+            <div className="filter-field">
+              <label>Desde</label>
+              <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} />
+            </div>
+            <div className="filter-field">
+              <label>Hasta</label>
+              <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} />
+            </div>
+          </>
+        )}
+        {esGerencia && (
+          <div className="filter-field">
+            <label>Sede</label>
+            <select value={todasLasSedes ? 'todas' : 'actual'} onChange={(e) => setTodasLasSedes(e.target.value === 'todas')}>
+              <option value="actual">Sede actual</option>
+              <option value="todas">Todas las sedes</option>
+            </select>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 function SucursalYAnio({ anio, setAnio, extra }) {
@@ -128,6 +192,34 @@ export default function Reports() {
   const [sunatHasta, setSunatHasta] = useState(todayStr());
   const [sunatTodasLasSedes, setSunatTodasLasSedes] = useState(false);
   const [sunatRechazados, setSunatRechazados] = useState([]);
+
+  // Los 10 reportes avanzados (Top productos, Rentables, Stock crítico, etc.)
+  // comparten un solo filtro de fechas/sede y se cargan bajo demanda, solo
+  // cuando esa sección está activa — a diferencia del resto de Reportes
+  // (que cargan todo de una al entrar a la pantalla), acá son demasiados
+  // reportes como para pedirlos todos de una.
+  const [avanzadoDesde, setAvanzadoDesde] = useState('');
+  const [avanzadoHasta, setAvanzadoHasta] = useState(todayStr());
+  const [avanzadoTodasLasSedes, setAvanzadoTodasLasSedes] = useState(false);
+  const [avanzadoData, setAvanzadoData] = useState({});
+  const [avanzadoLoading, setAvanzadoLoading] = useState(false);
+
+  useEffect(() => {
+    const endpoint = ENDPOINT_POR_SECCION_AVANZADA[seccion];
+    if (!endpoint) return;
+    const params = {};
+    if (SECCIONES_AVANZADAS_CON_FECHA.has(seccion)) {
+      if (avanzadoDesde) params.desde = avanzadoDesde;
+      if (avanzadoHasta) params.hasta = avanzadoHasta;
+    }
+    if (esGerencia && avanzadoTodasLasSedes) params.todas_las_sedes = '1';
+    setAvanzadoLoading(true);
+    api.get(`/reportes-avanzados/${endpoint}`, { params })
+      .then((res) => setAvanzadoData((d) => ({ ...d, [seccion]: res.data })))
+      .catch(() => toast.error('No se pudo cargar el reporte.'))
+      .finally(() => setAvanzadoLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seccion, avanzadoDesde, avanzadoHasta, avanzadoTodasLasSedes, esGerencia]);
 
   useEffect(() => {
     api.get('/reports/top-clientes').then((res) => setTopClientes(res.data));
@@ -957,6 +1049,301 @@ export default function Reports() {
                   </tbody>
                 </table>
               </div>
+            </>
+          )}
+
+          {seccion === 'top_productos' && (
+            <>
+              <FiltroAvanzado
+                titulo="Top 20 productos" conFecha
+                desde={avanzadoDesde} setDesde={setAvanzadoDesde} hasta={avanzadoHasta} setHasta={setAvanzadoHasta}
+                esGerencia={esGerencia} todasLasSedes={avanzadoTodasLasSedes} setTodasLasSedes={setAvanzadoTodasLasSedes}
+              />
+              <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -6 }}>Qué productos lideran las ventas en el período, ordenados por monto vendido.</p>
+              <table className="data-table">
+                <thead><tr><th>Código</th><th>Producto</th><th>Categoría</th><th style={{ textAlign: 'right' }}>Cantidad</th><th style={{ textAlign: 'right' }}>Venta</th></tr></thead>
+                <tbody>
+                  {(avanzadoData.top_productos || []).map((r) => (
+                    <tr key={r.id}><td>{r.codigo}</td><td>{r.nombre}</td><td>{r.categoria || '—'}</td><td style={{ textAlign: 'right' }}>{r.cantidad}</td><td style={{ textAlign: 'right' }}>{money(r.venta)}</td></tr>
+                  ))}
+                  {(avanzadoData.top_productos || []).length === 0 && (
+                    <tr><td colSpan={5} className="empty-row">{avanzadoLoading ? 'Cargando...' : 'Sin ventas en el período.'}</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </>
+          )}
+
+          {seccion === 'productos_rentables' && (
+            <>
+              <FiltroAvanzado
+                titulo="Productos más rentables" conFecha
+                desde={avanzadoDesde} setDesde={setAvanzadoDesde} hasta={avanzadoHasta} setHasta={setAvanzadoHasta}
+                esGerencia={esGerencia} todasLasSedes={avanzadoTodasLasSedes} setTodasLasSedes={setAvanzadoTodasLasSedes}
+              />
+              <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -6 }}>
+                Margen = venta - costo de compra. Ordenado de mayor a menor margen (no por cantidad vendida) — un producto puede vender poco y dejar más plata que uno que se vende mucho a margen chico.
+                Si un producto no tiene "Precio Compra" cargado en Inventario, su costo se cuenta como S/ 0 (el margen sale inflado).
+              </p>
+              <table className="data-table">
+                <thead><tr><th>Código</th><th>Producto</th><th style={{ textAlign: 'right' }}>Cantidad</th><th style={{ textAlign: 'right' }}>Venta</th><th style={{ textAlign: 'right' }}>Costo</th><th style={{ textAlign: 'right' }}>Margen</th><th style={{ textAlign: 'right' }}>% Margen</th></tr></thead>
+                <tbody>
+                  {(avanzadoData.productos_rentables || []).map((r) => (
+                    <tr key={r.id}>
+                      <td>{r.codigo}</td><td>{r.nombre}</td>
+                      <td style={{ textAlign: 'right' }}>{r.cantidad}</td>
+                      <td style={{ textAlign: 'right' }}>{money(r.venta)}</td>
+                      <td style={{ textAlign: 'right' }}>{money(r.costo)}</td>
+                      <td style={{ textAlign: 'right', fontWeight: 700, color: r.margen >= 0 ? COLORS.good : COLORS.critical }}>{money(r.margen)}</td>
+                      <td style={{ textAlign: 'right' }}>{r.margen_pct}%</td>
+                    </tr>
+                  ))}
+                  {(avanzadoData.productos_rentables || []).length === 0 && (
+                    <tr><td colSpan={7} className="empty-row">{avanzadoLoading ? 'Cargando...' : 'Sin ventas en el período.'}</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </>
+          )}
+
+          {seccion === 'stock_critico' && (
+            <>
+              <FiltroAvanzado
+                titulo="Stock crítico"
+                esGerencia={esGerencia} todasLasSedes={avanzadoTodasLasSedes} setTodasLasSedes={setAvanzadoTodasLasSedes}
+              />
+              <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -6 }}>
+                Productos con stock igual o por debajo de su "Stock mínimo" (configurado en Inventario → editar producto). Solo aparecen productos que tienen un mínimo configurado (mayor a 0).
+              </p>
+              <table className="data-table">
+                <thead><tr><th>Código</th><th>Producto</th><th>Categoría</th><th style={{ textAlign: 'right' }}>Stock actual</th><th style={{ textAlign: 'right' }}>Stock mínimo</th><th style={{ textAlign: 'right' }}>Faltante</th></tr></thead>
+                <tbody>
+                  {(avanzadoData.stock_critico || []).map((r) => (
+                    <tr key={r.id}>
+                      <td>{r.codigo}</td><td>{r.nombre}</td><td>{r.categoria || '—'}</td>
+                      <td style={{ textAlign: 'right', color: COLORS.critical, fontWeight: 700 }}>{r.stock_actual}</td>
+                      <td style={{ textAlign: 'right' }}>{r.stock_minimo}</td>
+                      <td style={{ textAlign: 'right' }}>{r.faltante}</td>
+                    </tr>
+                  ))}
+                  {(avanzadoData.stock_critico || []).length === 0 && (
+                    <tr><td colSpan={6} className="empty-row">{avanzadoLoading ? 'Cargando...' : 'Sin productos en stock crítico — o ninguno tiene "Stock mínimo" configurado.'}</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </>
+          )}
+
+          {seccion === 'inventario_inmovilizado' && (
+            <>
+              <FiltroAvanzado
+                titulo="Inventario inmovilizado"
+                esGerencia={esGerencia} todasLasSedes={avanzadoTodasLasSedes} setTodasLasSedes={setAvanzadoTodasLasSedes}
+              />
+              <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -6 }}>
+                Productos con stock que no registran una venta en los últimos 60 días — dinero detenido en el estante. "Última venta" vacío significa que nunca se vendió.
+              </p>
+              <table className="data-table">
+                <thead><tr><th>Código</th><th>Producto</th><th>Categoría</th><th style={{ textAlign: 'right' }}>Stock actual</th><th>Última venta</th><th style={{ textAlign: 'right' }}>Valor inmovilizado</th></tr></thead>
+                <tbody>
+                  {(avanzadoData.inventario_inmovilizado || []).map((r) => (
+                    <tr key={r.id}>
+                      <td>{r.codigo}</td><td>{r.nombre}</td><td>{r.categoria || '—'}</td>
+                      <td style={{ textAlign: 'right' }}>{r.stock_actual}</td>
+                      <td>{r.ultima_venta || 'Nunca'}</td>
+                      <td style={{ textAlign: 'right', fontWeight: 700 }}>{money(r.valor_inmovilizado)}</td>
+                    </tr>
+                  ))}
+                  {(avanzadoData.inventario_inmovilizado || []).length === 0 && (
+                    <tr><td colSpan={6} className="empty-row">{avanzadoLoading ? 'Cargando...' : 'Sin inventario inmovilizado.'}</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </>
+          )}
+
+          {seccion === 'proximos_vencer' && (
+            <>
+              <FiltroAvanzado
+                titulo="Próximos a vencer"
+                esGerencia={esGerencia} todasLasSedes={avanzadoTodasLasSedes} setTodasLasSedes={setAvanzadoTodasLasSedes}
+              />
+              <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -6 }}>
+                Lotes vencidos o que vencen dentro de 30 días, agrupados por producto (el detalle lote por lote está en Inventario → Lotes y Series).
+              </p>
+              <table className="data-table">
+                <thead><tr><th>Código</th><th>Producto</th><th style={{ textAlign: 'right' }}>Cantidad</th><th>Vence</th><th>Estado</th><th style={{ textAlign: 'right' }}>Valor</th></tr></thead>
+                <tbody>
+                  {(avanzadoData.proximos_vencer || []).map((r) => (
+                    <tr key={r.id}>
+                      <td>{r.codigo}</td><td>{r.nombre}</td>
+                      <td style={{ textAlign: 'right' }}>{r.cantidad}</td>
+                      <td>{r.vence_mas_proximo}</td>
+                      <td><span className={'badge ' + (r.estado === 'vencido' ? 'badge-critical' : 'badge-warning')}>{r.estado === 'vencido' ? 'Vencido' : 'Por vencer'}</span></td>
+                      <td style={{ textAlign: 'right' }}>{money(r.valor)}</td>
+                    </tr>
+                  ))}
+                  {(avanzadoData.proximos_vencer || []).length === 0 && (
+                    <tr><td colSpan={6} className="empty-row">{avanzadoLoading ? 'Cargando...' : 'Sin lotes próximos a vencer.'}</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </>
+          )}
+
+          {seccion === 'compras_sugeridas' && (
+            <>
+              <FiltroAvanzado
+                titulo="Compras sugeridas"
+                esGerencia={esGerencia} todasLasSedes={avanzadoTodasLasSedes} setTodasLasSedes={setAvanzadoTodasLasSedes}
+              />
+              <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -6 }}>
+                Productos bajo su stock mínimo. "Cantidad sugerida" cubre 15 días de venta (según el promedio de los últimos 30 días) más lo que falta para volver al mínimo — es una sugerencia, no un pedido automático.
+              </p>
+              <table className="data-table">
+                <thead><tr><th>Código</th><th>Producto</th><th>Proveedor</th><th style={{ textAlign: 'right' }}>Stock actual</th><th style={{ textAlign: 'right' }}>Venta/día (30d)</th><th style={{ textAlign: 'right' }}>Cantidad sugerida</th></tr></thead>
+                <tbody>
+                  {(avanzadoData.compras_sugeridas || []).map((r) => (
+                    <tr key={r.id}>
+                      <td>{r.codigo}</td><td>{r.nombre}</td><td>{r.proveedor}</td>
+                      <td style={{ textAlign: 'right' }}>{r.stock_actual}</td>
+                      <td style={{ textAlign: 'right' }}>{r.venta_diaria_promedio}</td>
+                      <td style={{ textAlign: 'right', fontWeight: 700 }}>{r.cantidad_sugerida}</td>
+                    </tr>
+                  ))}
+                  {(avanzadoData.compras_sugeridas || []).length === 0 && (
+                    <tr><td colSpan={6} className="empty-row">{avanzadoLoading ? 'Cargando...' : 'No hay compras sugeridas por ahora.'}</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </>
+          )}
+
+          {seccion === 'ventas_hora_dia' && (() => {
+            const datos = avanzadoData.ventas_hora_dia || { por_hora: [], por_dia: [] };
+            return (
+              <>
+                <FiltroAvanzado
+                  titulo="Ventas por hora y día" conFecha
+                  desde={avanzadoDesde} setDesde={setAvanzadoDesde} hasta={avanzadoHasta} setHasta={setAvanzadoHasta}
+                  esGerencia={esGerencia} todasLasSedes={avanzadoTodasLasSedes} setTodasLasSedes={setAvanzadoTodasLasSedes}
+                />
+                <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -6 }}>Para identificar los horarios y días más fuertes y organizar turnos/promociones en función de eso.</p>
+                <div className="chart-grid">
+                  <div className="panel">
+                    <h3 style={{ marginTop: 0 }}>Por día de la semana</h3>
+                    <table className="data-table compact">
+                      <thead><tr><th>Día</th><th style={{ textAlign: 'right' }}>Ventas</th><th style={{ textAlign: 'right' }}>Monto</th></tr></thead>
+                      <tbody>
+                        {DIAS_SEMANA_LABEL.map((label, idx) => {
+                          const r = datos.por_dia.find((d) => d.dia_semana === idx);
+                          return <tr key={idx}><td>{label}</td><td style={{ textAlign: 'right' }}>{r?.cantidad || 0}</td><td style={{ textAlign: 'right' }}>{money(r?.venta || 0)}</td></tr>;
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="panel">
+                    <h3 style={{ marginTop: 0 }}>Por hora del día</h3>
+                    <div className="table-scroll" style={{ maxHeight: 360 }}>
+                      <table className="data-table compact">
+                        <thead><tr><th>Hora</th><th style={{ textAlign: 'right' }}>Ventas</th><th style={{ textAlign: 'right' }}>Monto</th></tr></thead>
+                        <tbody>
+                          {datos.por_hora.map((r) => (
+                            <tr key={r.hora}><td>{String(r.hora).padStart(2, '0')}:00</td><td style={{ textAlign: 'right' }}>{r.cantidad}</td><td style={{ textAlign: 'right' }}>{money(r.venta)}</td></tr>
+                          ))}
+                          {datos.por_hora.length === 0 && (
+                            <tr><td colSpan={3} className="empty-row">{avanzadoLoading ? 'Cargando...' : 'Sin ventas en el período.'}</td></tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              </>
+            );
+          })()}
+
+          {seccion === 'ticket_promedio' && (() => {
+            const datos = avanzadoData.ticket_promedio || { general: { cantidad_ventas: 0, total: 0, ticket_promedio: 0 }, por_cliente: [] };
+            return (
+              <>
+                <FiltroAvanzado
+                  titulo="Ticket promedio" conFecha
+                  desde={avanzadoDesde} setDesde={setAvanzadoDesde} hasta={avanzadoHasta} setHasta={setAvanzadoHasta}
+                  esGerencia={esGerencia} todasLasSedes={avanzadoTodasLasSedes} setTodasLasSedes={setAvanzadoTodasLasSedes}
+                />
+                <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -6 }}>Cuánto gasta en promedio cada venta — en general y por cliente (top 20).</p>
+                <div className="stat-grid" style={{ marginBottom: 16 }}>
+                  <div className="stat-card"><div className="stat-label">Ticket promedio general</div><div className="stat-value">{money(datos.general.ticket_promedio)}</div></div>
+                  <div className="stat-card"><div className="stat-label">Cantidad de ventas</div><div className="stat-value">{datos.general.cantidad_ventas}</div></div>
+                  <div className="stat-card"><div className="stat-label">Total vendido</div><div className="stat-value">{money(datos.general.total)}</div></div>
+                </div>
+                <table className="data-table">
+                  <thead><tr><th>Cliente</th><th style={{ textAlign: 'right' }}>Compras</th><th style={{ textAlign: 'right' }}>Total</th><th style={{ textAlign: 'right' }}>Ticket promedio</th></tr></thead>
+                  <tbody>
+                    {datos.por_cliente.map((r) => (
+                      <tr key={r.id}><td>{r.nombre}</td><td style={{ textAlign: 'right' }}>{r.compras}</td><td style={{ textAlign: 'right' }}>{money(r.total)}</td><td style={{ textAlign: 'right' }}>{money(r.ticket_promedio)}</td></tr>
+                    ))}
+                    {datos.por_cliente.length === 0 && (
+                      <tr><td colSpan={4} className="empty-row">{avanzadoLoading ? 'Cargando...' : 'Sin ventas en el período.'}</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </>
+            );
+          })()}
+
+          {seccion === 'combos_vendidos' && (
+            <>
+              <FiltroAvanzado
+                titulo="Combos más vendidos" conFecha
+                desde={avanzadoDesde} setDesde={setAvanzadoDesde} hasta={avanzadoHasta} setHasta={setAvanzadoHasta}
+                esGerencia={esGerencia} todasLasSedes={avanzadoTodasLasSedes} setTodasLasSedes={setAvanzadoTodasLasSedes}
+              />
+              <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -6 }}>
+                Solo promociones tipo "Combo" (Promociones → Nueva promoción), no ofertas simples de un producto. Sirve para diseñar nuevas promociones basadas en lo que de verdad se vende junto.
+              </p>
+              <table className="data-table">
+                <thead><tr><th>Combo</th><th style={{ textAlign: 'right' }}>Veces vendido</th><th style={{ textAlign: 'right' }}>Unidades</th><th style={{ textAlign: 'right' }}>Venta</th></tr></thead>
+                <tbody>
+                  {(avanzadoData.combos_vendidos || []).map((r) => (
+                    <tr key={r.id}><td>{r.nombre}</td><td style={{ textAlign: 'right' }}>{r.veces_vendido}</td><td style={{ textAlign: 'right' }}>{r.cantidad}</td><td style={{ textAlign: 'right' }}>{money(r.venta)}</td></tr>
+                  ))}
+                  {(avanzadoData.combos_vendidos || []).length === 0 && (
+                    <tr><td colSpan={4} className="empty-row">{avanzadoLoading ? 'Cargando...' : 'Sin combos vendidos en el período.'}</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </>
+          )}
+
+          {seccion === 'rendimiento_proveedor' && (
+            <>
+              <FiltroAvanzado
+                titulo="Rendimiento por proveedor" conFecha
+                desde={avanzadoDesde} setDesde={setAvanzadoDesde} hasta={avanzadoHasta} setHasta={setAvanzadoHasta}
+                esGerencia={esGerencia} todasLasSedes={avanzadoTodasLasSedes} setTodasLasSedes={setAvanzadoTodasLasSedes}
+              />
+              <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -6 }}>Volumen y frecuencia de compra por proveedor, en base a Compras registradas — sirve para negociar mejores condiciones con quien más le compras.</p>
+              <table className="data-table">
+                <thead><tr><th>Proveedor</th><th style={{ textAlign: 'right' }}>Compras</th><th style={{ textAlign: 'right' }}>Productos distintos</th><th style={{ textAlign: 'right' }}>Unidades</th><th style={{ textAlign: 'right' }}>Total comprado</th><th style={{ textAlign: 'right' }}>Ticket promedio</th><th>Última compra</th></tr></thead>
+                <tbody>
+                  {(avanzadoData.rendimiento_proveedor || []).map((r) => (
+                    <tr key={r.id}>
+                      <td>{r.nombre}</td>
+                      <td style={{ textAlign: 'right' }}>{r.cantidad_compras}</td>
+                      <td style={{ textAlign: 'right' }}>{r.productos_distintos}</td>
+                      <td style={{ textAlign: 'right' }}>{r.unidades_compradas}</td>
+                      <td style={{ textAlign: 'right' }}>{money(r.total_comprado)}</td>
+                      <td style={{ textAlign: 'right' }}>{money(r.ticket_promedio_compra)}</td>
+                      <td>{r.ultima_compra}</td>
+                    </tr>
+                  ))}
+                  {(avanzadoData.rendimiento_proveedor || []).length === 0 && (
+                    <tr><td colSpan={7} className="empty-row">{avanzadoLoading ? 'Cargando...' : 'Sin compras registradas en el período.'}</td></tr>
+                  )}
+                </tbody>
+              </table>
             </>
           )}
         </div>
