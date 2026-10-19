@@ -16,12 +16,16 @@ function round2(n) {
   return Math.round((Number(n) || 0) * 100) / 100;
 }
 
-// Sede: por defecto la sede donde está parado el usuario (req.sucursalId);
-// Gerencia puede pedir ?todas_las_sedes=1 para ver el consolidado de toda
-// la empresa — mismo criterio que ya usan routes/tablero.js y
-// GET /reports/sunat-rechazados.
-function verTodasLasSedes(req) {
-  return req.user.role === 'gerencia' && req.query.todas_las_sedes === '1';
+// Sede: por defecto la sede donde está parado el usuario. Gerencia además
+// puede pedir ?todas_las_sedes=1 para ver el consolidado de toda la empresa,
+// o ?sucursal_id=<id> para ver una sede específica distinta a la suya (ej.
+// San Borja estando parado en Miraflores) — mismo criterio que ya usa
+// routes/tablero.js (sedeFiltro) para el Tablero de Ventas.
+function sedeIdFiltro(req) {
+  if (req.user.role !== 'gerencia') return { sucursalId: req.sucursalId, todas: false };
+  if (req.query.todas_las_sedes === '1') return { sucursalId: null, todas: true };
+  if (req.query.sucursal_id) return { sucursalId: Number(req.query.sucursal_id), todas: false };
+  return { sucursalId: req.sucursalId, todas: false };
 }
 
 // Rango de fechas por defecto para los reportes basados en ventas/compras:
@@ -55,7 +59,7 @@ function proveedorExpr(alias) {
 // GET /top-productos?desde=&hasta=&todas_las_sedes=
 router.get('/top-productos', requireReportes, (req, res) => {
   const { desde, hasta } = rangoFechas(req);
-  const todas = verTodasLasSedes(req);
+  const { sucursalId, todas } = sedeIdFiltro(req);
   const params = [];
   let sql = `
     SELECT p.id, p.codigo, p.nombre, p.categoria,
@@ -68,7 +72,7 @@ router.get('/top-productos', requireReportes, (req, res) => {
       AND date(i.fecha_emision) >= date(?) AND date(i.fecha_emision) <= date(?)
   `;
   params.push(desde, hasta);
-  if (!todas) { sql += ' AND i.sucursal_id = ?'; params.push(req.sucursalId); }
+  if (!todas) { sql += ' AND i.sucursal_id = ?'; params.push(sucursalId); }
   sql += ' GROUP BY p.id ORDER BY venta DESC LIMIT 20';
   const rows = db.prepare(sql).all(...params);
   res.json(rows.map((r) => ({ ...r, venta: round2(r.venta) })));
@@ -80,7 +84,7 @@ router.get('/top-productos', requireReportes, (req, res) => {
 // GET /productos-rentables?desde=&hasta=&todas_las_sedes=
 router.get('/productos-rentables', requireReportes, (req, res) => {
   const { desde, hasta } = rangoFechas(req);
-  const todas = verTodasLasSedes(req);
+  const { sucursalId, todas } = sedeIdFiltro(req);
   const params = [];
   let sql = `
     SELECT p.id, p.codigo, p.nombre, p.categoria,
@@ -94,7 +98,7 @@ router.get('/productos-rentables', requireReportes, (req, res) => {
       AND date(i.fecha_emision) >= date(?) AND date(i.fecha_emision) <= date(?)
   `;
   params.push(desde, hasta);
-  if (!todas) { sql += ' AND i.sucursal_id = ?'; params.push(req.sucursalId); }
+  if (!todas) { sql += ' AND i.sucursal_id = ?'; params.push(sucursalId); }
   sql += ' GROUP BY p.id';
   const rows = db.prepare(sql).all(...params);
   const conMargen = rows.map((r) => {
@@ -113,7 +117,7 @@ router.get('/productos-rentables', requireReportes, (req, res) => {
 // por falta de inventario.
 // GET /stock-critico?todas_las_sedes=
 router.get('/stock-critico', requireReportes, (req, res) => {
-  const todas = verTodasLasSedes(req);
+  const { sucursalId, todas } = sedeIdFiltro(req);
   const stockSql = todas
     ? `(SELECT COALESCE(SUM(ss.stock), 0) FROM sucursal_stock ss WHERE ss.product_id = p.id)`
     : `(SELECT COALESCE(ss.stock, 0) FROM sucursal_stock ss WHERE ss.product_id = p.id AND ss.sucursal_id = ?)`;
@@ -127,7 +131,7 @@ router.get('/stock-critico', requireReportes, (req, res) => {
     WHERE stock_actual <= stock_minimo
     ORDER BY (stock_minimo - stock_actual) DESC
   `;
-  const params = todas ? [] : [req.sucursalId];
+  const params = todas ? [] : [sucursalId];
   const rows = db.prepare(sql).all(...params);
   res.json(rows.map((r) => ({ ...r, faltante: round2(r.stock_minimo - r.stock_actual) })));
 });
@@ -138,7 +142,7 @@ router.get('/stock-critico', requireReportes, (req, res) => {
 // GET /inventario-inmovilizado?dias=&todas_las_sedes=
 router.get('/inventario-inmovilizado', requireReportes, (req, res) => {
   const dias = Math.max(1, Number(req.query.dias) || 60);
-  const todas = verTodasLasSedes(req);
+  const { sucursalId, todas } = sedeIdFiltro(req);
   const stockSql = todas
     ? `(SELECT COALESCE(SUM(ss.stock), 0) FROM sucursal_stock ss WHERE ss.product_id = p.id)`
     : `(SELECT COALESCE(ss.stock, 0) FROM sucursal_stock ss WHERE ss.product_id = p.id AND ss.sucursal_id = ?)`;
@@ -155,7 +159,7 @@ router.get('/inventario-inmovilizado', requireReportes, (req, res) => {
     WHERE stock_actual > 0 AND (ultima_venta IS NULL OR date(ultima_venta, '-5 hours') < date('now', '-5 hours', '-' || ${dias} || ' days'))
     ORDER BY (stock_actual * precio_compra) DESC
   `;
-  const params = todas ? [] : [req.sucursalId, req.sucursalId];
+  const params = todas ? [] : [sucursalId, sucursalId];
   const rows = db.prepare(sql).all(...params);
   res.json(rows.map((r) => ({
     ...r,
@@ -195,7 +199,7 @@ router.get('/proximos-vencer', requireReportes, (req, res) => {
 // velocidad de venta de los últimos 30 días.
 // GET /compras-sugeridas?todas_las_sedes=
 router.get('/compras-sugeridas', requireReportes, (req, res) => {
-  const todas = verTodasLasSedes(req);
+  const { sucursalId, todas } = sedeIdFiltro(req);
   const stockSql = todas
     ? `(SELECT COALESCE(SUM(ss.stock), 0) FROM sucursal_stock ss WHERE ss.product_id = p.id)`
     : `(SELECT COALESCE(ss.stock, 0) FROM sucursal_stock ss WHERE ss.product_id = p.id AND ss.sucursal_id = ?)`;
@@ -206,7 +210,7 @@ router.get('/compras-sugeridas', requireReportes, (req, res) => {
     : `(SELECT COALESCE(SUM(ii.cantidad), 0) FROM invoice_items ii JOIN invoices i ON i.id = ii.invoice_id
         WHERE ii.product_id = p.id AND i.estado = 'emitido' AND i.tipo_comprobante IN ('boleta','factura')
           AND date(i.fecha_emision) >= date('now', '-30 days') AND i.sucursal_id = ?)`;
-  const params = todas ? [] : [req.sucursalId, req.sucursalId];
+  const params = todas ? [] : [sucursalId, sucursalId];
   const sql = `
     SELECT * FROM (
       SELECT p.id, p.codigo, p.nombre, p.categoria, p.stock_minimo,
@@ -239,14 +243,14 @@ router.get('/compras-sugeridas', requireReportes, (req, res) => {
 const DIAS_SEMANA = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 router.get('/ventas-por-hora-dia', requireReportes, (req, res) => {
   const { desde, hasta } = rangoFechas(req);
-  const todas = verTodasLasSedes(req);
+  const { sucursalId, todas } = sedeIdFiltro(req);
   const base = `
     FROM invoices i
     WHERE i.estado = 'emitido' AND i.tipo_comprobante IN ('boleta', 'factura')
       AND date(i.fecha_emision) >= date(?) AND date(i.fecha_emision) <= date(?)
       ${todas ? '' : 'AND i.sucursal_id = ?'}
   `;
-  const params = todas ? [desde, hasta] : [desde, hasta, req.sucursalId];
+  const params = todas ? [desde, hasta] : [desde, hasta, sucursalId];
 
   const porHora = db.prepare(`
     SELECT CAST(strftime('%H', i.created_at, '-5 hours') AS INTEGER) AS hora,
@@ -273,13 +277,13 @@ router.get('/ventas-por-hora-dia', requireReportes, (req, res) => {
 // GET /ticket-promedio?desde=&hasta=&todas_las_sedes=
 router.get('/ticket-promedio', requireReportes, (req, res) => {
   const { desde, hasta } = rangoFechas(req);
-  const todas = verTodasLasSedes(req);
+  const { sucursalId, todas } = sedeIdFiltro(req);
   const where = `
     WHERE i.estado = 'emitido' AND i.tipo_comprobante IN ('boleta', 'factura')
       AND date(i.fecha_emision) >= date(?) AND date(i.fecha_emision) <= date(?)
       ${todas ? '' : 'AND i.sucursal_id = ?'}
   `;
-  const params = todas ? [desde, hasta] : [desde, hasta, req.sucursalId];
+  const params = todas ? [desde, hasta] : [desde, hasta, sucursalId];
 
   const general = db.prepare(`
     SELECT COUNT(*) AS cantidad_ventas, COALESCE(SUM(i.total), 0) AS total
@@ -311,7 +315,7 @@ router.get('/ticket-promedio', requireReportes, (req, res) => {
 // GET /combos-mas-vendidos?desde=&hasta=&todas_las_sedes=
 router.get('/combos-mas-vendidos', requireReportes, (req, res) => {
   const { desde, hasta } = rangoFechas(req);
-  const todas = verTodasLasSedes(req);
+  const { sucursalId, todas } = sedeIdFiltro(req);
   const params = [];
   let sql = `
     SELECT pr.id, pr.nombre, pr.combo_modo,
@@ -325,7 +329,7 @@ router.get('/combos-mas-vendidos', requireReportes, (req, res) => {
       AND date(i.fecha_emision) >= date(?) AND date(i.fecha_emision) <= date(?)
   `;
   params.push(desde, hasta);
-  if (!todas) { sql += ' AND i.sucursal_id = ?'; params.push(req.sucursalId); }
+  if (!todas) { sql += ' AND i.sucursal_id = ?'; params.push(sucursalId); }
   sql += ' GROUP BY pr.id ORDER BY venta DESC';
   const rows = db.prepare(sql).all(...params);
   res.json(rows.map((r) => ({ ...r, venta: round2(r.venta) })));
@@ -337,7 +341,7 @@ router.get('/combos-mas-vendidos', requireReportes, (req, res) => {
 // GET /rendimiento-proveedor?desde=&hasta=&todas_las_sedes=
 router.get('/rendimiento-proveedor', requireReportes, (req, res) => {
   const { desde, hasta } = rangoFechas(req);
-  const todas = verTodasLasSedes(req);
+  const { sucursalId, todas } = sedeIdFiltro(req);
   const params = [];
   let sql = `
     SELECT s.id, s.nombre,
@@ -353,7 +357,7 @@ router.get('/rendimiento-proveedor', requireReportes, (req, res) => {
       AND date(pu.fecha) >= date(?) AND date(pu.fecha) <= date(?)
   `;
   params.push(desde, hasta);
-  if (!todas) { sql += ' AND pu.sucursal_id = ?'; params.push(req.sucursalId); }
+  if (!todas) { sql += ' AND pu.sucursal_id = ?'; params.push(sucursalId); }
   sql += ' GROUP BY s.id ORDER BY total_comprado DESC';
   const rows = db.prepare(sql).all(...params);
   res.json(rows.map((r) => ({
