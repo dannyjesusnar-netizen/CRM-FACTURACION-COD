@@ -274,28 +274,61 @@ router.get('/ventas-por-hora-dia', requireReportes, (req, res) => {
 
 // --------------------------------------------------------------------------
 // 8) Ticket promedio — cuánto gasta cada cliente en promedio por compra.
-// GET /ticket-promedio?desde=&hasta=&todas_las_sedes=
+// GET /ticket-promedio?desde=&hasta=&todas_las_sedes=&linea=organic|fit
+// Con "linea", el ticket se calcula solo sobre lo vendido de esa línea de
+// producto (Organic and Fit S.A.C. vende ambas) — no sobre la venta
+// completa, que puede mezclar líneas en una misma boleta/factura.
 router.get('/ticket-promedio', requireReportes, (req, res) => {
   const { desde, hasta } = rangoFechas(req);
   const { sucursalId, todas } = sedeIdFiltro(req);
-  const where = `
-    WHERE i.estado = 'emitido' AND i.tipo_comprobante IN ('boleta', 'factura')
-      AND date(i.fecha_emision) >= date(?) AND date(i.fecha_emision) <= date(?)
-      ${todas ? '' : 'AND i.sucursal_id = ?'}
-  `;
-  const params = todas ? [desde, hasta] : [desde, hasta, sucursalId];
+  const linea = ['organic', 'fit'].includes(req.query.linea) ? req.query.linea : null;
+  const sedeCond = todas ? '' : 'AND i.sucursal_id = ?';
 
-  const general = db.prepare(`
-    SELECT COUNT(*) AS cantidad_ventas, COALESCE(SUM(i.total), 0) AS total
-    FROM invoices i ${where}
-  `).get(...params);
+  let general, porCliente;
+  if (linea) {
+    const params = todas ? [desde, hasta, linea] : [desde, hasta, sucursalId, linea];
+    const whereLinea = `
+      WHERE i.estado = 'emitido' AND i.tipo_comprobante IN ('boleta', 'factura')
+        AND date(i.fecha_emision) >= date(?) AND date(i.fecha_emision) <= date(?)
+        ${sedeCond} AND p.linea = ?
+    `;
+    general = db.prepare(`
+      SELECT COUNT(DISTINCT i.id) AS cantidad_ventas, COALESCE(SUM(ii.subtotal + ii.igv_item), 0) AS total
+      FROM invoice_items ii
+      JOIN invoices i ON i.id = ii.invoice_id
+      JOIN products p ON p.id = ii.product_id
+      ${whereLinea}
+    `).get(...params);
 
-  const porCliente = db.prepare(`
-    SELECT c.id, c.nombre, COUNT(*) AS compras, SUM(i.total) AS total
-    FROM invoices i JOIN clients c ON c.id = i.client_id
-    ${where}
-    GROUP BY c.id ORDER BY total DESC LIMIT 20
-  `).all(...params);
+    porCliente = db.prepare(`
+      SELECT c.id, c.nombre, COUNT(DISTINCT i.id) AS compras, SUM(ii.subtotal + ii.igv_item) AS total
+      FROM invoice_items ii
+      JOIN invoices i ON i.id = ii.invoice_id
+      JOIN products p ON p.id = ii.product_id
+      JOIN clients c ON c.id = i.client_id
+      ${whereLinea}
+      GROUP BY c.id ORDER BY total DESC LIMIT 20
+    `).all(...params);
+  } else {
+    const where = `
+      WHERE i.estado = 'emitido' AND i.tipo_comprobante IN ('boleta', 'factura')
+        AND date(i.fecha_emision) >= date(?) AND date(i.fecha_emision) <= date(?)
+        ${sedeCond}
+    `;
+    const params = todas ? [desde, hasta] : [desde, hasta, sucursalId];
+
+    general = db.prepare(`
+      SELECT COUNT(*) AS cantidad_ventas, COALESCE(SUM(i.total), 0) AS total
+      FROM invoices i ${where}
+    `).get(...params);
+
+    porCliente = db.prepare(`
+      SELECT c.id, c.nombre, COUNT(*) AS compras, SUM(i.total) AS total
+      FROM invoices i JOIN clients c ON c.id = i.client_id
+      ${where}
+      GROUP BY c.id ORDER BY total DESC LIMIT 20
+    `).all(...params);
+  }
 
   res.json({
     general: {

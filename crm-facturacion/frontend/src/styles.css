@@ -866,6 +866,31 @@ html.dark .btn-export { color: #04231e; }
 .disabled-panel { background: var(--surface-hover); }
 .disabled-panel h3 { color: var(--ink-muted); }
 
+/* ---------- Reports: sidebar agrupado por categoría ----------
+   Antes eran ~23 secciones en una sola lista plana (difícil de escanear).
+   Ahora se agrupan por categoría (Ventas/Inventario/Finanzas/Cumplimiento,
+   ver GRUPOS en Reports.jsx), cada una colapsable y con su color vía la
+   variable --grupo-color (mismo truco que .metodo-pago-card). */
+.reports-sidebar-search { padding: 12px 14px 8px; position: relative; }
+.reports-sidebar-search-icon { position: absolute; left: 24px; top: 21px; color: var(--ink-muted); pointer-events: none; }
+.reports-sidebar-search input { padding-left: 30px; font-size: 13px; }
+
+.reports-sidebar-groups { padding: 2px 8px 14px; overflow-y: auto; }
+
+.reports-group-header {
+  width: 100%; display: flex; align-items: center; gap: 9px; padding: 9px 8px;
+  background: none; border: none; cursor: pointer; border-radius: 8px; font-family: inherit; text-align: left;
+  transition: background 0.14s var(--ease-out);
+}
+.reports-group-header:hover { background: var(--surface); }
+.reports-group-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--grupo-color, var(--brand-blue)); flex-shrink: 0; }
+.reports-group-label { flex: 1; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-secondary); }
+.reports-group-count { font-size: 11px; color: var(--ink-muted); font-weight: 700; }
+.reports-group-chevron { color: var(--ink-muted); flex-shrink: 0; transition: transform 0.15s var(--ease-out); }
+.reports-group-chevron.open { transform: rotate(90deg); }
+
+.reports-sidebar-items { display: flex; flex-direction: column; gap: 1px; padding: 2px 0 8px; }
+
 /* ---------- Dashboard: selector de hojas ---------- */
 .dashboard-hojas { display: flex; gap: 8px; margin-bottom: 18px; flex-wrap: wrap; }
 .dashboard-hoja-btn {
@@ -1083,35 +1108,35 @@ html.dark .ver-paneles-btn:hover { border-color: #3d4657; }
 .actions-with-select-row .filter-field { min-width: 160px; margin: 0; }
 
 .reports-shell { display: flex; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; align-items: stretch; box-shadow: var(--shadow-sm); }
-.reports-sidebar { width: 220px; flex-shrink: 0; background: var(--surface-hover); border-right: 1px solid var(--border); padding: 12px 0; }
+.reports-sidebar {
+  width: 260px; flex-shrink: 0; background: var(--surface-hover); border-right: 1px solid var(--border);
+  padding: 10px 0; display: flex; flex-direction: column; max-height: 720px;
+}
 .reports-sidebar-item {
-  display: flex; align-items: center; gap: 10px; padding: 10px 18px; font-size: 13px; font-weight: 500;
-  color: var(--ink-secondary); cursor: pointer; border-left: 3px solid transparent; transition: background 0.14s var(--ease-out), color 0.14s var(--ease-out);
+  display: flex; align-items: center; gap: 10px; padding: 9px 14px 9px 34px; font-size: 13px; font-weight: 600;
+  color: var(--ink-secondary); cursor: pointer; border-left: 3px solid transparent; border-radius: 0 8px 8px 0;
+  transition: background 0.14s var(--ease-out), color 0.14s var(--ease-out);
 }
 .reports-sidebar-item:hover { background: var(--surface); color: var(--ink); }
-.reports-sidebar-item.active { background: var(--surface); color: var(--brand-blue-dark); font-weight: 700; border-left-color: var(--brand-blue); }
+.reports-sidebar-item.active {
+  background: var(--surface); color: var(--brand-blue-dark); font-weight: 700;
+  border-left-color: var(--grupo-color, var(--brand-blue)); box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+}
 .reports-content { flex: 1; min-width: 0; padding: 24px 26px; }
 .reports-content .report-toolbar { margin-top: 0; }
 
 /* En móvil el riel de 220px (Empresa, Comprobantes, Descuentos...) no cabe
    al lado del contenido — lo apachurraba contra el borde derecho, casi sin
    espacio para leer nada. Mismo truco que .sidenav más arriba: pasa a ser
-   una barra horizontal angosta arriba, con scroll propio, y el contenido se
-   queda con todo el ancho debajo. */
+   un bloque arriba del contenido, con scroll propio (ahora es un acordeón
+   por categoría, no una lista plana, así que apila normal en vez de
+   envolver en varias filas como antes). */
 @media (max-width: 720px) {
   .reports-shell { flex-direction: column; }
-  /* Antes era una franja angosta con scroll horizontal propio (overflow-x:
-     auto) — con ~22 secciones ahí dentro, arrancar el swipe justo sobre esa
-     franja hacía que el teléfono "agarrara" el scroll horizontal de la
-     franja en vez del scroll vertical de la página, y quedaba trabado sin
-     poder bajar. Ahora las pestañas se acomodan en varias filas (flex-wrap)
-     y no tienen su propio scroll — participan del scroll normal de la
-     página, como cualquier otro contenido. */
   .reports-sidebar {
-    width: 100%; display: flex; flex-wrap: wrap; gap: 4px; overflow: visible;
-    border-right: none; border-bottom: 1px solid var(--border); padding: 8px;
+    width: 100%; max-height: 300px; overflow-y: auto;
+    border-right: none; border-bottom: 1px solid var(--border);
   }
-  .reports-sidebar-item { border-left: none; border-radius: 10px; white-space: nowrap; flex-shrink: 0; }
   .reports-content { padding: 16px 14px; }
 }
 
