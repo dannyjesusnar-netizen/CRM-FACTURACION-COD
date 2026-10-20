@@ -115,13 +115,70 @@ router.get('/ventas-por-dia', requireDashboardOReportes, (req, res) => {
 });
 
 // Ventas por tipo de comprobante
+// GET /reports/ventas-por-tipo?month=&year=&todas_las_sedes=
+// Antes solo mostraba boleta/factura de "invoices", sin filtro de
+// fecha (todo el histórico) ni de sede más que la actual. Se agrega
+// filtro de mes/año (mismo criterio que ventas-por-vendedor) y el
+// mismo "todas las sedes" para Gerencia que ya usa sunat-rechazados —
+// y se suman como filas aparte Notas de venta y Órdenes de compra
+// (documentos de otras tablas, no boletas/facturas SUNAT) y los
+// comprobantes Anulados, para tener de un vistazo todo lo que se
+// emitió/registró en el período, no solo lo facturado.
 router.get('/ventas-por-tipo', requireDashboardOReportes, (req, res) => {
-  const rows = db.prepare(
+  const { month, year } = req.query;
+  const y = year || String(new Date().getFullYear());
+  const verTodasLasSedes = req.user.role === 'gerencia' && req.query.todas_las_sedes === '1';
+
+  function filtroFecha(columna) {
+    let sql = ` AND strftime('%Y', ${columna}) = ?`;
+    const params = [y];
+    if (month) { sql += ` AND strftime('%m', ${columna}) = ?`; params.push(String(month).padStart(2, '0')); }
+    return { sql, params };
+  }
+  function filtroSede(columna) {
+    if (verTodasLasSedes) return { sql: '', params: [] };
+    return { sql: ` AND ${columna} = ?`, params: [req.sucursalId] };
+  }
+
+  const rows = [];
+
+  const fInv = filtroFecha('i.fecha_emision');
+  const sInv = filtroSede('i.sucursal_id');
+  rows.push(...db.prepare(
     `SELECT tipo_comprobante, COUNT(*) AS cantidad, COALESCE(SUM(total), 0) AS total
-     FROM invoices WHERE estado = 'emitido' AND sucursal_id = ?
+     FROM invoices i
+     WHERE estado = 'emitido' ${fInv.sql} ${sInv.sql}
      GROUP BY tipo_comprobante`
-  ).all(req.sucursalId);
-  res.json(rows);
+  ).all(...fInv.params, ...sInv.params));
+
+  const fNv = filtroFecha('nv.fecha_emision');
+  const sNv = filtroSede('nv.sucursal_id');
+  const notasVenta = db.prepare(
+    `SELECT 'nota_venta' AS tipo_comprobante, COUNT(*) AS cantidad, COALESCE(SUM(total), 0) AS total
+     FROM notas_venta nv
+     WHERE estado != 'anulado' ${fNv.sql} ${sNv.sql}`
+  ).get(...fNv.params, ...sNv.params);
+  if (notasVenta.cantidad > 0) rows.push(notasVenta);
+
+  const fOc = filtroFecha('po.fecha');
+  const sOc = filtroSede('po.sucursal_id');
+  const ordenesCompra = db.prepare(
+    `SELECT 'orden_compra' AS tipo_comprobante, COUNT(*) AS cantidad, COALESCE(SUM(total), 0) AS total
+     FROM purchase_orders po
+     WHERE estado != 'anulada' ${fOc.sql} ${sOc.sql}`
+  ).get(...fOc.params, ...sOc.params);
+  if (ordenesCompra.cantidad > 0) rows.push(ordenesCompra);
+
+  const fAn = filtroFecha('i.fecha_emision');
+  const sAn = filtroSede('i.sucursal_id');
+  const anulados = db.prepare(
+    `SELECT 'anulado' AS tipo_comprobante, COUNT(*) AS cantidad, COALESCE(SUM(total), 0) AS total
+     FROM invoices i
+     WHERE estado = 'anulado' ${fAn.sql} ${sAn.sql}`
+  ).get(...fAn.params, ...sAn.params);
+  if (anulados.cantidad > 0) rows.push(anulados);
+
+  res.json(rows.map((r) => ({ ...r, total: round2(r.total) })));
 });
 
 // Top clientes por monto comprado
@@ -588,22 +645,6 @@ router.get('/informe-tributario', requireReportes, requireAccion('reportes', 'tr
     };
   });
   res.json(full);
-});
-
-// Compras por mes de un año
-router.get('/compras-por-mes', requireReportes, requireAccion('reportes', 'financieros'), (req, res) => {
-  const year = req.query.year || String(new Date().getFullYear());
-  const rows = db.prepare(
-    `SELECT strftime('%m', fecha) AS mes, COALESCE(SUM(total), 0) AS total, COUNT(*) AS cantidad
-     FROM purchases
-     WHERE estado = 'registrada' AND strftime('%Y', fecha) = ? AND sucursal_id = ?
-     GROUP BY mes`
-  ).all(year, req.sucursalId);
-  const byMonth = {};
-  rows.forEach((r) => { byMonth[r.mes] = r; });
-  res.json(fillMeses(byMonth, (nombre, found) => ({
-    mes: nombre, total: found ? found.total : 0, cantidad: found ? found.cantidad : 0,
-  })));
 });
 
 // Ingresos (ventas) vs Gastos (compras + egresos de caja no relacionados a

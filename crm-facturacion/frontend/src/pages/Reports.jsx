@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Bar } from 'react-chartjs-2';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Tooltip, Legend } from 'chart.js';
 import {
-  ShoppingCart, Calculator, User, TrendingUp, Package, BarChart3, Users, Wallet, FileText, AlertTriangle,
+  ShoppingCart, Calculator, User, TrendingUp, BarChart3, Users, Wallet, FileText, AlertTriangle,
   Trophy, DollarSign, AlertOctagon, Archive, CalendarClock, ClipboardList, Clock, Receipt, Tags, Truck,
   Search, ChevronRight,
 } from 'lucide-react';
@@ -43,7 +43,6 @@ const SECCIONES = [
   { key: 'detalle_producto', label: 'Detalle de ventas por producto', Icon: FileText },
   { key: 'inventarios', label: 'Evolución inventarios', Icon: TrendingUp },
   { key: 'kardex', label: 'Kardex', Icon: FileText },
-  { key: 'compras_mes', label: 'Compras por mes', Icon: Package },
   { key: 'ingreso_gastos', label: 'Ingreso vs gastos', Icon: BarChart3 },
   { key: 'top_clientes', label: 'Top clientes', Icon: Users },
   { key: 'resumen_comprobante', label: 'Resumen por comprobante', Icon: BarChart3 },
@@ -74,17 +73,26 @@ const GRUPOS = [
   {
     id: 'inventario', label: 'Inventario', color: '#0d9488',
     keys: ['inventarios', 'kardex', 'stock_critico', 'inventario_inmovilizado', 'proximos_vencer',
-      'compras_sugeridas', 'rendimiento_proveedor'],
+      'rendimiento_proveedor'],
+  },
+  {
+    id: 'compras', label: 'Compras', color: '#7c3aed',
+    keys: ['compras_sugeridas'],
   },
   {
     id: 'finanzas', label: 'Finanzas', color: '#ea580c',
-    keys: ['tributario', 'compras_mes', 'ingreso_gastos', 'cierre_caja'],
+    keys: ['tributario', 'ingreso_gastos', 'cierre_caja'],
   },
   {
     id: 'cumplimiento', label: 'Cumplimiento', color: '#dc2626',
     keys: ['sunat_rechazados'],
   },
 ];
+
+const TIPO_COMPROBANTE_LABEL = {
+  boleta: 'Boleta', factura: 'Factura', nota_credito: 'Nota de crédito', nota_debito: 'Nota de débito',
+  nota_venta: 'Nota de venta', orden_compra: 'Orden de compra', anulado: 'Anulados',
+};
 
 // Reportes que filtran por rango de fechas (Desde/Hasta) — los de
 // inventario/estado actual (stock crítico, inmovilizado, por vencer,
@@ -192,6 +200,9 @@ export default function Reports() {
 
   const [topClientes, setTopClientes] = useState([]);
   const [ventasPorTipo, setVentasPorTipo] = useState([]);
+  const [comprobanteMes, setComprobanteMes] = useState('');
+  const [comprobanteAnio, setComprobanteAnio] = useState(CURRENT_YEAR);
+  const [comprobanteTodasLasSedes, setComprobanteTodasLasSedes] = useState(false);
 
   const [mensualAnio, setMensualAnio] = useState(CURRENT_YEAR);
   const [ventasMensuales, setVentasMensuales] = useState([]);
@@ -207,9 +218,6 @@ export default function Reports() {
 
   const [tributarioAnio, setTributarioAnio] = useState(CURRENT_YEAR);
   const [tributario, setTributario] = useState([]);
-
-  const [comprasMesAnio, setComprasMesAnio] = useState(CURRENT_YEAR);
-  const [comprasPorMes, setComprasPorMes] = useState([]);
 
   const [ingresoGastosAnio, setIngresoGastosAnio] = useState(CURRENT_YEAR);
   const [ingresoVsGastos, setIngresoVsGastos] = useState([]);
@@ -284,8 +292,14 @@ export default function Reports() {
 
   useEffect(() => {
     api.get('/reports/top-clientes').then((res) => setTopClientes(res.data));
-    api.get('/reports/ventas-por-tipo').then((res) => setVentasPorTipo(res.data));
   }, []);
+
+  useEffect(() => {
+    const params = { year: comprobanteAnio };
+    if (comprobanteMes) params.month = comprobanteMes;
+    if (esGerencia && comprobanteTodasLasSedes) params.todas_las_sedes = '1';
+    api.get('/reports/ventas-por-tipo', { params }).then((res) => setVentasPorTipo(res.data));
+  }, [comprobanteMes, comprobanteAnio, comprobanteTodasLasSedes, esGerencia]);
 
   useEffect(() => {
     api.get('/reports/ventas-mensuales', { params: { year: mensualAnio } }).then((res) => setVentasMensuales(res.data));
@@ -306,10 +320,6 @@ export default function Reports() {
   useEffect(() => {
     api.get('/reports/informe-tributario', { params: { year: tributarioAnio } }).then((res) => setTributario(res.data));
   }, [tributarioAnio]);
-
-  useEffect(() => {
-    api.get('/reports/compras-por-mes', { params: { year: comprasMesAnio } }).then((res) => setComprasPorMes(res.data));
-  }, [comprasMesAnio]);
 
   useEffect(() => {
     api.get('/reports/ingreso-vs-gastos', { params: { year: ingresoGastosAnio } }).then((res) => setIngresoVsGastos(res.data));
@@ -385,10 +395,6 @@ export default function Reports() {
     labels: ventasMensuales.map((r) => r.mes.slice(0, 3)),
     datasets: [{ label: 'Ventas (S/)', data: ventasMensuales.map((r) => r.total), backgroundColor: COLORS.blue, borderRadius: 4, maxBarThickness: 34 }],
   };
-  const barDataCompras = {
-    labels: comprasPorMes.map((r) => r.mes.slice(0, 3)),
-    datasets: [{ label: 'Compras (S/)', data: comprasPorMes.map((r) => r.total), backgroundColor: COLORS.critical, borderRadius: 4, maxBarThickness: 34 }],
-  };
   const barDataIngresoGastos = {
     labels: ingresoVsGastos.map((r) => r.mes.slice(0, 3)),
     datasets: [
@@ -408,7 +414,6 @@ export default function Reports() {
     datasets: [{ label: 'Total comprado (S/)', data: topClientes.map((c) => c.total_comprado), backgroundColor: COLORS.blue, borderRadius: 4, maxBarThickness: 40 }],
   };
 
-  const totalGeneral = ventasPorTipo.reduce((s, r) => s + r.total, 0);
   const productosVisibles = mostrarTodo ? productos : productos.slice(0, 5);
   const totalProductosSoles = productos.reduce((s, p) => s + p.monto_soles, 0);
   const totalProductosDolares = productos.reduce((s, p) => s + p.monto_dolares, 0);
@@ -913,20 +918,6 @@ export default function Reports() {
             </>
           )}
 
-          {seccion === 'compras_mes' && (
-            <>
-              <div className="report-toolbar">
-                <h3 style={{ margin: 0 }}>Compras por mes</h3>
-                <SucursalYAnio anio={comprasMesAnio} setAnio={setComprasMesAnio} />
-              </div>
-              {comprasPorMes.some((r) => r.total) ? (
-                <Bar data={barDataCompras} options={barOptionsV} height={90} />
-              ) : (
-                <p className="empty-row">Sin compras registradas en {comprasMesAnio}.</p>
-              )}
-            </>
-          )}
-
           {seccion === 'ingreso_gastos' && (
             <>
               <div className="report-toolbar">
@@ -955,32 +946,88 @@ export default function Reports() {
             </>
           )}
 
-          {seccion === 'resumen_comprobante' && (
-            <>
-              <h3 style={{ marginTop: 0 }}>Resumen por tipo de comprobante</h3>
-              <table className="data-table">
-                <thead>
-                  <tr><th>Tipo</th><th style={{ textAlign: 'right' }}>Cantidad</th><th style={{ textAlign: 'right' }}>Total</th><th style={{ textAlign: 'right' }}>% del total</th></tr>
-                </thead>
-                <tbody>
-                  {ventasPorTipo.map((r) => (
-                    <tr key={r.tipo_comprobante}>
-                      <td>{r.tipo_comprobante}</td>
-                      <td style={{ textAlign: 'right' }}>{r.cantidad}</td>
-                      <td style={{ textAlign: 'right' }}>{money(r.total)}</td>
-                      <td style={{ textAlign: 'right' }}>{totalGeneral ? ((r.total / totalGeneral) * 100).toFixed(1) : '0.0'}%</td>
+          {seccion === 'resumen_comprobante' && (() => {
+            // Boleta/Factura/Notas de crédito-débito/Nota de venta son
+            // documentos de venta — el Total general y el % se calculan
+            // solo sobre esos. Órdenes de compra (plata de Compras, no de
+            // Ventas) y Anulados (ya no cuentan como venta real) se
+            // muestran aparte, como información adicional, para no
+            // mezclarlos en el total ni inflar/desinflar el %.
+            const filasVenta = ventasPorTipo.filter((r) => !['orden_compra', 'anulado'].includes(r.tipo_comprobante));
+            const filasOtros = ventasPorTipo.filter((r) => ['orden_compra', 'anulado'].includes(r.tipo_comprobante));
+            const totalVentas = filasVenta.reduce((s, r) => s + r.total, 0);
+            return (
+              <>
+                <div className="report-toolbar">
+                  <h3 style={{ margin: 0 }}>Resumen por tipo de comprobante</h3>
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
+                    <div className="filter-field">
+                      <label>Mes</label>
+                      <select value={comprobanteMes} onChange={(e) => setComprobanteMes(e.target.value)}>
+                        <option value="">Todos</option>
+                        {MESES.map((m, idx) => <option key={m} value={String(idx + 1).padStart(2, '0')}>{m}</option>)}
+                      </select>
+                    </div>
+                    <div className="filter-field">
+                      <label>Año</label>
+                      <select value={comprobanteAnio} onChange={(e) => setComprobanteAnio(e.target.value)}>
+                        {YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
+                      </select>
+                    </div>
+                    {esGerencia && (
+                      <div className="filter-field">
+                        <label>Sede</label>
+                        <select
+                          value={comprobanteTodasLasSedes ? 'todas' : 'actual'}
+                          onChange={(e) => setComprobanteTodasLasSedes(e.target.value === 'todas')}
+                        >
+                          <option value="actual">Sede actual</option>
+                          <option value="todas">Todas las sedes</option>
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <table className="data-table">
+                  <thead>
+                    <tr><th>Tipo</th><th style={{ textAlign: 'right' }}>Cantidad</th><th style={{ textAlign: 'right' }}>Total</th><th style={{ textAlign: 'right' }}>% del total</th></tr>
+                  </thead>
+                  <tbody>
+                    {filasVenta.map((r) => (
+                      <tr key={r.tipo_comprobante}>
+                        <td>{TIPO_COMPROBANTE_LABEL[r.tipo_comprobante] || r.tipo_comprobante}</td>
+                        <td style={{ textAlign: 'right' }}>{r.cantidad}</td>
+                        <td style={{ textAlign: 'right' }}>{money(r.total)}</td>
+                        <td style={{ textAlign: 'right' }}>{totalVentas ? ((r.total / totalVentas) * 100).toFixed(1) : '0.0'}%</td>
+                      </tr>
+                    ))}
+                    {filasVenta.length === 0 && (
+                      <tr><td colSpan={4} className="empty-row">Sin documentos de venta en el período.</td></tr>
+                    )}
+                    <tr className="totals-footer">
+                      <td>Total general</td>
+                      <td style={{ textAlign: 'right' }}>{filasVenta.reduce((s, r) => s + r.cantidad, 0)}</td>
+                      <td style={{ textAlign: 'right' }}>{money(totalVentas)}</td>
+                      <td style={{ textAlign: 'right' }}>100.0%</td>
                     </tr>
-                  ))}
-                  <tr className="totals-footer">
-                    <td>Total general</td>
-                    <td style={{ textAlign: 'right' }}>{ventasPorTipo.reduce((s, r) => s + r.cantidad, 0)}</td>
-                    <td style={{ textAlign: 'right' }}>{money(totalGeneral)}</td>
-                    <td style={{ textAlign: 'right' }}>100.0%</td>
-                  </tr>
-                </tbody>
-              </table>
-            </>
-          )}
+                    {filasOtros.map((r) => (
+                      <tr key={r.tipo_comprobante}>
+                        <td>{TIPO_COMPROBANTE_LABEL[r.tipo_comprobante] || r.tipo_comprobante}</td>
+                        <td style={{ textAlign: 'right' }}>{r.cantidad}</td>
+                        <td style={{ textAlign: 'right' }}>{money(r.total)}</td>
+                        <td style={{ textAlign: 'right' }}>—</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {filasOtros.length > 0 && (
+                  <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: 10 }}>
+                    Órdenes de compra y Anulados no son venta — se muestran aparte y no entran en el Total general ni en el %.
+                  </p>
+                )}
+              </>
+            );
+          })()}
 
           {seccion === 'cierre_caja' && (
             <>
