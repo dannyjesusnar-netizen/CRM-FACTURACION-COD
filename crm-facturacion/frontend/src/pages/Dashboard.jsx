@@ -587,8 +587,13 @@ export default function Dashboard() {
                   los switches de "Ver" (no tiene sentido dejar uno solo a
                   media pantalla). */}
               {(() => {
-                const parTotalCompleto = (panelVisible('total_linea') && panelVisible('total_marca')) ? undefined : { gridColumn: '1 / -1' };
-                const parSedeCompleto = (panelVisible('resumen_sedes') && panelVisible('ventas_dia_sede')) ? undefined : { gridColumn: '1 / -1' };
+                // "Total por Línea" solía quedar corto al lado de "Total por
+                // Marca" (que tiene muchas más filas), dejando un hueco
+                // grande debajo — ahora "Resumen Sedes" sube a esa misma
+                // columna, apilado debajo de "Total por Línea", en vez de
+                // aparecer en una fila aparte más abajo.
+                const colIzqVisible = panelVisible('total_linea') || panelVisible('resumen_sedes');
+                const parTotalCompleto = (colIzqVisible && panelVisible('total_marca')) ? undefined : { gridColumn: '1 / -1' };
                 const parRankingCompleto = (panelVisible('ranking_trainers') && panelVisible('ranking_vendedores')) ? undefined : { gridColumn: '1 / -1' };
                 return (
                   <>
@@ -629,38 +634,87 @@ export default function Dashboard() {
                       </div>
                     )}
 
-                    {(panelVisible('total_linea') || panelVisible('total_marca') || panelVisible('total_producto')) && (
+                    {(panelVisible('total_linea') || panelVisible('resumen_sedes') || panelVisible('total_marca') || panelVisible('total_producto')) && (
                       <div className="chart-grid">
-                        {panelVisible('total_linea') && (
-                          <div className="panel" ref={totalLineaRef} style={parTotalCompleto}>
-                            <PanelHeader
-                              color={colorTablero}
-                              onCopiar={() => copiarPanelComoImagen(totalLineaRef, 'total-por-linea.png', toast)}
-                              onDescargarExcel={() => descargarPanelComoExcel(
-                                'total-por-linea.xlsx',
-                                ['Línea', 'Cantidad', 'Venta', '% Venta'],
-                                totalLinea.map((l) => [l.label, l.cantidad, l.venta, l.porcentaje]),
-                                toast
-                              )}
-                            >Total por Línea (Organic / Fit)</PanelHeader>
-                            <table className="data-table">
-                              <thead>
-                                <tr><th>Línea</th><th style={{ textAlign: 'right' }}>Cantidad</th><th style={{ textAlign: 'right' }}>Venta</th><th style={{ textAlign: 'right' }}>% Venta</th></tr>
-                              </thead>
-                              <tbody>
-                                {totalLinea.map((l) => (
-                                  <tr key={l.linea}>
-                                    <td>{l.label}</td>
-                                    <td style={{ textAlign: 'right' }}>{l.cantidad}</td>
-                                    <td style={{ textAlign: 'right' }}>{money(l.venta)}</td>
-                                    <td style={{ textAlign: 'right' }}>{l.porcentaje.toFixed(2)}%</td>
-                                  </tr>
-                                ))}
-                                {totalLinea.length === 0 && (
-                                  <tr><td colSpan={4} className="empty-row">Sin ventas en el período.</td></tr>
-                                )}
-                              </tbody>
-                            </table>
+                        {(panelVisible('total_linea') || panelVisible('resumen_sedes')) && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 20, minWidth: 0, ...parTotalCompleto }}>
+                            {panelVisible('total_linea') && (
+                              <div className="panel" ref={totalLineaRef}>
+                                <PanelHeader
+                                  color={colorTablero}
+                                  onCopiar={() => copiarPanelComoImagen(totalLineaRef, 'total-por-linea.png', toast)}
+                                  onDescargarExcel={() => descargarPanelComoExcel(
+                                    'total-por-linea.xlsx',
+                                    ['Línea', 'Cantidad', 'Venta', '% Venta'],
+                                    totalLinea.map((l) => [l.label, l.cantidad, l.venta, l.porcentaje]),
+                                    toast
+                                  )}
+                                >Total por Línea (Organic / Fit)</PanelHeader>
+                                <table className="data-table">
+                                  <thead>
+                                    <tr><th>Línea</th><th style={{ textAlign: 'right' }}>Cantidad</th><th style={{ textAlign: 'right' }}>Venta</th><th style={{ textAlign: 'right' }}>% Venta</th></tr>
+                                  </thead>
+                                  <tbody>
+                                    {totalLinea.map((l) => (
+                                      <tr key={l.linea}>
+                                        <td>{l.label}</td>
+                                        <td style={{ textAlign: 'right' }}>{l.cantidad}</td>
+                                        <td style={{ textAlign: 'right' }}>{money(l.venta)}</td>
+                                        <td style={{ textAlign: 'right' }}>{l.porcentaje.toFixed(2)}%</td>
+                                      </tr>
+                                    ))}
+                                    {totalLinea.length === 0 && (
+                                      <tr><td colSpan={4} className="empty-row">Sin ventas en el período.</td></tr>
+                                    )}
+                                  </tbody>
+                                </table>
+                              </div>
+                            )}
+                            {panelVisible('resumen_sedes') && (
+                              <div className="panel" ref={resumenSedesRef}>
+                                <PanelHeader
+                                  color={colorTablero}
+                                  onCopiar={() => copiarPanelComoImagen(resumenSedesRef, 'resumen-sedes.png', toast)}
+                                  onDescargarExcel={() => descargarPanelComoExcel(
+                                    'resumen-sedes.xlsx',
+                                    ['Sede', 'Venta', 'Meta', '% Meta'],
+                                    [
+                                      ...resumenSedes.sedes.map((s) => [s.sede, s.venta, s.meta, s.porcentaje ?? '']),
+                                      ...(resumenSedes.total ? [['Total', resumenSedes.total.venta, resumenSedes.total.meta, resumenSedes.total.porcentaje ?? '']] : []),
+                                    ],
+                                    toast
+                                  )}
+                                >Resumen Sedes</PanelHeader>
+                                <table className="data-table">
+                                  <thead>
+                                    <tr><th>Sede</th><th style={{ textAlign: 'right' }}>Venta</th><th style={{ textAlign: 'right' }}>Meta</th><th>% Meta</th></tr>
+                                  </thead>
+                                  <tbody>
+                                    {resumenSedes.sedes.map((s) => (
+                                      <tr key={s.sucursal_id}>
+                                        <td>{s.sede}</td>
+                                        <td style={{ textAlign: 'right' }}>{money(s.venta)}</td>
+                                        <td style={{ textAlign: 'right' }}>{money(s.meta)}</td>
+                                        <td>{pctBadge(s.porcentaje)}</td>
+                                      </tr>
+                                    ))}
+                                    {resumenSedes.sedes.length === 0 && (
+                                      <tr><td colSpan={4} className="empty-row">Sin sedes activas.</td></tr>
+                                    )}
+                                  </tbody>
+                                  {resumenSedes.total && (
+                                    <tfoot>
+                                      <tr className="totals-footer">
+                                        <td>Total</td>
+                                        <td style={{ textAlign: 'right' }}>{money(resumenSedes.total.venta)}</td>
+                                        <td style={{ textAlign: 'right' }}>{money(resumenSedes.total.meta)}</td>
+                                        <td>{pctBadge(resumenSedes.total.porcentaje)}</td>
+                                      </tr>
+                                    </tfoot>
+                                  )}
+                                </table>
+                              </div>
+                            )}
                           </div>
                         )}
                         {panelVisible('total_marca') && (
@@ -730,56 +784,9 @@ export default function Dashboard() {
                       </div>
                     )}
 
-                    {(panelVisible('resumen_sedes') || panelVisible('ventas_dia_sede')) && (
-                      <div className="chart-grid" style={{ marginTop: 20 }}>
-                    {panelVisible('resumen_sedes') && (
-                      <div className="panel" ref={resumenSedesRef} style={parSedeCompleto}>
-                        <PanelHeader
-                          color={colorTablero}
-                          onCopiar={() => copiarPanelComoImagen(resumenSedesRef, 'resumen-sedes.png', toast)}
-                          onDescargarExcel={() => descargarPanelComoExcel(
-                            'resumen-sedes.xlsx',
-                            ['Sede', 'Venta', 'Meta', '% Meta'],
-                            [
-                              ...resumenSedes.sedes.map((s) => [s.sede, s.venta, s.meta, s.porcentaje ?? '']),
-                              ...(resumenSedes.total ? [['Total', resumenSedes.total.venta, resumenSedes.total.meta, resumenSedes.total.porcentaje ?? '']] : []),
-                            ],
-                            toast
-                          )}
-                        >Resumen Sedes</PanelHeader>
-                        <table className="data-table">
-                          <thead>
-                            <tr><th>Sede</th><th style={{ textAlign: 'right' }}>Venta</th><th style={{ textAlign: 'right' }}>Meta</th><th>% Meta</th></tr>
-                          </thead>
-                          <tbody>
-                            {resumenSedes.sedes.map((s) => (
-                              <tr key={s.sucursal_id}>
-                                <td>{s.sede}</td>
-                                <td style={{ textAlign: 'right' }}>{money(s.venta)}</td>
-                                <td style={{ textAlign: 'right' }}>{money(s.meta)}</td>
-                                <td>{pctBadge(s.porcentaje)}</td>
-                              </tr>
-                            ))}
-                            {resumenSedes.sedes.length === 0 && (
-                              <tr><td colSpan={4} className="empty-row">Sin sedes activas.</td></tr>
-                            )}
-                          </tbody>
-                          {resumenSedes.total && (
-                            <tfoot>
-                              <tr className="totals-footer">
-                                <td>Total</td>
-                                <td style={{ textAlign: 'right' }}>{money(resumenSedes.total.venta)}</td>
-                                <td style={{ textAlign: 'right' }}>{money(resumenSedes.total.meta)}</td>
-                                <td>{pctBadge(resumenSedes.total.porcentaje)}</td>
-                              </tr>
-                            </tfoot>
-                          )}
-                        </table>
-                      </div>
-                    )}
-
                     {panelVisible('ventas_dia_sede') && (
-                      <div className="panel" ref={ventasDiaPorSedeRef} style={parSedeCompleto}>
+                      <div className="chart-grid" style={{ marginTop: 20 }}>
+                      <div className="panel" ref={ventasDiaPorSedeRef} style={{ gridColumn: '1 / -1' }}>
                         <PanelHeader
                           color={colorTablero}
                           onCopiar={() => copiarPanelComoImagen(ventasDiaPorSedeRef, 'ventas-dia-por-sede.png', toast)}
@@ -824,7 +831,6 @@ export default function Dashboard() {
                           </tfoot>
                         </table>
                       </div>
-                    )}
                       </div>
                     )}
 

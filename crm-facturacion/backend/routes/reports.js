@@ -115,19 +115,24 @@ router.get('/ventas-por-dia', requireDashboardOReportes, (req, res) => {
 });
 
 // Ventas por tipo de comprobante
-// GET /reports/ventas-por-tipo?month=&year=&todas_las_sedes=
+// GET /reports/ventas-por-tipo?month=&year=&todas_las_sedes=&sucursal_id=
 // Antes solo mostraba boleta/factura de "invoices", sin filtro de
-// fecha (todo el histórico) ni de sede más que la actual. Se agrega
+// fecha (todo el histórico) ni más sede que la actual. Se agrega
 // filtro de mes/año (mismo criterio que ventas-por-vendedor) y el
-// mismo "todas las sedes" para Gerencia que ya usa sunat-rechazados —
-// y se suman como filas aparte Notas de venta y Órdenes de compra
-// (documentos de otras tablas, no boletas/facturas SUNAT) y los
-// comprobantes Anulados, para tener de un vistazo todo lo que se
-// emitió/registró en el período, no solo lo facturado.
+// mismo selector de sede puntual que ya usan los reportes avanzados
+// (sedeIdFiltro en reportesAvanzados.js): Gerencia puede pedir
+// ?sucursal_id=<id> para ver una sede distinta a la suya, o
+// ?todas_las_sedes=1 para el consolidado — y se suman como filas
+// aparte Notas de venta y Órdenes de compra (documentos de otras
+// tablas, no boletas/facturas SUNAT) y los comprobantes Anulados,
+// para tener de un vistazo todo lo que se emitió/registró en el
+// período, no solo lo facturado.
 router.get('/ventas-por-tipo', requireDashboardOReportes, (req, res) => {
   const { month, year } = req.query;
   const y = year || String(new Date().getFullYear());
-  const verTodasLasSedes = req.user.role === 'gerencia' && req.query.todas_las_sedes === '1';
+  const esGerencia = req.user.role === 'gerencia';
+  const verTodasLasSedes = esGerencia && req.query.todas_las_sedes === '1';
+  const sucursalIdEfectiva = (esGerencia && req.query.sucursal_id) ? Number(req.query.sucursal_id) : req.sucursalId;
 
   function filtroFecha(columna) {
     let sql = ` AND strftime('%Y', ${columna}) = ?`;
@@ -137,7 +142,7 @@ router.get('/ventas-por-tipo', requireDashboardOReportes, (req, res) => {
   }
   function filtroSede(columna) {
     if (verTodasLasSedes) return { sql: '', params: [] };
-    return { sql: ` AND ${columna} = ?`, params: [req.sucursalId] };
+    return { sql: ` AND ${columna} = ?`, params: [sucursalIdEfectiva] };
   }
 
   const rows = [];
