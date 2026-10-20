@@ -202,7 +202,8 @@ export default function Reports() {
   const [ventasPorTipo, setVentasPorTipo] = useState([]);
   const [comprobanteMes, setComprobanteMes] = useState('');
   const [comprobanteAnio, setComprobanteAnio] = useState(CURRENT_YEAR);
-  const [comprobanteTodasLasSedes, setComprobanteTodasLasSedes] = useState(false);
+  // '' = sede actual, 'todas' = todas las sedes, o el id de una sede puntual.
+  const [comprobanteSedeId, setComprobanteSedeId] = useState('');
 
   const [mensualAnio, setMensualAnio] = useState(CURRENT_YEAR);
   const [ventasMensuales, setVentasMensuales] = useState([]);
@@ -297,9 +298,12 @@ export default function Reports() {
   useEffect(() => {
     const params = { year: comprobanteAnio };
     if (comprobanteMes) params.month = comprobanteMes;
-    if (esGerencia && comprobanteTodasLasSedes) params.todas_las_sedes = '1';
+    if (esGerencia) {
+      if (comprobanteSedeId === 'todas') params.todas_las_sedes = '1';
+      else if (comprobanteSedeId) params.sucursal_id = comprobanteSedeId;
+    }
     api.get('/reports/ventas-por-tipo', { params }).then((res) => setVentasPorTipo(res.data));
-  }, [comprobanteMes, comprobanteAnio, comprobanteTodasLasSedes, esGerencia]);
+  }, [comprobanteMes, comprobanteAnio, comprobanteSedeId, esGerencia]);
 
   useEffect(() => {
     api.get('/reports/ventas-mensuales', { params: { year: mensualAnio } }).then((res) => setVentasMensuales(res.data));
@@ -977,12 +981,10 @@ export default function Reports() {
                     {esGerencia && (
                       <div className="filter-field">
                         <label>Sede</label>
-                        <select
-                          value={comprobanteTodasLasSedes ? 'todas' : 'actual'}
-                          onChange={(e) => setComprobanteTodasLasSedes(e.target.value === 'todas')}
-                        >
-                          <option value="actual">Sede actual</option>
+                        <select value={comprobanteSedeId} onChange={(e) => setComprobanteSedeId(e.target.value)}>
+                          <option value="">Sede actual</option>
                           <option value="todas">Todas las sedes</option>
+                          {sucursalesAvanzado.map((s) => <option key={s.id} value={String(s.id)}>{s.nombre}</option>)}
                         </select>
                       </div>
                     )}
