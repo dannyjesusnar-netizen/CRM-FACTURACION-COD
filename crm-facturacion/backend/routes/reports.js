@@ -647,22 +647,6 @@ router.get('/informe-tributario', requireReportes, requireAccion('reportes', 'tr
   res.json(full);
 });
 
-// Compras por mes de un año
-router.get('/compras-por-mes', requireReportes, requireAccion('reportes', 'financieros'), (req, res) => {
-  const year = req.query.year || String(new Date().getFullYear());
-  const rows = db.prepare(
-    `SELECT strftime('%m', fecha) AS mes, COALESCE(SUM(total), 0) AS total, COUNT(*) AS cantidad
-     FROM purchases
-     WHERE estado = 'registrada' AND strftime('%Y', fecha) = ? AND sucursal_id = ?
-     GROUP BY mes`
-  ).all(year, req.sucursalId);
-  const byMonth = {};
-  rows.forEach((r) => { byMonth[r.mes] = r; });
-  res.json(fillMeses(byMonth, (nombre, found) => ({
-    mes: nombre, total: found ? found.total : 0, cantidad: found ? found.cantidad : 0,
-  })));
-});
-
 // Ingresos (ventas) vs Gastos (compras + egresos de caja no relacionados a
 // compras, para no duplicar) por mes de un año.
 router.get('/ingreso-vs-gastos', requireReportes, requireAccion('reportes', 'financieros'), (req, res) => {

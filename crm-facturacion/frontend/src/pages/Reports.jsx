@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Bar } from 'react-chartjs-2';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Tooltip, Legend } from 'chart.js';
 import {
-  ShoppingCart, Calculator, User, TrendingUp, Package, BarChart3, Users, Wallet, FileText, AlertTriangle,
+  ShoppingCart, Calculator, User, TrendingUp, BarChart3, Users, Wallet, FileText, AlertTriangle,
   Trophy, DollarSign, AlertOctagon, Archive, CalendarClock, ClipboardList, Clock, Receipt, Tags, Truck,
   Search, ChevronRight,
 } from 'lucide-react';
@@ -43,7 +43,6 @@ const SECCIONES = [
   { key: 'detalle_producto', label: 'Detalle de ventas por producto', Icon: FileText },
   { key: 'inventarios', label: 'Evolución inventarios', Icon: TrendingUp },
   { key: 'kardex', label: 'Kardex', Icon: FileText },
-  { key: 'compras_mes', label: 'Compras por mes', Icon: Package },
   { key: 'ingreso_gastos', label: 'Ingreso vs gastos', Icon: BarChart3 },
   { key: 'top_clientes', label: 'Top clientes', Icon: Users },
   { key: 'resumen_comprobante', label: 'Resumen por comprobante', Icon: BarChart3 },
@@ -74,11 +73,15 @@ const GRUPOS = [
   {
     id: 'inventario', label: 'Inventario', color: '#0d9488',
     keys: ['inventarios', 'kardex', 'stock_critico', 'inventario_inmovilizado', 'proximos_vencer',
-      'compras_sugeridas', 'rendimiento_proveedor'],
+      'rendimiento_proveedor'],
+  },
+  {
+    id: 'compras', label: 'Compras', color: '#7c3aed',
+    keys: ['compras_sugeridas'],
   },
   {
     id: 'finanzas', label: 'Finanzas', color: '#ea580c',
-    keys: ['tributario', 'compras_mes', 'ingreso_gastos', 'cierre_caja'],
+    keys: ['tributario', 'ingreso_gastos', 'cierre_caja'],
   },
   {
     id: 'cumplimiento', label: 'Cumplimiento', color: '#dc2626',
@@ -216,9 +219,6 @@ export default function Reports() {
   const [tributarioAnio, setTributarioAnio] = useState(CURRENT_YEAR);
   const [tributario, setTributario] = useState([]);
 
-  const [comprasMesAnio, setComprasMesAnio] = useState(CURRENT_YEAR);
-  const [comprasPorMes, setComprasPorMes] = useState([]);
-
   const [ingresoGastosAnio, setIngresoGastosAnio] = useState(CURRENT_YEAR);
   const [ingresoVsGastos, setIngresoVsGastos] = useState([]);
 
@@ -322,10 +322,6 @@ export default function Reports() {
   }, [tributarioAnio]);
 
   useEffect(() => {
-    api.get('/reports/compras-por-mes', { params: { year: comprasMesAnio } }).then((res) => setComprasPorMes(res.data));
-  }, [comprasMesAnio]);
-
-  useEffect(() => {
     api.get('/reports/ingreso-vs-gastos', { params: { year: ingresoGastosAnio } }).then((res) => setIngresoVsGastos(res.data));
   }, [ingresoGastosAnio]);
 
@@ -398,10 +394,6 @@ export default function Reports() {
   const barDataMensual = {
     labels: ventasMensuales.map((r) => r.mes.slice(0, 3)),
     datasets: [{ label: 'Ventas (S/)', data: ventasMensuales.map((r) => r.total), backgroundColor: COLORS.blue, borderRadius: 4, maxBarThickness: 34 }],
-  };
-  const barDataCompras = {
-    labels: comprasPorMes.map((r) => r.mes.slice(0, 3)),
-    datasets: [{ label: 'Compras (S/)', data: comprasPorMes.map((r) => r.total), backgroundColor: COLORS.critical, borderRadius: 4, maxBarThickness: 34 }],
   };
   const barDataIngresoGastos = {
     labels: ingresoVsGastos.map((r) => r.mes.slice(0, 3)),
@@ -922,20 +914,6 @@ export default function Reports() {
                     </tbody>
                   </table>
                 </div>
-              )}
-            </>
-          )}
-
-          {seccion === 'compras_mes' && (
-            <>
-              <div className="report-toolbar">
-                <h3 style={{ margin: 0 }}>Compras por mes</h3>
-                <SucursalYAnio anio={comprasMesAnio} setAnio={setComprasMesAnio} />
-              </div>
-              {comprasPorMes.some((r) => r.total) ? (
-                <Bar data={barDataCompras} options={barOptionsV} height={90} />
-              ) : (
-                <p className="empty-row">Sin compras registradas en {comprasMesAnio}.</p>
               )}
             </>
           )}
