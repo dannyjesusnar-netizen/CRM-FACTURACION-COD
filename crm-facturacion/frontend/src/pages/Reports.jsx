@@ -125,6 +125,15 @@ function money(n) {
   return `S/ ${Number(n || 0).toFixed(2)}`;
 }
 
+// Solo para "Ventas por producto" — Danny pidió montos en números
+// enteros ahí, sin los decimales que sí usa el resto de los reportes.
+function moneyEntero(n) {
+  return `S/ ${Math.round(Number(n || 0))}`;
+}
+function dolaresEntero(n) {
+  return `$ ${Math.round(Number(n || 0))}`;
+}
+
 // Toolbar compartida de los 10 reportes avanzados: Desde/Hasta (solo para
 // los que agrupan ventas/compras en un rango) + selector de sede (Gerencia).
 // El selector de sede deja elegir, además de "Sede actual" y "Todas las
@@ -691,9 +700,9 @@ export default function Reports() {
                       <td>{p.nombre || 'Item manual'}</td>
                       <td>{p.unidad}</td>
                       <td style={{ textAlign: 'right' }}>{p.cantidad_vendida}</td>
-                      <td style={{ textAlign: 'right' }}>{money(p.monto_soles)}</td>
-                      <td style={{ textAlign: 'right' }}>$ {Number(p.monto_dolares).toFixed(2)}</td>
-                      <td style={{ textAlign: 'right' }}>{money(p.total_vendido)}</td>
+                      <td style={{ textAlign: 'right' }}>{moneyEntero(p.monto_soles)}</td>
+                      <td style={{ textAlign: 'right' }}>{dolaresEntero(p.monto_dolares)}</td>
+                      <td style={{ textAlign: 'right' }}>{moneyEntero(p.total_vendido)}</td>
                     </tr>
                   ))}
                   {productos.length === 0 && <tr><td colSpan={7} className="empty-row">Sin datos para el periodo seleccionado.</td></tr>}
@@ -702,9 +711,9 @@ export default function Reports() {
                   <tfoot>
                     <tr className="totals-footer">
                       <td colSpan={4}>TOTALES</td>
-                      <td style={{ textAlign: 'right' }}>{money(totalProductosSoles)}</td>
-                      <td style={{ textAlign: 'right' }}>$ {totalProductosDolares.toFixed(2)}</td>
-                      <td style={{ textAlign: 'right' }}>{money(totalProductosSoles)}</td>
+                      <td style={{ textAlign: 'right' }}>{moneyEntero(totalProductosSoles)}</td>
+                      <td style={{ textAlign: 'right' }}>{dolaresEntero(totalProductosDolares)}</td>
+                      <td style={{ textAlign: 'right' }}>{moneyEntero(totalProductosSoles)}</td>
                     </tr>
                   </tfoot>
                 )}
