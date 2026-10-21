@@ -55,7 +55,6 @@ const ACCIONES_POR_MODULO = {
     { key: 'conteo', label: 'Conteo de inventario', grupo: 'Movimientos' },
     { key: 'importacion', label: 'Importación masiva', grupo: 'Movimientos' },
     { key: 'traslados', label: 'Traslados entre sedes', grupo: 'Movimientos' },
-    { key: 'produccion', label: 'Producción / recetas', grupo: 'Movimientos' },
   ],
   clientes: [
     { key: 'crear_editar', label: 'Crear / editar clientes', grupo: 'Clientes' },
