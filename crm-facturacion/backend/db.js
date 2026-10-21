@@ -1391,20 +1391,6 @@ CREATE TABLE IF NOT EXISTS movimiento_canales (
   }
 
   if (demo) {
-    // Receta de ejemplo (Producción): envasado de pre-entreno a partir del mix a granel
-    const recetaCount = db.prepare('SELECT COUNT(*) AS n FROM recetas').get().n;
-    if (recetaCount === 0) {
-      const mix = db.prepare("SELECT id FROM products WHERE codigo = 'P007'").get();
-      const preEntreno = db.prepare("SELECT id FROM products WHERE codigo = 'P008'").get();
-      if (mix && preEntreno) {
-        const info = db.prepare(
-          `INSERT INTO recetas (nombre, descripcion, product_id_salida, cantidad_salida, tipo_produccion)
-           VALUES (?, ?, ?, ?, 'automatico')`
-        ).run('Envasado Pre-Entreno 30gr', 'Envasa 1kg del mix a granel en 33 unidades de 30gr', preEntreno.id, 33);
-        db.prepare('INSERT INTO receta_items (receta_id, product_id, cantidad) VALUES (?, ?, ?)').run(info.lastInsertRowid, mix.id, 1);
-      }
-    }
-
     // Proveedores de ejemplo (Compras)
     const supplierCount = db.prepare('SELECT COUNT(*) AS n FROM suppliers').get().n;
     if (supplierCount === 0) {

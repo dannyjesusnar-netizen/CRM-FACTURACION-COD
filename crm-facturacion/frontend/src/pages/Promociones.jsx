@@ -284,7 +284,6 @@ export default function Promociones() {
         <button className="ventas-action-btn" onClick={() => navigate('/movimientos')}>Movimientos</button>
         <button className="ventas-action-btn" onClick={() => navigate('/lotes')}>Lotes y Series</button>
         <button className="ventas-action-btn" onClick={() => navigate('/traslados')}>Traslados</button>
-        <button className="ventas-action-btn" onClick={() => navigate('/produccion')}>Producción</button>
       </div>
 
       <div className="report-toolbar">
