@@ -343,6 +343,8 @@ export default function Products() {
         <button className="ventas-action-btn" onClick={() => navigate('/promociones')}>Promociones</button>
         <button className="ventas-action-btn" onClick={() => navigate('/movimientos')}>Movimientos</button>
         <button className="ventas-action-btn" onClick={() => navigate('/lotes')}>Lotes y Series</button>
+        <button className="ventas-action-btn" onClick={() => navigate('/traslados')}>Traslados</button>
+        <button className="ventas-action-btn" onClick={() => navigate('/produccion')}>Producción</button>
       </div>
 
       <form className="filter-panel" onSubmit={handleSearch}>
