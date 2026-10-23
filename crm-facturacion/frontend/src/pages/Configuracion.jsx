@@ -2543,13 +2543,14 @@ export default function Configuracion() {
                 <h3 style={{ margin: 0 }}>Metas de venta</h3>
               </div>
               <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -8 }}>
-                Asigna una meta mensual (S/) por sede para Vendedores, Trainers y Supervisores, y opcionalmente
-                la dotación de ese equipo (cuántas personas la reparten) — si no la asignas, se reparte entre
-                los empleados activos de esa categoría en esa sede. Para Vendedores, además puedes asignar una
-                cuota individual manual por sede (reemplaza ese cálculo para todos los vendedores de esa sede) y,
-                haciendo clic en el nombre de la sede, desglosarla por vendedor puntual (tiene prioridad sobre
-                la de su sede). Alimenta el Ranking Trainers/Vendedores/Supervisores y el Resumen de sedes del
-                Dashboard.
+                Asigna una meta mensual (S/) por sede para Vendedores y Trainers, y opcionalmente la dotación
+                de ese equipo (cuántas personas la reparten) — si no la asignas, se reparte entre los empleados
+                activos de esa categoría en esa sede. Para Vendedores, además puedes asignar una cuota individual
+                manual por sede (reemplaza ese cálculo para todos los vendedores de esa sede) y, haciendo clic en
+                el nombre de la sede, desglosarla por vendedor puntual (tiene prioridad sobre la de su sede).
+                Supervisor no se asigna acá: su cuota sale sola de la cuota de los Trainers de su sede, repartida
+                por turno — un supervisor con más trainers en su turno asume una cuota mayor. Alimenta el Ranking
+                Trainers/Vendedores/Supervisores y el Resumen de sedes del Dashboard.
               </p>
               <div className="filter-panel">
                 <div className="filter-field">

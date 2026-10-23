@@ -147,9 +147,12 @@ router.get('/resumen-sedes', (req, res) => {
     GROUP BY s.id
   `).all(String(anio), mesPad, String(anio), mesPad, sucursalId, sucursalId);
 
+  // 'supervisor' no suma acá: su cuota no es un pool aparte, es la cuota de
+  // los Trainers de su sede repartida por turno (ver rankingPersonal.js) —
+  // sumarla de nuevo duplicaría la cuota de Trainers en el total de la sede.
   const metaPorSede = db.prepare(
     `SELECT sucursal_id AS id, SUM(monto_meta) AS meta FROM metas_venta_sede
-     WHERE anio = ? AND mes = ? GROUP BY sucursal_id`
+     WHERE anio = ? AND mes = ? AND categoria_staff != 'supervisor' GROUP BY sucursal_id`
   ).all(anio, mes);
   const metaMap = new Map(metaPorSede.map((r) => [r.id, r.meta]));
 
