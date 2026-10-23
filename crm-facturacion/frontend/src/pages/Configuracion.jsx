@@ -2548,8 +2548,9 @@ export default function Configuracion() {
                 activos de esa categoría en esa sede. Para Vendedores, además puedes asignar una cuota individual
                 manual por sede (reemplaza ese cálculo para todos los vendedores de esa sede) y, haciendo clic en
                 el nombre de la sede, desglosarla por vendedor puntual (tiene prioridad sobre la de su sede).
-                Supervisor no se asigna acá: su cuota sale sola de la cuota de los Trainers de su sede, repartida
-                por turno — un supervisor con más trainers en su turno asume una cuota mayor. Alimenta el Ranking
+                Supervisor no se asigna acá: cada supervisor recibe un 50% fijo de la cuota de los Trainers de
+                su sede, sin importar cuántos trainers tenga en su turno. El Resumen de sedes del Dashboard solo
+                suma la cuota de Trainers (la de Vendedores no cuenta ahí). Alimenta el Ranking
                 Trainers/Vendedores/Supervisores y el Resumen de sedes del Dashboard.
               </p>
               <div className="filter-panel">
