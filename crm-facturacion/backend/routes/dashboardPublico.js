@@ -124,14 +124,13 @@ router.get('/:ruc/:token', (req, res) => {
       GROUP BY s.id
     `).all(String(anio), mesPad, String(anio), mesPad, sucursalId, sucursalId);
 
-    // 'supervisor' no suma acá: su cuota no es un pool aparte, es la cuota
-    // de los Trainers de su sede repartida por turno (ver
-    // rankingPersonal.js) — sumarla de nuevo duplicaría la cuota de
-    // Trainers en el total de la sede. Mismo criterio que
-    // routes/tablero.js:/resumen-sedes.
+    // Solo el pool de Trainers cuenta para la meta de la sede. El de
+    // Vendedores se asigna aparte pero no suma acá, y 'supervisor' tampoco
+    // tiene pool propio (es un 50% fijo del pool de Trainers por turno, ver
+    // rankingPersonal.js). Mismo criterio que routes/tablero.js:/resumen-sedes.
     const metaPorSede = db.prepare(
       `SELECT sucursal_id AS id, SUM(monto_meta) AS meta FROM metas_venta_sede
-       WHERE anio = ? AND mes = ? AND categoria_staff != 'supervisor' GROUP BY sucursal_id`
+       WHERE anio = ? AND mes = ? AND categoria_staff = 'trainer' GROUP BY sucursal_id`
     ).all(anio, mes);
     const metaMap = new Map(metaPorSede.map((r) => [r.id, r.meta]));
 

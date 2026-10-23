@@ -16,10 +16,9 @@ const CATEGORIA_LABEL = { trainer: 'Entrenador', vendedor: 'Vendedor', superviso
 // la dotación asignada a mano para ese equipo (metas_venta_sede.dotacion);
 // si no se asignó ninguna dotación (0), se reparte entre los empleados
 // activos de esa categoría en esa sede, como antes de que existiera ese
-// campo. Supervisor es la excepción: no tiene pool propio — su cuota es la
-// cuota de los Trainers de su sede, repartida por turno (ver
-// metaTurnoSupervisor más abajo), porque un supervisor responde por la
-// venta de su turno, no por un pool aparte.
+// campo. Supervisor es la excepción: no tiene pool propio — cada supervisor
+// recibe un 50% fijo del pool de Trainers de su sede (asumiendo los dos
+// turnos, mañana y tarde), sin importar cuántos trainers tenga su turno.
 //
 // Extraído de routes/tablero.js (GET /ranking-personal) para poder
 // reutilizarlo tal cual desde el link público del Tablero de Ventas (ver
@@ -75,34 +74,16 @@ function calcularRankingPersonal(categoria, anio, mes, sucursalId) {
   }
 
   // La cuota de Supervisor no se asigna aparte: Gerencia solo asigna pool a
-  // Vendedores y Trainers (ver metasVenta.js) — la cuota de cada supervisor
-  // sale de la cuota de los Trainers de su misma sede, repartida por turno
-  // según cuántos trainers tiene cada turno (el mismo pool/dotación que ya
-  // reparte la cuota individual de cada trainer). Un supervisor con más
-  // trainers en su turno asume una cuota mayor; si no tiene turno asignado
-  // no se le puede calcular una cuota (queda en 0).
-  let metaTurnoSupervisor = new Map();
+  // Vendedores y Trainers (ver metasVenta.js) — cada supervisor recibe un
+  // 50% fijo del pool de Trainers de su misma sede (asumiendo los dos
+  // turnos, mañana y tarde), sin importar cuántos trainers tenga su turno;
+  // si no tiene turno asignado no se le puede calcular una cuota (queda en 0).
+  let poolTrainerMap = new Map();
   if (categoria === 'supervisor') {
     const poolsTrainer = db.prepare(
-      'SELECT sucursal_id, monto_meta, dotacion FROM metas_venta_sede WHERE categoria_staff = ? AND anio = ? AND mes = ?'
+      'SELECT sucursal_id, monto_meta FROM metas_venta_sede WHERE categoria_staff = ? AND anio = ? AND mes = ?'
     ).all('trainer', anio, mes);
-    const poolTrainerMap = new Map(poolsTrainer.map((p) => [p.sucursal_id, p.monto_meta]));
-    const dotacionTrainerMap = new Map(poolsTrainer.map((p) => [p.sucursal_id, p.dotacion]));
-    const conteoTrainerSede = db.prepare(
-      `SELECT sucursal_id, COUNT(*) AS cantidad FROM users
-       WHERE categoria_staff = 'trainer' AND activo = 1 AND sucursal_id IS NOT NULL GROUP BY sucursal_id`
-    ).all();
-    const conteoTrainerSedeMap = new Map(conteoTrainerSede.map((c) => [c.sucursal_id, c.cantidad]));
-    const conteoTrainerTurno = db.prepare(
-      `SELECT sucursal_id, turno, COUNT(*) AS cantidad FROM users
-       WHERE categoria_staff = 'trainer' AND activo = 1 AND sucursal_id IS NOT NULL AND turno IS NOT NULL
-       GROUP BY sucursal_id, turno`
-    ).all();
-    metaTurnoSupervisor = new Map(conteoTrainerTurno.map((t) => {
-      const cantidadSede = dotacionTrainerMap.get(t.sucursal_id) || conteoTrainerSedeMap.get(t.sucursal_id) || 0;
-      const metaPorTrainer = cantidadSede > 0 ? (poolTrainerMap.get(t.sucursal_id) || 0) / cantidadSede : 0;
-      return [`${t.sucursal_id}:${t.turno}`, metaPorTrainer * t.cantidad];
-    }));
+    poolTrainerMap = new Map(poolsTrainer.map((p) => [p.sucursal_id, p.monto_meta]));
   }
 
   const pools = categoria === 'supervisor' ? [] : db.prepare(
@@ -132,7 +113,7 @@ function calcularRankingPersonal(categoria, anio, mes, sucursalId) {
   const withPct = rows.map((r) => {
     let meta;
     if (categoria === 'supervisor') {
-      meta = r.turno ? (metaTurnoSupervisor.get(`${r.sucursal_id}:${r.turno}`) || 0) : 0;
+      meta = r.turno ? (poolTrainerMap.get(r.sucursal_id) || 0) / 2 : 0;
     } else if (usuarioMetaMap.has(r.user_id)) {
       meta = usuarioMetaMap.get(r.user_id);
     } else if (individualMap.has(r.sucursal_id)) {

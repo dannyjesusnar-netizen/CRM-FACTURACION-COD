@@ -124,9 +124,9 @@ router.get('/ranking-personal/detalle', (req, res) => {
   res.json(rows.map((r) => ({ ...r, total: round2(r.total) })));
 });
 
-// Resumen por sede: venta, meta (suma de los pools de vendedores + trainers
-// asignados a esa sede ese mes) y % de cumplimiento, más el total general
-// para la tarjeta "Ventas Totales".
+// Resumen por sede: venta, meta (SOLO el pool de Trainers asignado a esa
+// sede ese mes) y % de cumplimiento, más el total general para la tarjeta
+// "Ventas Totales".
 router.get('/resumen-sedes', (req, res) => {
   const { anio, mes, mesPad } = anioMes(req);
   const sucursalId = sedeFiltro(req);
@@ -147,12 +147,14 @@ router.get('/resumen-sedes', (req, res) => {
     GROUP BY s.id
   `).all(String(anio), mesPad, String(anio), mesPad, sucursalId, sucursalId);
 
-  // 'supervisor' no suma acá: su cuota no es un pool aparte, es la cuota de
-  // los Trainers de su sede repartida por turno (ver rankingPersonal.js) —
-  // sumarla de nuevo duplicaría la cuota de Trainers en el total de la sede.
+  // Solo el pool de Trainers cuenta para la meta de la sede. El de
+  // Vendedores se asigna aparte (Ranking Vendedores, cuota individual) pero
+  // no suma acá. 'supervisor' tampoco: su cuota no es un pool propio, es un
+  // 50% fijo del pool de Trainers por turno (ver rankingPersonal.js) — si
+  // sumara, duplicaría la cuota de Trainers en el total de la sede.
   const metaPorSede = db.prepare(
     `SELECT sucursal_id AS id, SUM(monto_meta) AS meta FROM metas_venta_sede
-     WHERE anio = ? AND mes = ? AND categoria_staff != 'supervisor' GROUP BY sucursal_id`
+     WHERE anio = ? AND mes = ? AND categoria_staff = 'trainer' GROUP BY sucursal_id`
   ).all(anio, mes);
   const metaMap = new Map(metaPorSede.map((r) => [r.id, r.meta]));
 
