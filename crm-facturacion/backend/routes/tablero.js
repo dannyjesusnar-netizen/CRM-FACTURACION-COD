@@ -169,7 +169,12 @@ router.get('/resumen-sedes', (req, res) => {
         porcentaje: meta > 0 ? round2((s.venta / meta) * 100) : null,
       };
     })
-    .sort((a, b) => b.venta - a.venta);
+    .sort((a, b) => {
+      if (a.porcentaje === null && b.porcentaje === null) return b.venta - a.venta;
+      if (a.porcentaje === null) return 1;
+      if (b.porcentaje === null) return -1;
+      return b.porcentaje - a.porcentaje;
+    });
 
   const ventasTotales = round2(sedes.reduce((acc, s) => acc + s.venta, 0));
   const metaTotal = round2(sedes.reduce((acc, s) => acc + s.meta, 0));
