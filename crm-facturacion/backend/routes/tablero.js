@@ -126,21 +126,33 @@ router.get('/ranking-personal/detalle', (req, res) => {
 
 // Resumen por sede: venta, meta (SOLO el pool de Trainers asignado a esa
 // sede ese mes) y % de cumplimiento, más el total general para la tarjeta
-// "Ventas Totales".
+// "Ventas Totales". La "venta" de la tabla y de su total es SOLO la
+// atribuida a Trainers (igual criterio que la meta) — un vendedor no
+// cuenta acá, para que el % de cumplimiento compare venta de Trainers
+// contra meta de Trainers, manzanas con manzanas. "ventas_totales" en
+// cambio es la venta real de TODA la sede (cualquier categoría), para la
+// tarjeta "Total vendido" del Dashboard, que sí debe reflejar todo lo
+// vendido.
 router.get('/resumen-sedes', (req, res) => {
   const { anio, mes, mesPad } = anioMes(req);
   const sucursalId = sedeFiltro(req);
   const ventaPorSede = db.prepare(`
-    SELECT s.id, s.nombre, COALESCE(SUM(v.monto), 0) AS venta
+    SELECT s.id, s.nombre,
+      COALESCE(SUM(v.monto), 0) AS venta_total,
+      COALESCE(SUM(CASE WHEN v.categoria_staff = 'trainer' THEN v.monto ELSE 0 END), 0) AS venta_trainer
     FROM sucursales s
     LEFT JOIN (
-      SELECT sucursal_id, CASE WHEN tipo_comprobante = 'nota_credito' THEN -total ELSE total END AS monto
-      FROM invoices
-      WHERE estado = 'emitido' AND strftime('%Y', fecha_emision) = ? AND strftime('%m', fecha_emision) = ?
+      SELECT i.sucursal_id,
+        CASE WHEN i.tipo_comprobante = 'nota_credito' THEN -i.total ELSE i.total END AS monto,
+        u.categoria_staff AS categoria_staff
+      FROM invoices i
+      LEFT JOIN users u ON u.id = COALESCE(i.atribuido_a, i.created_by)
+      WHERE i.estado = 'emitido' AND strftime('%Y', i.fecha_emision) = ? AND strftime('%m', i.fecha_emision) = ?
       UNION ALL
-      SELECT sucursal_id, total AS monto
-      FROM notas_venta
-      WHERE estado = 'emitido' AND strftime('%Y', fecha_emision) = ? AND strftime('%m', fecha_emision) = ?
+      SELECT nv.sucursal_id, nv.total AS monto, u.categoria_staff AS categoria_staff
+      FROM notas_venta nv
+      LEFT JOIN users u ON u.id = COALESCE(nv.atribuido_a, nv.created_by)
+      WHERE nv.estado = 'emitido' AND strftime('%Y', nv.fecha_emision) = ? AND strftime('%m', nv.fecha_emision) = ?
     ) v ON v.sucursal_id = s.id
     WHERE s.activo = 1
       AND (? IS NULL OR s.id = ?)
@@ -164,9 +176,9 @@ router.get('/resumen-sedes', (req, res) => {
       return {
         sucursal_id: s.id,
         sede: s.nombre,
-        venta: round2(s.venta),
+        venta: round2(s.venta_trainer),
         meta: round2(meta),
-        porcentaje: meta > 0 ? round2((s.venta / meta) * 100) : null,
+        porcentaje: meta > 0 ? round2((s.venta_trainer / meta) * 100) : null,
       };
     })
     .sort((a, b) => {
@@ -176,14 +188,15 @@ router.get('/resumen-sedes', (req, res) => {
       return b.porcentaje - a.porcentaje;
     });
 
-  const ventasTotales = round2(sedes.reduce((acc, s) => acc + s.venta, 0));
+  const ventaTrainerTotal = round2(sedes.reduce((acc, s) => acc + s.venta, 0));
   const metaTotal = round2(sedes.reduce((acc, s) => acc + s.meta, 0));
+  const ventasTotales = round2(ventaPorSede.reduce((acc, s) => acc + s.venta_total, 0));
   res.json({
     sedes,
     total: {
-      venta: ventasTotales,
+      venta: ventaTrainerTotal,
       meta: metaTotal,
-      porcentaje: metaTotal > 0 ? round2((ventasTotales / metaTotal) * 100) : null,
+      porcentaje: metaTotal > 0 ? round2((ventaTrainerTotal / metaTotal) * 100) : null,
     },
     ventas_totales: ventasTotales,
   });

@@ -107,17 +107,26 @@ router.get('/:ruc/:token', (req, res) => {
       'SELECT razon_social, nombre_comercial, logo_data_url, color_tablero_ventas FROM empresa_config WHERE id = 1'
     ).get();
 
+    // La "venta" de esta tabla es SOLO la atribuida a Trainers (igual
+    // criterio que la meta, ver metaPorSede más abajo) — un vendedor no
+    // cuenta acá, para que el % compare venta de Trainers contra meta de
+    // Trainers. Mismo criterio que routes/tablero.js:/resumen-sedes.
     const ventaPorSede = db.prepare(`
-      SELECT s.id, s.nombre, COALESCE(SUM(v.monto), 0) AS venta
+      SELECT s.id, s.nombre,
+        COALESCE(SUM(CASE WHEN v.categoria_staff = 'trainer' THEN v.monto ELSE 0 END), 0) AS venta
       FROM sucursales s
       LEFT JOIN (
-        SELECT sucursal_id, CASE WHEN tipo_comprobante = 'nota_credito' THEN -total ELSE total END AS monto
-        FROM invoices
-        WHERE estado = 'emitido' AND strftime('%Y', fecha_emision) = ? AND strftime('%m', fecha_emision) = ?
+        SELECT i.sucursal_id,
+          CASE WHEN i.tipo_comprobante = 'nota_credito' THEN -i.total ELSE i.total END AS monto,
+          u.categoria_staff AS categoria_staff
+        FROM invoices i
+        LEFT JOIN users u ON u.id = COALESCE(i.atribuido_a, i.created_by)
+        WHERE i.estado = 'emitido' AND strftime('%Y', i.fecha_emision) = ? AND strftime('%m', i.fecha_emision) = ?
         UNION ALL
-        SELECT sucursal_id, total AS monto
-        FROM notas_venta
-        WHERE estado = 'emitido' AND strftime('%Y', fecha_emision) = ? AND strftime('%m', fecha_emision) = ?
+        SELECT nv.sucursal_id, nv.total AS monto, u.categoria_staff AS categoria_staff
+        FROM notas_venta nv
+        LEFT JOIN users u ON u.id = COALESCE(nv.atribuido_a, nv.created_by)
+        WHERE nv.estado = 'emitido' AND strftime('%Y', nv.fecha_emision) = ? AND strftime('%m', nv.fecha_emision) = ?
       ) v ON v.sucursal_id = s.id
       WHERE s.activo = 1
         AND (? IS NULL OR s.id = ?)
