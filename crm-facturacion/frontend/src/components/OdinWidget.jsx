@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { X, Send } from 'lucide-react';
 import OdinAvatar from './OdinAvatar';
 import api from '../api';
@@ -30,6 +30,12 @@ function armarResumen(data) {
     const detalle = data.stockBajo.map((p) => `${p.nombre} (${p.stock})`).join(', ');
     avisos.push(`Stock bajo en tu sede: ${detalle}.`);
   }
+  if (data.comprasSugeridas?.length > 0) {
+    const detalle = data.comprasSugeridas
+      .map((p) => `${p.nombre} (quedan ${p.stock}, se vendieron ${p.venta_30_dias} en los últimos 30 días)`)
+      .join('\n');
+    avisos.push(`Sugerencia de compra de hoy — se está vendiendo bien y el stock está bajo:\n${detalle}`);
+  }
   return avisos;
 }
 
@@ -48,6 +54,9 @@ export default function OdinWidget() {
   const [enviando, setEnviando] = useState(false);
   const [mensajes, setMensajes] = useState([{ rol: 'bot', texto: SALUDO }]);
   const [resumenCargado, setResumenCargado] = useState(false);
+  const [resumenData, setResumenData] = useState(null);
+  const [burbujaVisible, setBurbujaVisible] = useState(false);
+  const resumenFetchRef = useRef(null);
   const logRef = useRef(null);
 
   function agregarMensaje(rol, texto) {
@@ -57,17 +66,41 @@ export default function OdinWidget() {
     }, 50);
   }
 
+  // Un solo fetch de /odin/resumen compartido entre la burbuja automática
+  // (se dispara sola al entrar, sin abrir el chat) y el resumen que se
+  // imprime al abrir el panel — para no pedirlo dos veces si el usuario
+  // abre el chat justo cuando la burbuja recién está cargando.
+  function cargarResumen() {
+    if (!resumenFetchRef.current) {
+      resumenFetchRef.current = api.get('/odin/resumen').then((res) => res.data).catch(() => null);
+    }
+    return resumenFetchRef.current;
+  }
+
+  useEffect(() => {
+    let cancelado = false;
+    cargarResumen().then((data) => {
+      if (cancelado || !data) return;
+      setResumenData(data);
+      // Burbuja automática solo cuando hay compras sugeridas para avisar
+      // (Supervisor/Gerencia) — con un pequeño delay para que no aparezca
+      // de golpe apenas carga la página.
+      if (data.comprasSugeridas?.length > 0) {
+        setTimeout(() => setBurbujaVisible(true), 1200);
+      }
+    });
+    return () => { cancelado = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   async function abrir() {
     const yaAbierto = open;
     setOpen(!yaAbierto);
+    setBurbujaVisible(false);
     if (yaAbierto || resumenCargado) return;
     setResumenCargado(true);
-    try {
-      const res = await api.get('/odin/resumen');
-      armarResumen(res.data).forEach((aviso) => agregarMensaje('bot', aviso));
-    } catch {
-      // Silencioso: el resumen es un plus, no debe romper el saludo normal.
-    }
+    const data = resumenData || (await cargarResumen());
+    if (data) armarResumen(data).forEach((aviso) => agregarMensaje('bot', aviso));
   }
 
   async function responderConsultaStock(nombreProducto) {
@@ -154,6 +187,20 @@ export default function OdinWidget() {
               <Send size={16} />
             </button>
           </form>
+        </div>
+      )}
+
+      {!open && burbujaVisible && resumenData?.comprasSugeridas?.length > 0 && (
+        <div className="odin-bubble" onClick={abrir} role="button" tabIndex={0}>
+          <button
+            type="button"
+            className="odin-bubble-close"
+            onClick={(e) => { e.stopPropagation(); setBurbujaVisible(false); }}
+            title="Cerrar"
+          >
+            <X size={12} />
+          </button>
+          💡 Tengo {resumenData.comprasSugeridas.length === 1 ? 'una sugerencia' : `${resumenData.comprasSugeridas.length} sugerencias`} de compra para hoy
         </div>
       )}
 

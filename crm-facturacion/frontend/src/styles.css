@@ -310,10 +310,30 @@ html.dark .sidenav-item:hover:not(.disabled) { background: rgba(47, 157, 255, 0.
 .odin-send-btn:hover:not(:disabled) { background: var(--brand-blue-dark); }
 .odin-send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
+/* Burbujita que sale sola de ODIN (sin abrir el chat) cuando hay algo que
+   avisar, p.ej. compras sugeridas para Supervisor/Gerencia. */
+.odin-bubble {
+  position: relative; max-width: 220px; background: var(--surface); color: var(--ink);
+  border: 1px solid var(--border); border-radius: 14px; padding: 10px 26px 10px 14px;
+  font-size: 12.5px; font-weight: 600; line-height: 1.4; box-shadow: var(--shadow-md);
+  cursor: pointer; animation: fadeUp 0.2s var(--ease-out);
+}
+.odin-bubble::after {
+  content: ''; position: absolute; bottom: -7px; right: 22px; width: 13px; height: 13px;
+  background: var(--surface); border-right: 1px solid var(--border); border-bottom: 1px solid var(--border);
+  transform: rotate(45deg);
+}
+.odin-bubble-close {
+  position: absolute; top: 5px; right: 5px; background: none; border: none; line-height: 0;
+  color: var(--ink-secondary); cursor: pointer; padding: 3px; border-radius: 5px;
+}
+.odin-bubble-close:hover { background: var(--surface-hover); color: var(--ink); }
+
 @media (max-width: 640px) {
   .odin-widget { right: 12px; bottom: 12px; }
   .odin-fab { width: 50px; height: 50px; }
   .odin-panel { width: calc(100vw - 24px); max-height: 70vh; }
+  .odin-bubble { max-width: calc(100vw - 100px); }
 }
 
 /* ---------- Login ---------- */
