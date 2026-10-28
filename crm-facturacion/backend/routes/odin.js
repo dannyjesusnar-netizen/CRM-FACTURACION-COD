@@ -6,11 +6,36 @@
 const express = require('express');
 const db = require('../db');
 const { requireAuth, resolveSucursal } = require('../middleware/auth');
+const { puedeVerTableroVentas } = require('../utils/permisos');
 const { coincideProducto } = require('../utils/textMatch');
 
 const router = express.Router();
 router.use(requireAuth);
 router.use(resolveSucursal);
+
+// Compras sugeridas para ODIN: de los productos con stock por debajo del
+// mínimo en esa sede, los 2 que más se vendieron en los últimos 30 días —
+// o sea, lo que más urge reponer porque además se está vendiendo bien (no
+// solo lo más agotado). Solo 2 para que sea un empujón puntual, no otro
+// reporte completo — el reporte completo ya existe en Compras → Compras
+// sugeridas (ver routes/reportesAvanzados.js: /compras-sugeridas). Solo
+// para Supervisor/Gerencia (mismo criterio que el Tablero de Ventas): un
+// vendedor no decide qué se compra.
+function comprasSugeridasOdin(sucursalId) {
+  const rows = db.prepare(
+    `SELECT p.nombre, p.codigo, p.stock_minimo, COALESCE(ss.stock, 0) AS stock,
+       (SELECT COALESCE(SUM(ii.cantidad), 0) FROM invoice_items ii JOIN invoices i ON i.id = ii.invoice_id
+          WHERE ii.product_id = p.id AND i.estado = 'emitido' AND i.tipo_comprobante IN ('boleta', 'factura')
+            AND date(i.fecha_emision) >= date('now', '-30 days') AND i.sucursal_id = ?) AS venta_30_dias
+     FROM products p LEFT JOIN sucursal_stock ss ON ss.product_id = p.id AND ss.sucursal_id = ?
+     WHERE p.activo = 1 AND p.tipo = 'producto' AND p.stock_minimo > 0
+       AND COALESCE(ss.stock, 0) <= p.stock_minimo`
+  ).all(sucursalId, sucursalId);
+  return rows
+    .filter((r) => r.venta_30_dias > 0)
+    .sort((a, b) => b.venta_30_dias - a.venta_30_dias)
+    .slice(0, 2);
+}
 
 // GET /api/odin/resumen -> lo que un vendedor de esa sede necesita saber al
 // abrir el CRM: comprobantes rechazados/con error sin resolver, boletas que
@@ -52,12 +77,15 @@ router.get('/resumen', (req, res) => {
      WHERE p.activo = 1 AND p.tipo = 'producto' AND p.stock_minimo > 0 AND COALESCE(ss.stock, 0) <= p.stock_minimo`
   ).get(sucursalId).n;
 
+  const comprasSugeridas = puedeVerTableroVentas(req.user) ? comprasSugeridasOdin(sucursalId) : [];
+
   res.json({
     comprobantesProblema,
     totalComprobantesProblema,
     pendientesViejas,
     stockBajo,
     totalStockBajo,
+    comprasSugeridas,
   });
 });
 
