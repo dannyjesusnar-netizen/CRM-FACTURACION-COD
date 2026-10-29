@@ -17,24 +17,26 @@ function armarResumen(data) {
     const detalle = data.comprobantesProblema
       .map((c) => `${c.serie}-${c.numero} (${c.sunat_estado})`)
       .join(', ');
-    avisos.push(
-      `Tienes ${data.totalComprobantesProblema} comprobante(s) rechazado(s) o con error sin resolver: ${detalle}. Revísalos con Gerencia.`
-    );
+    avisos.push({
+      texto: `Tienes ${data.totalComprobantesProblema} comprobante(s) rechazado(s) o con error sin resolver: ${detalle}. Revísalos con Gerencia.`,
+    });
   }
   if (data.pendientesViejas > 0) {
-    avisos.push(
-      `${data.pendientesViejas} boleta(s) llevan más de un día en estado "Pendiente" — ya deberían haberse confirmado, vale la pena revisarlas.`
-    );
+    avisos.push({
+      texto: `${data.pendientesViejas} boleta(s) llevan más de un día en estado "Pendiente" — ya deberían haberse confirmado, vale la pena revisarlas.`,
+    });
   }
   if (data.totalStockBajo > 0) {
     const detalle = data.stockBajo.map((p) => `${p.nombre} (${p.stock})`).join(', ');
-    avisos.push(`Stock bajo en tu sede: ${detalle}.`);
+    avisos.push({ texto: `Stock bajo en tu sede: ${detalle}.` });
   }
   if (data.comprasSugeridas?.length > 0) {
     const detalle = data.comprasSugeridas
       .map((p) => `${p.nombre} (quedan ${p.stock}, se vendieron ${p.venta_30_dias} en los últimos 30 días)`)
       .join('\n');
-    avisos.push(`Sugerencia de compra de hoy — se está vendiendo bien y el stock está bajo:\n${detalle}`);
+    // tipo 'sugerencia': fondo verde en el chat, para que la recomendación
+    // de compra resalte del resto de avisos (ver .odin-msg-sugerencia).
+    avisos.push({ texto: `Sugerencia de compra de hoy — se está vendiendo bien y el stock está bajo:\n${detalle}`, tipo: 'sugerencia' });
   }
   return avisos;
 }
@@ -59,8 +61,8 @@ export default function OdinWidget() {
   const resumenFetchRef = useRef(null);
   const logRef = useRef(null);
 
-  function agregarMensaje(rol, texto) {
-    setMensajes((prev) => [...prev, { rol, texto }]);
+  function agregarMensaje(rol, texto, tipo) {
+    setMensajes((prev) => [...prev, { rol, texto, tipo }]);
     setTimeout(() => {
       if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
     }, 50);
@@ -100,7 +102,7 @@ export default function OdinWidget() {
     if (yaAbierto || resumenCargado) return;
     setResumenCargado(true);
     const data = resumenData || (await cargarResumen());
-    if (data) armarResumen(data).forEach((aviso) => agregarMensaje('bot', aviso));
+    if (data) armarResumen(data).forEach((aviso) => agregarMensaje('bot', aviso.texto, aviso.tipo));
   }
 
   async function responderConsultaStock(nombreProducto) {
@@ -164,7 +166,14 @@ export default function OdinWidget() {
 
           <div className="odin-msg-log" ref={logRef}>
             {mensajes.map((m, i) => (
-              <div key={i} className={m.rol === 'user' ? 'odin-msg odin-msg-user' : 'odin-msg odin-msg-bot'}>
+              <div
+                key={i}
+                className={[
+                  'odin-msg',
+                  m.rol === 'user' ? 'odin-msg-user' : 'odin-msg-bot',
+                  m.tipo === 'sugerencia' ? 'odin-msg-sugerencia' : '',
+                ].filter(Boolean).join(' ')}
+              >
                 {m.texto}
               </div>
             ))}

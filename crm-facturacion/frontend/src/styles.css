@@ -298,6 +298,8 @@ html.dark .sidenav-item:hover:not(.disabled) { background: rgba(47, 157, 255, 0.
 .odin-msg { font-size: 13px; line-height: 1.45; padding: 9px 12px; border-radius: 12px; max-width: 88%; white-space: pre-line; }
 .odin-msg-bot { background: var(--surface-hover); color: var(--ink); align-self: flex-start; border-bottom-left-radius: 4px; }
 .odin-msg-user { background: var(--brand-blue); color: #fff; align-self: flex-end; border-bottom-right-radius: 4px; }
+/* Sugerencia de compra de ODIN — fondo verde para que resalte del resto de avisos. */
+.odin-msg-sugerencia { background: rgba(22, 163, 74, 0.14); color: var(--ink); border: 1px solid rgba(22, 163, 74, 0.35); }
 .odin-input-row { display: flex; align-items: flex-end; gap: 8px; padding: 10px; border-top: 1px solid var(--border); }
 .odin-input-row textarea {
   flex: 1; resize: none; border: 1px solid var(--border); border-radius: 10px; padding: 9px 11px;
@@ -311,16 +313,17 @@ html.dark .sidenav-item:hover:not(.disabled) { background: rgba(47, 157, 255, 0.
 .odin-send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* Burbujita que sale sola de ODIN (sin abrir el chat) cuando hay algo que
-   avisar, p.ej. compras sugeridas para Supervisor/Gerencia. */
+   avisar — hoy solo para compras sugeridas (Supervisor/Gerencia), por eso
+   el mismo fondo verde que su mensaje en el chat (.odin-msg-sugerencia). */
 .odin-bubble {
-  position: relative; max-width: 220px; background: var(--surface); color: var(--ink);
-  border: 1px solid var(--border); border-radius: 14px; padding: 10px 26px 10px 14px;
+  position: relative; max-width: 220px; background: rgba(22, 163, 74, 0.14); color: var(--ink);
+  border: 1px solid rgba(22, 163, 74, 0.35); border-radius: 14px; padding: 10px 26px 10px 14px;
   font-size: 12.5px; font-weight: 600; line-height: 1.4; box-shadow: var(--shadow-md);
   cursor: pointer; animation: fadeUp 0.2s var(--ease-out);
 }
 .odin-bubble::after {
   content: ''; position: absolute; bottom: -7px; right: 22px; width: 13px; height: 13px;
-  background: var(--surface); border-right: 1px solid var(--border); border-bottom: 1px solid var(--border);
+  background: rgba(22, 163, 74, 0.14); border-right: 1px solid rgba(22, 163, 74, 0.35); border-bottom: 1px solid rgba(22, 163, 74, 0.35);
   transform: rotate(45deg);
 }
 .odin-bubble-close {
