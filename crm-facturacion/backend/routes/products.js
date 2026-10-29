@@ -414,6 +414,23 @@ router.post('/carga-masiva/precios', requireAccion('inventario', 'productos'), (
   res.json(resultado);
 });
 
+// POST /api/products/stock-minimo-bulk { valor } — asigna el mismo stock
+// mínimo a TODOS los productos activos (no servicios), de una sola vez.
+// Pensado para darle un valor base a todo el catálogo cuando ningún
+// producto tiene uno configurado todavía (sin stock_minimo, "stock bajo" y
+// las compras sugeridas de ODIN no tienen de dónde salir) — no reemplaza
+// poder ajustarlo más fino producto por producto si hace falta después.
+router.post('/stock-minimo-bulk', requireAccion('inventario', 'productos'), (req, res) => {
+  const valor = Number(req.body?.valor);
+  if (!Number.isFinite(valor) || valor < 0) {
+    return res.status(400).json({ error: 'valor debe ser un número mayor o igual a 0.' });
+  }
+  const resultado = db.prepare(
+    "UPDATE products SET stock_minimo = ? WHERE activo = 1 AND tipo = 'producto'"
+  ).run(valor);
+  res.json({ actualizados: resultado.changes });
+});
+
 router.put('/:id', requireAccion('inventario', 'productos'), (req, res) => {
   const existing = db.prepare('SELECT * FROM products WHERE id = ?').get(req.params.id);
   if (!existing) return res.status(404).json({ error: 'Producto no encontrado.' });

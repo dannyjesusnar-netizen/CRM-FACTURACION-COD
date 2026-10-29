@@ -260,6 +260,24 @@ export default function Products() {
     }
   }
 
+  async function aplicarStockMinimoMasivo() {
+    const texto = window.prompt('Stock mínimo a asignar a TODOS los productos (reemplaza el valor actual de cada uno):', '2');
+    if (texto === null) return;
+    const valor = Number(texto);
+    if (!Number.isFinite(valor) || valor < 0) {
+      toast.error('Ingresa un número válido, mayor o igual a 0.');
+      return;
+    }
+    if (!window.confirm(`¿Asignar stock mínimo ${valor} a todos los productos? Esto reemplaza el mínimo que tenga cada uno ahora.`)) return;
+    try {
+      const res = await api.post('/products/stock-minimo-bulk', { valor });
+      toast.success(`Stock mínimo ${valor} asignado a ${res.data.actualizados} producto(s).`);
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'No se pudo asignar el stock mínimo.');
+    }
+  }
+
   function openCargaMasiva() {
     setCargaFileName('');
     setCargaRows([]);
@@ -391,6 +409,7 @@ export default function Products() {
       <div className="page-header">
         <span />
         <div style={{ display: 'flex', gap: 10 }}>
+          <button className="btn-secondary" style={{ width: 'auto' }} onClick={aplicarStockMinimoMasivo}>Stock mínimo masivo</button>
           <button className="btn-secondary" style={{ width: 'auto' }} onClick={openCargaMasiva}>Carga masiva</button>
           <button className="btn-primary" style={{ width: 'auto' }} onClick={openNew}>+ Nuevo producto</button>
         </div>
