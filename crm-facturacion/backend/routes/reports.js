@@ -385,7 +385,22 @@ router.get('/ventas-detalle', requireAlgunPermiso(['ventas', 'reportes']), (req,
     ORDER BY fecha_emision DESC
   `;
   const rows = db.prepare(sql).all(...paramsInvoices, ...paramsNV);
-  res.json(rows);
+  // descuento_global_pct viene de la consulta como el % del Descuento con
+  // nombre aplicado a TODO el comprobante (igual en cada ítem de una misma
+  // venta) — Gerencia lo quiere en soles, no en %, para saber cuánto se
+  // descontó realmente. Se recalcula desde el total ya con descuento
+  // (bruto = total / (1 - pct/100); descuento = bruto - total), así que
+  // reutiliza el mismo total_venta que ya trae la fila, sin depender de si
+  // el ítem individual quedó o no ajustado por el descuento global (los de
+  // Notas de Venta Interna no lo están, a diferencia de Boletas/Facturas).
+  const rowsConDescuentoSoles = rows.map((r) => {
+    const pct = Number(r.descuento_global_pct) || 0;
+    const descuentoSoles = pct > 0 && pct < 100
+      ? round2((r.total_venta * pct) / (100 - pct))
+      : (pct >= 100 ? r.total_venta : 0);
+    return { ...r, descuento_global_pct: descuentoSoles };
+  });
+  res.json(rowsConDescuentoSoles);
 });
 
 // Cierre de Caja: Efectivo (arqueo del día) + Ventas por Documento + Ventas
