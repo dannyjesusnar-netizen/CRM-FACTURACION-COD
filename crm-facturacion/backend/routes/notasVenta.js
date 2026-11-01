@@ -277,6 +277,20 @@ router.post('/', requireAccion('ventas', 'nota_venta'), requireTurnoCajaAbierto,
 
   totalBruto = round2(totalBruto);
   const total = round2(totalBruto * (1 - descuentoGlobalPct / 100));
+
+  // El descuento global se aplica proporcionalmente a cada línea (mismo
+  // criterio que invoices.js), para que la suma de nota_venta_items —el
+  // "Subtotal Ítem" que se ve en Reportes y en el Exportador de Datos
+  // Masivos— reconcilie con el total de la nota en vez de quedar con los
+  // importes "brutos" sin el descuento, que sumados no coinciden con las
+  // "Ventas Totales" del Dashboard.
+  if (descuentoGlobalPct > 0) {
+    const ratio = totalBruto > 0 ? total / totalBruto : 1;
+    for (const it of preparedItems) {
+      it.subtotal = round2(it.subtotal * ratio);
+    }
+  }
+
   // Para efectivo/tarjeta/banco se asume pagado por completo. Para "abonado"
   // es lo que el cliente entregó ahora (puede ser 0 hasta el total) — el
   // resto queda como saldo pendiente en /notas-venta/deudas.
