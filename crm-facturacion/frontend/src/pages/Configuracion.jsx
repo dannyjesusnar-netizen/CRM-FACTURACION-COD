@@ -514,6 +514,7 @@ export default function Configuracion() {
   // (hoy: Ventas) — vacíos = sin filtro, todo el historial, igual que antes.
   const [exportDesde, setExportDesde] = useState('');
   const [exportHasta, setExportHasta] = useState('');
+  const [corrigiendoSubtotales, setCorrigiendoSubtotales] = useState(false);
   const [importFileName, setImportFileName] = useState('');
   const [importRows, setImportRows] = useState([]);
   const [importResult, setImportResult] = useState(null);
@@ -1443,6 +1444,27 @@ export default function Configuracion() {
   function descargarPlantillaCargaMasivaOperativosExcel() {
     const ejemplo = ['87654321', 'Lucía', 'Fernández', 'Trainer', sucursales[0]?.nombre || '', 'Mañana'];
     descargarComoExcel('plantilla_carga_masiva_operativos.xlsx', CARGA_MASIVA_OPERATIVOS_COLUMNAS, [ejemplo]);
+  }
+
+  // Corrección única de datos históricos (ver routes/notasVenta.js: POST
+  // /corregir-subtotales-descuento): notas de venta ya registradas con
+  // descuento, cuyos ítems se guardaron sin ese descuento aplicado — por
+  // eso el reporte "Ventas" sumaba más de lo real. Solo toca el subtotal de
+  // los ítems, nunca el total ni lo ya cobrado; segura de correr más de
+  // una vez (lo que ya está corregido no vuelve a cambiar).
+  async function corregirSubtotalesDescuento() {
+    if (!window.confirm(
+      'Esto recalcula el subtotal de cada producto en las notas de venta ya registradas que tengan un Descuento con nombre aplicado, para que vuelva a coincidir con el total real de la venta. No cambia el total ni lo ya cobrado. ¿Continuar?'
+    )) return;
+    setCorrigiendoSubtotales(true);
+    try {
+      const res = await api.post('/notas-venta/corregir-subtotales-descuento');
+      toast.success(`Revisadas ${res.data.notasRevisadas}, corregidas ${res.data.notasCorregidas} nota(s) de venta (${res.data.itemsCorregidos} producto(s)).`);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'No se pudo hacer la corrección.');
+    } finally {
+      setCorrigiendoSubtotales(false);
+    }
   }
 
   async function exportarDatos(config, todasSedes = false) {
@@ -3006,6 +3028,18 @@ export default function Configuracion() {
                           title="Descarga en un solo Excel las ventas de las 11 sedes, en vez de solo la sede activa."
                         >
                           {exportandoKey === `${config.key}:todas` ? 'Generando...' : 'Descargar todas las sedes'}
+                        </button>
+                      )}
+                      {config.key === 'ventas' && user?.role === 'gerencia' && (
+                        <button
+                          type="button"
+                          className="btn-link"
+                          style={{ width: 'auto', fontSize: 11.5 }}
+                          disabled={corrigiendoSubtotales}
+                          onClick={corregirSubtotalesDescuento}
+                          title="Corrige, una sola vez, el subtotal de los productos en notas de venta ya registradas que tengan descuento — no toca el total ni lo ya cobrado."
+                        >
+                          {corrigiendoSubtotales ? 'Corrigiendo...' : 'Corregir subtotales con descuento (notas de venta ya registradas)'}
                         </button>
                       )}
                     </div>
