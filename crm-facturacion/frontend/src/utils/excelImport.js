@@ -95,6 +95,13 @@ export async function descargarComoExcel(filename, headers, filasEjemplo) {
   hoja.getRow(1).font = { bold: true };
   filasEjemplo.forEach((fila) => hoja.addRow(fila));
   hoja.columns.forEach((col) => { col.width = 20; });
+  // Flechitas de filtro/orden en la fila de encabezados (como "Dar formato
+  // como tabla" en Excel, pero ya aplicado al generar el archivo) — para
+  // que se pueda filtrar o buscar una columna sin tener que armarlo a mano
+  // cada vez que se descarga un reporte.
+  if (headers.length > 0) {
+    hoja.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: headers.length } };
+  }
   const buffer = await workbook.xlsx.writeBuffer();
   const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
   const url = URL.createObjectURL(blob);

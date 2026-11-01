@@ -200,8 +200,14 @@ const EXPORTADORES_MASIVOS = [
     endpoint: '/reports/ventas-detalle',
     columnas: ['fecha_emision', 'sede', 'tipo', 'serie', 'numero', 'cliente_documento', 'cliente_nombre', 'producto_codigo', 'producto_nombre', 'categoria', 'marca', 'linea', 'proveedor', 'cantidad', 'precio_unitario', 'descuento_pct', 'subtotal_item', 'forma_pago', 'descuento_global_pct', 'total_venta', 'estado', 'vendedor_nombre', 'atribuido_nombre', 'atribuido_categoria'],
     headers: ['Fecha', 'Sede', 'Tipo', 'Serie', 'Número', 'Doc. Cliente', 'Cliente', 'Cód. Producto', 'Producto', 'Categoría', 'Marca', 'Línea', 'Proveedor', 'Cantidad', 'Precio Unit.', '% Descuento', 'Subtotal Ítem', 'Forma de Pago', 'Descuento Venta (S/)', 'Total Venta', 'Estado', 'Vendedor', 'Atribuido a', 'Categoría Atribuido'],
-    descripcion: 'Detalle de cada producto vendido (Boletas, Facturas, Notas de Crédito y Notas de Venta Interna), con marca, línea (Organic/Fit) y proveedor por separado, el % de descuento del ítem, el descuento global de la venta en soles, categoría, vendedor y a quién se atribuyó — sin filtro de fecha.',
+    descripcion: 'Detalle de cada producto vendido (Boletas, Facturas, Notas de Crédito y Notas de Venta Interna), con marca, línea (Organic/Fit) y proveedor por separado, el % de descuento del ítem, el descuento global de la venta en soles, categoría, vendedor y a quién se atribuyó — sin filtro de fecha salvo que elijas un rango abajo.',
     permiteTodasSedes: true,
+    // Rango de fecha opcional (el endpoint ya lo soporta, ver
+    // routes/reports.js: GET /ventas-detalle). Sin fechas se comporta igual
+    // que antes (todo el historial) — esto es solo para poder comparar este
+    // reporte contra un período puntual del Dashboard (ej. "Ventas
+    // Totales" de un mes), sin tener que filtrar el Excel a mano.
+    permiteFechas: true,
   },
 ];
 
@@ -504,6 +510,10 @@ export default function Configuracion() {
   // --- Importador de Datos Masivos ---
   const [importadorActivo, setImportadorActivo] = useState(null); // key de IMPORTADORES_MASIVOS o null
   const [exportandoKey, setExportandoKey] = useState(null); // key de EXPORTADORES_MASIVOS en curso o null
+  // Rango de fecha opcional, solo para los exportadores con permiteFechas
+  // (hoy: Ventas) — vacíos = sin filtro, todo el historial, igual que antes.
+  const [exportDesde, setExportDesde] = useState('');
+  const [exportHasta, setExportHasta] = useState('');
   const [importFileName, setImportFileName] = useState('');
   const [importRows, setImportRows] = useState([]);
   const [importResult, setImportResult] = useState(null);
@@ -1438,7 +1448,14 @@ export default function Configuracion() {
   async function exportarDatos(config, todasSedes = false) {
     setExportandoKey(todasSedes ? `${config.key}:todas` : config.key);
     try {
-      const endpoint = todasSedes ? `${config.endpoint}?todas_sedes=1` : config.endpoint;
+      const params = new URLSearchParams();
+      if (todasSedes) params.set('todas_sedes', '1');
+      if (config.permiteFechas) {
+        if (exportDesde) params.set('desde', exportDesde);
+        if (exportHasta) params.set('hasta', exportHasta);
+      }
+      const query = params.toString();
+      const endpoint = query ? `${config.endpoint}?${query}` : config.endpoint;
       const datos = config.fetchAll ? await config.fetchAll() : (await api.get(endpoint)).data;
       const filas = datos.map((fila) => {
         const f = config.transformar ? config.transformar(fila) : fila;
@@ -2956,6 +2973,18 @@ export default function Configuracion() {
                     <div className="metodo-pago-info">
                       <strong>{config.titulo}</strong>
                       <span style={{ fontSize: 12, color: 'var(--ink-muted)' }}>{config.descripcion}</span>
+                      {config.permiteFechas && (
+                        <div style={{ display: 'flex', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
+                          <label style={{ fontSize: 11.5, color: 'var(--ink-muted)', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                            Desde
+                            <input type="date" value={exportDesde} onChange={(e) => setExportDesde(e.target.value)} style={{ fontSize: 12 }} />
+                          </label>
+                          <label style={{ fontSize: 11.5, color: 'var(--ink-muted)', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                            Hasta
+                            <input type="date" value={exportHasta} onChange={(e) => setExportHasta(e.target.value)} style={{ fontSize: 12 }} />
+                          </label>
+                        </div>
+                      )}
                     </div>
                     <div className="metodo-pago-actions" style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end' }}>
                       <button
