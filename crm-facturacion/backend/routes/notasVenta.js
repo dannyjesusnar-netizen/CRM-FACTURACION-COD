@@ -1,6 +1,6 @@
 const express = require('express');
 const db = require('../db');
-const { requireAuth, resolveSucursal } = require('../middleware/auth');
+const { requireAuth, requireGerencia, resolveSucursal } = require('../middleware/auth');
 const { requirePermiso, requireAccion, tieneAccion, requireAccionSupervisor } = require('../utils/permisos');
 const { requireTurnoCajaAbierto } = require('../utils/cajaTurno');
 const { siguienteNumero } = require('../utils/series');
@@ -447,6 +447,52 @@ router.get('/:id/pdf', async (req, res) => {
   res.setHeader('Content-Disposition', `inline; filename="${nv.serie}-${String(nv.numero).padStart(6, '0')}.pdf"`);
   doc.pipe(res);
   doc.end();
+});
+
+// POST /api/notas-venta/corregir-subtotales-descuento — corrección única de
+// datos HISTÓRICOS: antes del fix de este mismo cambio, una nota de venta
+// con un Descuento con nombre guardaba el subtotal de cada ítem SIN
+// aplicarle ese descuento (solo nota.total lo reflejaba) — a diferencia de
+// Boletas/Facturas, que siempre lo hicieron bien. Eso hacía que sumar
+// "Subtotal Ítem" en reportes/exports diera más que las ventas reales.
+// Esto recalcula el subtotal de los ítems de TODAS las notas de venta ya
+// registradas (de cualquier sede) que tengan descuento, repartiéndolo
+// proporcional igual que al crearlas — NO toca total, monto_pagado ni
+// ningún otro dato de la nota, solo el subtotal de sus ítems. Es seguro
+// correrlo más de una vez: una nota ya corregida da ratio 1 y no cambia.
+// Solo Gerencia, cruza todas las sedes a propósito (es una corrección de
+// datos de toda la empresa, no una acción de sede).
+router.post('/corregir-subtotales-descuento', requireGerencia, (req, res) => {
+  const notas = db.prepare(
+    'SELECT id, total FROM notas_venta WHERE descuento_global_pct > 0'
+  ).all();
+  const obtenerItems = db.prepare('SELECT id, subtotal FROM nota_venta_items WHERE nota_venta_id = ?');
+  const actualizarItem = db.prepare('UPDATE nota_venta_items SET subtotal = ? WHERE id = ?');
+
+  let notasCorregidas = 0;
+  let itemsCorregidos = 0;
+  const transaccion = db.transaction(() => {
+    for (const nv of notas) {
+      const items = obtenerItems.all(nv.id);
+      const totalBruto = round2(items.reduce((acc, it) => acc + it.subtotal, 0));
+      if (totalBruto <= 0) continue;
+      const ratio = nv.total / totalBruto;
+      if (Math.abs(ratio - 1) < 0.0001) continue; // ya está corregida (o nunca tuvo el problema)
+      let notaTocada = false;
+      for (const it of items) {
+        const nuevoSubtotal = round2(it.subtotal * ratio);
+        if (nuevoSubtotal !== it.subtotal) {
+          actualizarItem.run(nuevoSubtotal, it.id);
+          itemsCorregidos += 1;
+          notaTocada = true;
+        }
+      }
+      if (notaTocada) notasCorregidas += 1;
+    }
+  });
+  transaccion();
+
+  res.json({ notasRevisadas: notas.length, notasCorregidas, itemsCorregidos });
 });
 
 module.exports = router;
