@@ -313,6 +313,13 @@ const LINEA_EXPR = (alias) => `CASE ${alias}.linea WHEN 'organic' THEN 'Organic'
 // Exportador de Datos Masivos). Con product_id, es el detalle de ventas de
 // UN producto puntual — usado por Reportes → Detalle de ventas por producto
 // (buscas el producto y ves cada línea de venta/descuento que lo incluyó).
+//
+// cantidad/subtotal_item/total_venta de una Nota de Crédito salen en
+// NEGATIVO (mismo criterio que el resto de reportes de venta, ver
+// ITEMS_VENDIDOS_SUBQUERY en tablero.js) — así una suma simple de esas
+// columnas en Excel ya descuenta las devoluciones solas, igual que las
+// "Ventas Totales" del Dashboard; antes salían en positivo y sumarlas sin
+// restarlas a mano inflaba el total.
 router.get('/ventas-detalle', requireAlgunPermiso(['ventas', 'reportes']), (req, res) => {
   const todasLasSedes = req.query.todas_sedes === '1' && puedeCambiarSede(req.user);
   const productId = req.query.product_id ? Number(req.query.product_id) : null;
@@ -348,8 +355,12 @@ router.get('/ventas-detalle', requireAlgunPermiso(['ventas', 'reportes']), (req,
       COALESCE(p.marca, '') AS marca,
       ${LINEA_EXPR('p')} AS linea,
       ${proveedorExpr('p')} AS proveedor,
-      ii.cantidad, ii.precio_unitario, ii.descuento_pct, ii.subtotal AS subtotal_item,
-      i.forma_pago, i.descuento_global_pct, i.total AS total_venta, i.estado,
+      CASE WHEN i.tipo_comprobante = 'nota_credito' THEN -ii.cantidad ELSE ii.cantidad END AS cantidad,
+      ii.precio_unitario, ii.descuento_pct,
+      CASE WHEN i.tipo_comprobante = 'nota_credito' THEN -ii.subtotal ELSE ii.subtotal END AS subtotal_item,
+      i.forma_pago, i.descuento_global_pct,
+      CASE WHEN i.tipo_comprobante = 'nota_credito' THEN -i.total ELSE i.total END AS total_venta,
+      i.estado,
       u.full_name AS vendedor_nombre, au.full_name AS atribuido_nombre,
       ${ATRIBUIDO_CATEGORIA_EXPR('au')} AS atribuido_categoria
     FROM invoice_items ii
