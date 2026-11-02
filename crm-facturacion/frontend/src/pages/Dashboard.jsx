@@ -594,6 +594,10 @@ export default function Dashboard() {
                 // aparecer en una fila aparte más abajo.
                 const colIzqVisible = panelVisible('total_linea') || panelVisible('resumen_sedes');
                 const parTotalCompleto = (colIzqVisible && panelVisible('total_marca')) ? undefined : { gridColumn: '1 / -1' };
+                // También la usa Ranking Supervisores (antes quedaba siempre a
+                // ancho completo, sin importar qué pasaba con Trainers/
+                // Vendedores, y terminaba con un ancho distinto al de
+                // Trainers cuando éste compartía fila con Vendedores).
                 const parRankingCompleto = (panelVisible('ranking_trainers') && panelVisible('ranking_vendedores')) ? undefined : { gridColumn: '1 / -1' };
                 return (
                   <>
@@ -943,7 +947,7 @@ export default function Dashboard() {
                         )}
 
                         {panelVisible('ranking_supervisores') && (
-                          <div className="panel" ref={rankingSupervisoresRef} style={{ gridColumn: '1 / -1' }}>
+                          <div className="panel" ref={rankingSupervisoresRef} style={parRankingCompleto}>
                             <PanelHeader
                               color={colorTablero}
                               onCopiar={() => copiarPanelComoImagen(rankingSupervisoresRef, 'ranking-supervisores.png', toast)}
