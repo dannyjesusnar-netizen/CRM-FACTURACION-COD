@@ -46,19 +46,19 @@ function totalTurno(turno) {
 // GET /api/planilla?desde=&hasta=&empleado_id=&sucursal_id=
 // Un cajero/vendedor solo ve sus propios turnos, sin importar qué mande en
 // empleado_id — el filtro por empleado (y ver los de todos) es exclusivo de
-// Gerencia/Supervisor. Gerencia además puede ver TODAS las sedes a la vez
-// (sin depender de la sede activa del selector rápido de la barra
-// superior) o filtrar por una sede puntual con sucursal_id — mismo criterio
-// que el Tablero de Ventas (ver routes/tablero.js: sedeFiltro). Un rol con
-// el permiso de Supervisor "Ver todos" sigue viendo solo su propia sede: el
-// cruce entre sedes es exclusivo del role 'gerencia'.
+// Gerencia/Supervisor. Gerencia y cualquier rol con el permiso de Supervisor
+// "Ver todos" pueden además ver TODAS las sedes a la vez (sin depender de la
+// sede activa del selector rápido de la barra superior) o filtrar por una
+// sede puntual con sucursal_id — mismo criterio que el Tablero de Ventas
+// (ver routes/tablero.js: sedeFiltro).
 router.get('/', (req, res) => {
   const esSupervisorOGerencia = tieneAccionSupervisor(req.user, 'ver_todos_planilla_caja');
+  const puedeElegirSede = req.user.role === 'gerencia' || esSupervisorOGerencia;
   const hoy = todayStr();
   const desde = req.query.desde || hoy;
   const hasta = req.query.hasta && req.query.hasta >= desde ? req.query.hasta : desde;
 
-  const sucursalFiltro = req.user.role === 'gerencia'
+  const sucursalFiltro = puedeElegirSede
     ? (req.query.sucursal_id ? Number(req.query.sucursal_id) : null)
     : req.sucursalId;
 
@@ -82,7 +82,7 @@ router.get('/', (req, res) => {
   const turnos = db.prepare(sql).all(...params).map((t) => ({ ...t, total: totalTurno(t) }));
   res.json({
     desde, hasta, verTodos: esSupervisorOGerencia,
-    puedeElegirSede: req.user.role === 'gerencia', sucursal_id: sucursalFiltro,
+    puedeElegirSede, sucursal_id: sucursalFiltro,
     turnos,
   });
 });
