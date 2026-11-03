@@ -20,6 +20,29 @@ const CATEGORIA_LABEL = { trainer: 'Entrenador', vendedor: 'Vendedor', superviso
 // recibe un 50% fijo del pool de Trainers de su sede (asumiendo los dos
 // turnos, mañana y tarde), sin importar cuántos trainers tenga su turno.
 //
+// Un mes ya cerrado NO debe cambiar si después Gerencia reasigna a alguien
+// de sede (Personas → editar empleado): la VENTA de cada comprobante se
+// cuenta siempre para la sede donde se emitió (invoices.sucursal_id /
+// notas_venta.sucursal_id, que no cambian nunca), nunca para la sede ACTUAL
+// del empleado — así que si alguien ya vendió este mes en Miraflores y
+// después lo trasladan a San Borja, esa venta de Miraflores se queda en el
+// ranking de Miraflores de ese mes para siempre. "sede"/sucursal_id en el
+// resultado sigue siendo su sede actual (para mostrar dónde trabaja HOY y
+// para calcular su meta, que sí es de la sede actual, igual que siempre) —
+// solo la plata (venta) quedó anclada a como pasó en su momento. Por el
+// mismo motivo, si viene filtrado por sede, también se incluye a quien ya
+// no está en esa sede pero sí vendió ahí ese mes (si no, esa venta
+// desaparecería del todo del ranking filtrado de esa sede).
+//
+// Esto NO cubre la cuota automática (pool / cantidad de gente activa HOY,
+// cuando Gerencia no asignó una dotación a mano) — si además de mover a
+// alguien de sede cambia cuánta gente activa queda contada en la sede
+// vieja, el % de cumplimiento de un mes cerrado sí puede moverse un poco
+// por ese lado. Para que quede 100% fijo incluso en ese caso, asignale una
+// dotación a mano a esa sede/mes (Configuración → Metas de venta) — con
+// dotación puesta, el divisor queda fijo sin importar cuánta gente activa
+// haya después.
+//
 // Extraído de routes/tablero.js (GET /ranking-personal) para poder
 // reutilizarlo tal cual desde el link público del Tablero de Ventas (ver
 // routes/dashboardPublico.js) — misma lógica, sin duplicarla.
@@ -27,43 +50,51 @@ function calcularRankingPersonal(categoria, anio, mes, sucursalId) {
   const mesPad = String(mes).padStart(2, '0');
   const rows = db.prepare(`
     SELECT u.id AS user_id, u.full_name AS nombre, u.turno, u.sucursal_id, s.nombre AS sede,
-           COALESCE(SUM(v.monto), 0) AS venta
+           COALESCE(SUM(CASE WHEN ? IS NULL OR v.sucursal_id = ? THEN v.monto ELSE 0 END), 0) AS venta,
+           MAX(CASE WHEN v.sucursal_id = ? THEN 1 ELSE 0 END) AS vendio_en_sede_filtro
     FROM users u
     LEFT JOIN sucursales s ON s.id = u.sucursal_id
     LEFT JOIN (
-      SELECT COALESCE(atribuido_a, created_by) AS user_id,
+      SELECT COALESCE(atribuido_a, created_by) AS user_id, sucursal_id,
              CASE WHEN tipo_comprobante = 'nota_credito' THEN -total ELSE total END AS monto
       FROM invoices
       WHERE estado = 'emitido' AND strftime('%Y', fecha_emision) = ? AND strftime('%m', fecha_emision) = ?
       UNION ALL
-      SELECT COALESCE(atribuido_a, created_by) AS user_id, total AS monto
+      SELECT COALESCE(atribuido_a, created_by) AS user_id, sucursal_id, total AS monto
       FROM notas_venta
       WHERE estado = 'emitido' AND strftime('%Y', fecha_emision) = ? AND strftime('%m', fecha_emision) = ?
     ) v ON v.user_id = u.id
     WHERE u.categoria_staff = ? AND u.activo = 1
-      AND (? IS NULL OR u.sucursal_id = ?)
     GROUP BY u.id
-  `).all(String(anio), mesPad, String(anio), mesPad, categoria, sucursalId, sucursalId);
+    HAVING ? IS NULL OR u.sucursal_id = ? OR vendio_en_sede_filtro = 1
+  `).all(
+    sucursalId, sucursalId, sucursalId,
+    String(anio), mesPad, String(anio), mesPad,
+    categoria,
+    sucursalId, sucursalId
+  );
 
   // A pedido: la venta de los Entrenadores suma automáticamente a la del
   // Supervisor de su misma sede y turno (no afecta la meta, solo la venta
-  // que se compara contra ella en este ranking).
+  // que se compara contra ella en este ranking). También anclado a la sede
+  // donde pasó cada venta (ver comentario de arriba), no a la sede actual
+  // del Trainer que la hizo.
   if (categoria === 'supervisor') {
     const ventasTrainer = db.prepare(`
-      SELECT u.sucursal_id, u.turno, COALESCE(SUM(v.monto), 0) AS venta
-      FROM users u
-      LEFT JOIN (
-        SELECT COALESCE(atribuido_a, created_by) AS user_id,
+      SELECT v.sucursal_id, u.turno, COALESCE(SUM(v.monto), 0) AS venta
+      FROM (
+        SELECT COALESCE(atribuido_a, created_by) AS user_id, sucursal_id,
                CASE WHEN tipo_comprobante = 'nota_credito' THEN -total ELSE total END AS monto
         FROM invoices
         WHERE estado = 'emitido' AND strftime('%Y', fecha_emision) = ? AND strftime('%m', fecha_emision) = ?
         UNION ALL
-        SELECT COALESCE(atribuido_a, created_by) AS user_id, total AS monto
+        SELECT COALESCE(atribuido_a, created_by) AS user_id, sucursal_id, total AS monto
         FROM notas_venta
         WHERE estado = 'emitido' AND strftime('%Y', fecha_emision) = ? AND strftime('%m', fecha_emision) = ?
-      ) v ON v.user_id = u.id
+      ) v
+      JOIN users u ON u.id = v.user_id
       WHERE u.categoria_staff = 'trainer' AND u.activo = 1 AND u.turno IS NOT NULL
-      GROUP BY u.sucursal_id, u.turno
+      GROUP BY v.sucursal_id, u.turno
     `).all(String(anio), mesPad, String(anio), mesPad);
     const trainerMap = new Map(ventasTrainer.map((t) => [`${t.sucursal_id}:${t.turno}`, t.venta]));
     rows.forEach((r) => {
