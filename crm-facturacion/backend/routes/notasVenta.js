@@ -7,6 +7,7 @@ const { siguienteNumero } = require('../utils/series');
 const { resolverDescuentoPct } = require('../utils/descuentos');
 const { resolverDescuentoItemPct } = require('../utils/promociones');
 const { usuarioAtribuible } = require('../utils/atribucion');
+const { validarLimiteAbonado } = require('../utils/limitesAbonado');
 const { consumirStock, incrementarStock, StockInsuficienteError } = require('../utils/stock');
 const { buildNotaVentaPdf } = require('../utils/pdf');
 const { hoyPeru } = require('../utils/fechas');
@@ -295,6 +296,13 @@ router.post('/', requireAccion('ventas', 'nota_venta'), requireTurnoCajaAbierto,
   // es lo que el cliente entregó ahora (puede ser 0 hasta el total) — el
   // resto queda como saldo pendiente en /notas-venta/deudas.
   const montoPagado = esAbonado ? Math.min(total, Math.max(0, round2(Number(montoPagadoBody || 0)))) : total;
+
+  // Tope de deuda pendiente por categoría de personal — mismo criterio que
+  // invoices.js POST / (ver utils/limitesAbonado.js).
+  if (esAbonado) {
+    const errorLimite = validarLimiteAbonado(atribuidoA || req.user?.id, round2(total - montoPagado));
+    if (errorLimite) return res.status(400).json({ error: errorLimite });
+  }
 
   const { serie, numero: numeroSugerido } = siguienteNumero('nota_venta', req.sucursalId);
   const fechaEmisionFinal = fecha_emision || hoyPeru();

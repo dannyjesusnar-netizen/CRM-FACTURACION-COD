@@ -530,6 +530,18 @@ CREATE TABLE IF NOT EXISTS empresa_config (
   updated_by INTEGER REFERENCES users(id)
 );
 
+-- Tope de deuda pendiente (ventas "abonado" sin cobrar del todo) que Gerencia
+-- le permite acumular a cada categoría de personal (mismo valor de
+-- users.categoria_staff: 'trainer' | 'supervisor' | 'vendedor') antes de
+-- bloquear una nueva venta al crédito atribuida a alguien de esa categoría —
+-- ver utils/limitesAbonado.js. Sin fila para una categoría = sin límite.
+CREATE TABLE IF NOT EXISTS limites_abonado (
+  categoria_staff TEXT PRIMARY KEY,
+  monto_maximo REAL NOT NULL,
+  updated_at TEXT DEFAULT (datetime('now')),
+  updated_by INTEGER REFERENCES users(id)
+);
+
 -- Mensajes que cualquier cuenta le escribe al asistente ODIN (widget
 -- flotante del CRM). Por ahora no hay respuesta automática con IA: cada
 -- mensaje llega al panel-central del dueño de la plataforma para que lo
