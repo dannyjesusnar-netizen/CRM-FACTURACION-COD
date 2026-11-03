@@ -969,8 +969,8 @@ export default function Dashboard() {
                               onCopiar={() => copiarPanelComoImagen(rankingSupervisoresRef, 'ranking-supervisores.png', toast)}
                               onDescargarExcel={() => descargarPanelComoExcel(
                                 'ranking-supervisores.xlsx',
-                                ['Supervisor', 'Sede', 'Venta', 'Meta', '%'],
-                                rankingSupervisores.map((r) => [r.nombre, r.sede || '', r.venta, r.meta, r.porcentaje ?? '']),
+                                ['Supervisor', 'Sede', 'Turno', 'Venta', 'Meta', '%'],
+                                rankingSupervisores.map((r) => [r.nombre, r.sede || '', r.turno === 'manana' ? 'Mañana' : r.turno === 'tarde' ? 'Tarde' : '', r.venta, r.meta, r.porcentaje ?? '']),
                                 toast
                               )}
                               onDescargarDetalle={() => descargarDetalleRankingComoExcel(
@@ -984,20 +984,21 @@ export default function Dashboard() {
                             <div className="table-scroll">
                             <table className="data-table">
                               <thead>
-                                <tr><th>Supervisor</th><th>Sede</th><th style={{ textAlign: 'right' }}>Venta</th><th style={{ textAlign: 'right' }}>Meta</th><th>%</th></tr>
+                                <tr><th>Supervisor</th><th>Sede</th><th>Turno</th><th style={{ textAlign: 'right' }}>Venta</th><th style={{ textAlign: 'right' }}>Meta</th><th>%</th></tr>
                               </thead>
                               <tbody>
                                 {rankingSupervisores.map((r) => (
                                   <tr key={r.user_id} style={r.faltante ? { color: 'var(--ink-muted)', fontStyle: 'italic' } : undefined}>
                                     <td>{r.nombre}</td>
                                     <td>{r.sede || '—'}</td>
+                                    <td>{r.turno === 'manana' ? 'Mañana' : r.turno === 'tarde' ? 'Tarde' : '—'}</td>
                                     <td style={{ textAlign: 'right' }}>{money(r.venta)}</td>
                                     <td style={{ textAlign: 'right' }}>{money(r.meta)}</td>
                                     <td>{pctBadge(r.porcentaje)}</td>
                                   </tr>
                                 ))}
                                 {rankingSupervisores.length === 0 && (
-                                  <tr><td colSpan={5} className="empty-row">No hay supervisores con ventas en el período.</td></tr>
+                                  <tr><td colSpan={6} className="empty-row">No hay supervisores con ventas en el período.</td></tr>
                                 )}
                               </tbody>
                               {rankingSupervisores.length > 0 && (() => {
@@ -1006,6 +1007,7 @@ export default function Dashboard() {
                                   <tfoot>
                                     <tr className="totals-footer">
                                       <td>Total</td>
+                                      <td></td>
                                       <td></td>
                                       <td style={{ textAlign: 'right' }}>{money(t.venta)}</td>
                                       <td style={{ textAlign: 'right' }}>{money(t.meta)}</td>
