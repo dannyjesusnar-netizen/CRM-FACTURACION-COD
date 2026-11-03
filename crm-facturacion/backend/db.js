@@ -750,6 +750,11 @@ CREATE TABLE IF NOT EXISTS qr_unico_medios (
     // sube sus propias fotos; sin foto, el menú visual muestra un ícono
     // genérico en vez de romper el diseño.
     ['foto_data_url', 'TEXT'],
+    // Cómo se maneja este producto con su proveedor: 'contado' | 'credito' |
+    // 'consignacion' (ver utils MÉTODOS_TRABAJO en routes/products.js).
+    // Opcional — NULL = no especificado, no cambia nada del comportamiento
+    // existente.
+    ['metodo_trabajo', 'TEXT'],
   ];
   for (const [col, def] of PRODUCT_NEW_COLUMNS) {
     if (!productColumns.includes(col)) {

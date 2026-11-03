@@ -6,7 +6,14 @@ import { useAuth } from '../context/AuthContext';
 import { leerArchivoComoTextoCsv, descargarComoExcel, exportarTabla, parsearLineaCsv } from '../utils/excelImport';
 import ExportButton from '../components/ExportButton';
 
-const CARGA_MASIVA_COLUMNAS = ['codigo', 'nombre', 'categoria', 'marca', 'linea', 'proveedor', 'unidad', 'precio_unitario', 'stock', 'precio_compra', 'codigo_barras'];
+const CARGA_MASIVA_COLUMNAS = ['codigo', 'nombre', 'categoria', 'marca', 'linea', 'proveedor', 'unidad', 'precio_unitario', 'stock', 'precio_compra', 'codigo_barras', 'metodo_trabajo'];
+
+const METODOS_TRABAJO = [
+  { value: '', label: 'Sin especificar' },
+  { value: 'contado', label: 'Contado' },
+  { value: 'credito', label: 'Crédito' },
+  { value: 'consignacion', label: 'Consignación' },
+];
 
 function parseCsvProductos(text) {
   const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
@@ -29,6 +36,7 @@ const EMPTY_FORM = {
   unidad: 'NIU', afectacion_igv: 'gravado', control: 'ninguno', tipo_inventario: 'MERCADERÍAS',
   tipo_clasificacion: 'Otros', subtipo_clasificacion: 'Otros', peso: '', favorito: false,
   precio_compra: '', precio_unitario: '', stock: '', palabras_clave: '', proveedor_id: '', foto_data_url: '',
+  metodo_trabajo: '',
 };
 
 function emptySupplier() {
@@ -162,6 +170,7 @@ export default function Products() {
       palabras_clave: p.palabras_clave || '',
       proveedor_id: p.proveedor_id ?? '',
       foto_data_url: p.foto_data_url || '',
+      metodo_trabajo: p.metodo_trabajo || '',
     });
     setEditingId(p.id);
     setError('');
@@ -297,7 +306,7 @@ export default function Products() {
       const texto = await leerArchivoComoTextoCsv(file);
       const rows = parseCsvProductos(texto);
       setCargaRows(rows);
-      if (rows.length === 0) setErrorCarga('No se encontraron filas válidas (columnas esperadas: código, nombre, categoría, marca, línea, proveedor, unidad, precio_unitario, stock, precio_compra, código_barras).');
+      if (rows.length === 0) setErrorCarga('No se encontraron filas válidas (columnas esperadas: código, nombre, categoría, marca, línea, proveedor, unidad, precio_unitario, stock, precio_compra, código_barras, método de trabajo).');
     } catch {
       setErrorCarga('No se pudo leer el archivo. Verifica que sea un CSV o Excel (.xlsx) válido.');
     }
@@ -324,7 +333,7 @@ export default function Products() {
 
   function descargarPlantillaCargaMasiva() {
     const header = CARGA_MASIVA_COLUMNAS;
-    const ejemplo = ['P100', 'Producto de ejemplo', 'General', 'Optimum Nutrition', 'fit', 'Distribuidora XYZ', 'NIU', '19.90', '10', '12.00', '7501234567890'];
+    const ejemplo = ['P100', 'Producto de ejemplo', 'General', 'Optimum Nutrition', 'fit', 'Distribuidora XYZ', 'NIU', '19.90', '10', '12.00', '7501234567890', 'contado'];
     const csv = [header, ejemplo].map((r) => r.join(',')).join('\n');
     const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -335,7 +344,7 @@ export default function Products() {
   }
 
   function descargarPlantillaCargaMasivaExcel() {
-    const ejemplo = ['P100', 'Producto de ejemplo', 'General', 'Optimum Nutrition', 'fit', 'Distribuidora XYZ', 'NIU', 19.90, 10, 12.00, '7501234567890'];
+    const ejemplo = ['P100', 'Producto de ejemplo', 'General', 'Optimum Nutrition', 'fit', 'Distribuidora XYZ', 'NIU', 19.90, 10, 12.00, '7501234567890', 'contado'];
     descargarComoExcel('plantilla_carga_masiva_productos.xlsx', CARGA_MASIVA_COLUMNAS, [ejemplo]);
   }
 
@@ -428,6 +437,7 @@ export default function Products() {
                 <th>U.M.</th>
                 <th>Afectación IGV</th>
                 <th>Proveedor</th>
+                <th>Método</th>
                 <th>Canal</th>
                 <th style={{ textAlign: 'right' }}>{verTodasSedes ? 'Stock (todas las sedes)' : 'Stock'}</th>
                 <th style={{ textAlign: 'right' }}>Precio</th>
@@ -448,6 +458,7 @@ export default function Products() {
                     <td>{p.unidad}</td>
                     <td>{afectacionLabel}</td>
                     <td>{p.proveedor_nombre || '—'}</td>
+                    <td>{p.metodo_trabajo === 'contado' ? 'Contado' : p.metodo_trabajo === 'credito' ? 'Crédito' : p.metodo_trabajo === 'consignacion' ? 'Consignación' : '—'}</td>
                     <td>{p.canal_origen || '—'}</td>
                     <td style={{ textAlign: 'right' }}>{stockMostrado ?? '—'}</td>
                     <td style={{ textAlign: 'right' }}>S/ {Number(p.precio_unitario).toFixed(2)}</td>
@@ -459,7 +470,7 @@ export default function Products() {
                 );
               })}
               {products.length === 0 && (
-                <tr><td colSpan={13} className="empty-row">No hay productos registrados.</td></tr>
+                <tr><td colSpan={14} className="empty-row">No hay productos registrados.</td></tr>
               )}
             </tbody>
           </table>
@@ -614,6 +625,13 @@ export default function Products() {
                 + Nuevo proveedor
               </button>
 
+              <label>Método de trabajo</label>
+              <select value={form.metodo_trabajo} onChange={(e) => setForm({ ...form, metodo_trabajo: e.target.value })}>
+                {METODOS_TRABAJO.map((m) => (
+                  <option key={m.value} value={m.value}>{m.label}</option>
+                ))}
+              </select>
+
               <label>Marca</label>
               <input
                 value={form.marca}
@@ -728,7 +746,8 @@ export default function Products() {
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h2>Carga masiva de productos</h2>
             <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -6 }}>
-              Sube un CSV o Excel (.xlsx) con columnas: código, nombre, categoría, marca, línea, proveedor, unidad, precio_unitario, stock, precio_compra, código_barras.
+              Sube un CSV o Excel (.xlsx) con columnas: código, nombre, categoría, marca, línea, proveedor, unidad, precio_unitario, stock, precio_compra, código_barras, método de trabajo
+              ("contado", "credito" o "consignacion" — opcional).
               "línea" es opcional ("organic" o "fit"; vacío = sin línea). "proveedor" es opcional (nombre del proveedor; si no existe registrado se crea solo). Si el código ya existe, actualiza ese producto; si no, lo crea. El stock que subas es el de esta sede.
             </p>
             <div style={{ display: 'flex', gap: 12, marginBottom: 10 }}>
