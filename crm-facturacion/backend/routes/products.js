@@ -30,7 +30,7 @@ const FOTO_MAX_BYTES = 900 * 1024; // ~900KB en base64 (foto_data_url)
 function conStockDeSede(row, sucursalId, mostrarStock) {
   if (!row) return row;
   if (!mostrarStock) {
-    const { stock, precio_compra, proveedor_nombre, canal_origen, ...visible } = row;
+    const { stock, precio_compra, proveedor_nombre, canal_origen, metodo_trabajo, ...visible } = row;
     return visible;
   }
   if (row.tipo !== 'producto' || row.stock === null) return row;
@@ -124,6 +124,19 @@ function normalizarLinea(valor) {
   return v;
 }
 
+// Cómo se maneja este producto con su proveedor — informativo, no cambia
+// ningún cálculo de Compras/Caja todavía (eso queda para cuando se use en
+// Compras). Mismo criterio que normalizarLinea: sin la columna no se toca,
+// vacía explícita la borra, cualquier otro valor debe ser uno de los tres.
+const METODOS_TRABAJO_VALIDOS = ['contado', 'credito', 'consignacion'];
+function normalizarMetodoTrabajo(valor) {
+  if (valor === undefined) return undefined;
+  if (valor === null || valor === '') return null;
+  const v = String(valor).trim().toLowerCase();
+  if (!METODOS_TRABAJO_VALIDOS.includes(v)) return { error: true };
+  return v;
+}
+
 // Identifica el proveedor de un producto por su NOMBRE (a diferencia de
 // utils/rucLookup + identificarOCrearProveedor en routes/movements.js, que
 // resuelven por RUC vía SUNAT) — pensado para la carga masiva de productos,
@@ -144,6 +157,7 @@ router.post('/', requireAccion('inventario', 'productos'), (req, res) => {
     codigo, codigo_barras, nombre, descripcion, categoria, marca, linea, unidad,
     afectacion_igv, control, tipo_inventario, tipo_clasificacion, subtipo_clasificacion,
     peso, favorito, precio_compra, precio_unitario, stock, palabras_clave, proveedor_id, foto_data_url,
+    metodo_trabajo,
   } = req.body || {};
   if (!codigo || !nombre || precio_unitario === undefined) {
     return res.status(400).json({ error: 'codigo, nombre y precio_unitario son requeridos.' });
@@ -151,6 +165,10 @@ router.post('/', requireAccion('inventario', 'productos'), (req, res) => {
   const lineaNormalizada = normalizarLinea(linea);
   if (lineaNormalizada && lineaNormalizada.error) {
     return res.status(400).json({ error: 'linea inválida — use "organic" o "fit" (o déjelo vacío).' });
+  }
+  const metodoTrabajoNormalizado = normalizarMetodoTrabajo(metodo_trabajo);
+  if (metodoTrabajoNormalizado && metodoTrabajoNormalizado.error) {
+    return res.status(400).json({ error: 'metodo_trabajo inválido — use "contado", "credito" o "consignacion" (o déjelo vacío).' });
   }
   if (foto_data_url && foto_data_url.length > FOTO_MAX_BYTES) {
     return res.status(400).json({ error: 'La foto es muy pesada. Usa una de menos de 900KB.' });
@@ -161,8 +179,9 @@ router.post('/', requireAccion('inventario', 'productos'), (req, res) => {
       `INSERT INTO products (
          codigo, codigo_barras, nombre, descripcion, tipo, categoria, marca, linea, unidad,
          afectacion_igv, control, tipo_inventario, tipo_clasificacion, subtipo_clasificacion,
-         peso, favorito, precio_compra, precio_unitario, stock, palabras_clave, proveedor_id, foto_data_url
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         peso, favorito, precio_compra, precio_unitario, stock, palabras_clave, proveedor_id, foto_data_url,
+         metodo_trabajo
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       codigo,
       codigo_barras || null,
@@ -185,7 +204,8 @@ router.post('/', requireAccion('inventario', 'productos'), (req, res) => {
       tipo === 'servicio' ? null : Number(stock || 0),
       palabras_clave || null,
       proveedor_id === undefined || proveedor_id === '' ? null : Number(proveedor_id),
-      foto_data_url || null
+      foto_data_url || null,
+      metodoTrabajoNormalizado || null
     );
     const newId = info.lastInsertRowid;
     // El "Stock inicial" del formulario es el stock en la sede donde se está
@@ -257,6 +277,13 @@ router.post('/carga-masiva', requireAccion('inventario', 'productos'), (req, res
         errores.push({ codigo, error: 'linea inválida — use "organic" o "fit" (o déjelo vacío).' });
         continue;
       }
+      // metodo_trabajo (contado/credito/consignacion, opcional): mismo
+      // criterio que linea.
+      const metodoTrabajoResultado = normalizarMetodoTrabajo(r.metodo_trabajo);
+      if (metodoTrabajoResultado !== null && typeof metodoTrabajoResultado === 'object' && metodoTrabajoResultado.error) {
+        errores.push({ codigo, error: 'metodo_trabajo inválido — use "contado", "credito" o "consignacion" (o déjelo vacío).' });
+        continue;
+      }
       // proveedor (por nombre, opcional): mismo criterio que linea — sin la
       // columna no se toca, vacía explícita quita el proveedor asignado.
       const proveedorNombre = (r.proveedor || '').toString().trim();
@@ -281,20 +308,22 @@ router.post('/carga-masiva', requireAccion('inventario', 'productos'), (req, res
             }
           }
           const lineaFinal = lineaResultado === undefined ? existing.linea : lineaResultado;
+          const metodoTrabajoFinal = metodoTrabajoResultado === undefined ? existing.metodo_trabajo : metodoTrabajoResultado;
           const proveedorIdFinal = proveedorIdResultado === undefined ? existing.proveedor_id : proveedorIdResultado;
           db.prepare(
             `UPDATE products SET nombre = ?, categoria = ?, marca = ?, unidad = ?, tipo = ?, precio_unitario = ?, precio_compra = ?,
-             codigo_barras = ?, stock = ?, linea = ?, proveedor_id = ? WHERE id = ?`
-          ).run(nombre, categoria, marca, unidad, tipo, precioUnitario, precioCompra, codigoBarras, nuevoAgregado, lineaFinal, proveedorIdFinal, existing.id);
+             codigo_barras = ?, stock = ?, linea = ?, proveedor_id = ?, metodo_trabajo = ? WHERE id = ?`
+          ).run(nombre, categoria, marca, unidad, tipo, precioUnitario, precioCompra, codigoBarras, nuevoAgregado, lineaFinal, proveedorIdFinal, metodoTrabajoFinal, existing.id);
           if (tipo !== 'servicio') setStockSucursal(existing.id, req.sucursalId, sedeStockNuevo);
           actualizados.push({ codigo, nombre });
         } else {
           const lineaFinal = lineaResultado === undefined ? null : lineaResultado;
+          const metodoTrabajoFinal = metodoTrabajoResultado === undefined ? null : metodoTrabajoResultado;
           const proveedorIdFinal = proveedorIdResultado === undefined ? null : proveedorIdResultado;
           const info = db.prepare(
-            `INSERT INTO products (codigo, codigo_barras, nombre, tipo, categoria, marca, unidad, precio_compra, precio_unitario, stock, linea, proveedor_id)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-          ).run(codigo, codigoBarras, nombre, tipo, categoria, marca, unidad, precioCompra, precioUnitario, stock, lineaFinal, proveedorIdFinal);
+            `INSERT INTO products (codigo, codigo_barras, nombre, tipo, categoria, marca, unidad, precio_compra, precio_unitario, stock, linea, proveedor_id, metodo_trabajo)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          ).run(codigo, codigoBarras, nombre, tipo, categoria, marca, unidad, precioCompra, precioUnitario, stock, lineaFinal, proveedorIdFinal, metodoTrabajoFinal);
           if (tipo !== 'servicio' && stock > 0) setStockSucursal(info.lastInsertRowid, req.sucursalId, stock);
           creados.push({ codigo, nombre });
         }
@@ -438,10 +467,15 @@ router.put('/:id', requireAccion('inventario', 'productos'), (req, res) => {
     codigo, codigo_barras, nombre, descripcion, categoria, marca, linea, unidad,
     afectacion_igv, control, tipo_inventario, tipo_clasificacion, subtipo_clasificacion,
     peso, favorito, precio_compra, precio_unitario, stock, palabras_clave, activo, proveedor_id, foto_data_url,
+    metodo_trabajo,
   } = req.body || {};
   const lineaNormalizada = normalizarLinea(linea);
   if (lineaNormalizada && lineaNormalizada.error) {
     return res.status(400).json({ error: 'linea inválida — use "organic" o "fit" (o déjelo vacío).' });
+  }
+  const metodoTrabajoNormalizado = normalizarMetodoTrabajo(metodo_trabajo);
+  if (metodoTrabajoNormalizado && metodoTrabajoNormalizado.error) {
+    return res.status(400).json({ error: 'metodo_trabajo inválido — use "contado", "credito" o "consignacion" (o déjelo vacío).' });
   }
   if (foto_data_url && foto_data_url.length > FOTO_MAX_BYTES) {
     return res.status(400).json({ error: 'La foto es muy pesada. Usa una de menos de 900KB.' });
@@ -462,7 +496,8 @@ router.put('/:id', requireAccion('inventario', 'productos'), (req, res) => {
   db.prepare(
     `UPDATE products SET codigo = ?, codigo_barras = ?, nombre = ?, descripcion = ?, tipo = ?, categoria = ?, marca = ?, linea = ?, unidad = ?,
      afectacion_igv = ?, control = ?, tipo_inventario = ?, tipo_clasificacion = ?, subtipo_clasificacion = ?,
-     peso = ?, favorito = ?, precio_compra = ?, precio_unitario = ?, stock = ?, palabras_clave = ?, activo = ?, proveedor_id = ?, foto_data_url = ?
+     peso = ?, favorito = ?, precio_compra = ?, precio_unitario = ?, stock = ?, palabras_clave = ?, activo = ?, proveedor_id = ?, foto_data_url = ?,
+     metodo_trabajo = ?
      WHERE id = ?`
   ).run(
     codigo ?? existing.codigo,
@@ -488,6 +523,7 @@ router.put('/:id', requireAccion('inventario', 'productos'), (req, res) => {
     activo !== undefined ? Number(activo) : existing.activo,
     proveedor_id === undefined ? existing.proveedor_id : (proveedor_id === '' ? null : Number(proveedor_id)),
     foto_data_url === undefined ? existing.foto_data_url : (foto_data_url === '' ? null : foto_data_url),
+    metodoTrabajoNormalizado === undefined ? existing.metodo_trabajo : metodoTrabajoNormalizado,
     req.params.id
   );
   if (tipo !== 'servicio' && stock !== undefined) {
