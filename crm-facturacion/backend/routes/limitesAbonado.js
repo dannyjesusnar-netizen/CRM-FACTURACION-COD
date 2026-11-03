@@ -1,7 +1,7 @@
 const express = require('express');
 const db = require('../db');
 const { requireAuth, requireGerencia } = require('../middleware/auth');
-const { CATEGORIAS } = require('../utils/limitesAbonado');
+const { CATEGORIAS, deudaPendienteDe, limiteDe } = require('../utils/limitesAbonado');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -64,6 +64,63 @@ router.put('/', requireGerencia, (req, res) => {
      ON CONFLICT(categoria_staff) DO UPDATE SET monto_maximo = excluded.monto_maximo, updated_at = datetime('now'), updated_by = excluded.updated_by`
   ).run(categoria_staff, monto, req.user?.id || null);
   res.json({ categoria_staff, monto_maximo: monto });
+});
+
+// GET /api/limites-abonado/personas?q= -> Trainers/Supervisores/Vendedores
+// activos (con o sin usuario de login, ver /api/users/operativos) con su
+// categoría, sede, deuda pendiente hoy, el tope heredado de su categoría y
+// su excepción individual si Gerencia le puso una (ver
+// limites_abonado_usuario) — para la lista de "Límite por persona" de
+// Configuración. Exclusivo de Gerencia: muestra deuda de cada empleado por
+// nombre.
+router.get('/personas', requireGerencia, (req, res) => {
+  const { q } = req.query;
+  let sql = `
+    SELECT u.id, u.full_name, u.categoria_staff, s.nombre AS sucursal_nombre
+    FROM users u LEFT JOIN sucursales s ON s.id = u.sucursal_id
+    WHERE u.activo = 1 AND u.role != 'gerencia' AND u.categoria_staff IN ('trainer', 'supervisor', 'vendedor')
+  `;
+  const params = [];
+  if (q) {
+    sql += ' AND u.full_name LIKE ?';
+    params.push(`%${q}%`);
+  }
+  sql += ' ORDER BY u.full_name ASC';
+  const personas = db.prepare(sql).all(...params);
+  const overrides = new Map(
+    db.prepare('SELECT user_id, monto_maximo FROM limites_abonado_usuario').all().map((f) => [f.user_id, f.monto_maximo])
+  );
+  res.json(personas.map((p) => ({
+    ...p,
+    deuda_pendiente: deudaPendienteDe(p.id),
+    limite_categoria: limiteDe(p.categoria_staff),
+    limite_personal: overrides.has(p.id) ? overrides.get(p.id) : null,
+  })));
+});
+
+// PUT /api/limites-abonado/personas/:id { monto_maximo } -> excepción
+// individual de esa persona. null/vacío = quitarla (vuelve a seguir el
+// tope de su categoría). Exclusivo de Gerencia.
+router.put('/personas/:id', requireGerencia, (req, res) => {
+  const userId = Number(req.params.id);
+  const persona = db.prepare(
+    `SELECT id FROM users WHERE id = ? AND activo = 1 AND role != 'gerencia' AND categoria_staff IN ('trainer', 'supervisor', 'vendedor')`
+  ).get(userId);
+  if (!persona) return res.status(404).json({ error: 'Persona no encontrada.' });
+  const { monto_maximo } = req.body || {};
+  if (monto_maximo === null || monto_maximo === undefined || monto_maximo === '') {
+    db.prepare('DELETE FROM limites_abonado_usuario WHERE user_id = ?').run(userId);
+    return res.json({ user_id: userId, monto_maximo: null });
+  }
+  const monto = Number(monto_maximo);
+  if (!Number.isFinite(monto) || monto <= 0) {
+    return res.status(400).json({ error: 'El monto máximo debe ser un número mayor a 0.' });
+  }
+  db.prepare(
+    `INSERT INTO limites_abonado_usuario (user_id, monto_maximo, updated_by) VALUES (?, ?, ?)
+     ON CONFLICT(user_id) DO UPDATE SET monto_maximo = excluded.monto_maximo, updated_at = datetime('now'), updated_by = excluded.updated_by`
+  ).run(userId, monto, req.user?.id || null);
+  res.json({ user_id: userId, monto_maximo: monto });
 });
 
 module.exports = router;

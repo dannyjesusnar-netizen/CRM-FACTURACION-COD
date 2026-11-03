@@ -19,6 +19,25 @@ function limiteDe(categoria) {
   return fila ? fila.monto_maximo : null;
 }
 
+// Excepción puntual de UNA persona (ver limites_abonado_usuario) — null si
+// Gerencia nunca le puso una a esta persona.
+function limiteOverrideDe(userId) {
+  if (!userId) return null;
+  const fila = db.prepare('SELECT monto_maximo FROM limites_abonado_usuario WHERE user_id = ?').get(userId);
+  return fila ? fila.monto_maximo : null;
+}
+
+// Tope que de verdad le aplica a esta persona: su excepción individual si
+// Gerencia le puso una, si no el de su categoría (trainer/supervisor/
+// vendedor), si no null (sin tope). { limite, esPersonal } — esPersonal
+// dice si el tope que ganó es la excepción individual, para el mensaje de
+// error de validarLimiteAbonado.
+function limiteEfectivoDe(userId, categoria) {
+  const override = limiteOverrideDe(userId);
+  if (override != null) return { limite: override, esPersonal: true };
+  return { limite: limiteDe(categoria), esPersonal: false };
+}
+
 // Deuda pendiente total (ventas "abonado" emitidas, con saldo > 0)
 // atribuida hoy a esta persona — mismo criterio de atribución que el
 // Tablero de Ventas: COALESCE(atribuido_a, created_by). Suma Notas de
@@ -51,7 +70,7 @@ function validarLimiteAbonado(userId, saldoPendienteNuevo) {
   if (!(saldoPendienteNuevo > 0)) return null;
   const categoria = categoriaDe(userId);
   if (!categoria) return null;
-  const limite = limiteDe(categoria);
+  const { limite, esPersonal } = limiteEfectivoDe(userId, categoria);
   if (limite == null) return null;
   const deudaActual = deudaPendienteDe(userId);
   const deudaTotal = round2(deudaActual + saldoPendienteNuevo);
@@ -59,9 +78,14 @@ function validarLimiteAbonado(userId, saldoPendienteNuevo) {
     const persona = db.prepare('SELECT full_name FROM users WHERE id = ?').get(userId);
     const etiquetaCategoria = categoria === 'trainer' ? 'Trainer' : categoria === 'supervisor' ? 'Supervisor' : 'Vendedor';
     const etiquetaCategoriaPlural = categoria === 'trainer' ? 'Trainers' : categoria === 'supervisor' ? 'Supervisores' : 'Vendedores';
-    return `${persona?.full_name || 'Esta persona'} (${etiquetaCategoria}) ya tiene S/ ${deudaActual.toFixed(2)} en ventas abonadas sin cobrar — con esta venta llegaría a S/ ${deudaTotal.toFixed(2)}, por encima del tope de S/ ${limite.toFixed(2)} que Gerencia puso para ${etiquetaCategoriaPlural}.`;
+    const origenTope = esPersonal
+      ? 'que Gerencia le puso a esta persona en particular'
+      : `que Gerencia puso para ${etiquetaCategoriaPlural}`;
+    return `${persona?.full_name || 'Esta persona'} (${etiquetaCategoria}) ya tiene S/ ${deudaActual.toFixed(2)} en ventas abonadas sin cobrar — con esta venta llegaría a S/ ${deudaTotal.toFixed(2)}, por encima del tope de S/ ${limite.toFixed(2)} ${origenTope}.`;
   }
   return null;
 }
 
-module.exports = { CATEGORIAS, categoriaDe, limiteDe, deudaPendienteDe, validarLimiteAbonado };
+module.exports = {
+  CATEGORIAS, categoriaDe, limiteDe, limiteOverrideDe, limiteEfectivoDe, deudaPendienteDe, validarLimiteAbonado,
+};

@@ -582,6 +582,11 @@ export default function Configuracion() {
   const [limitesAbonado, setLimitesAbonado] = useState([]);
   const [savingLimiteAbonado, setSavingLimiteAbonado] = useState('');
   const [limiteAbonadoDrafts, setLimiteAbonadoDrafts] = useState({});
+  // Excepción individual al tope de categoría (ver limites_abonado_usuario).
+  const [personasLimiteAbonado, setPersonasLimiteAbonado] = useState([]);
+  const [busquedaPersonaLimite, setBusquedaPersonaLimite] = useState('');
+  const [savingLimitePersonal, setSavingLimitePersonal] = useState(null);
+  const [limitePersonalDrafts, setLimitePersonalDrafts] = useState({});
   const [showMetodoForm, setShowMetodoForm] = useState(false);
   const [editingMetodoId, setEditingMetodoId] = useState(null);
   const [metodoForm, setMetodoForm] = useState(emptyMetodoForm());
@@ -614,6 +619,7 @@ export default function Configuracion() {
     loadLimiteSucursales();
     loadMetodosPago();
     loadLimitesAbonado();
+    if (user?.role === 'gerencia') loadPersonasLimiteAbonado();
     // /users, /users/operativos, /sucursales/solicitudes y /roles son
     // estrictamente de Gerencia en el backend (requireGerencia) — ni
     // Supervisor tiene acceso — así que pedirlos para cualquier otro rol
@@ -655,6 +661,17 @@ export default function Configuracion() {
       return next;
     });
   }, [limitesAbonado]);
+
+  // Mismo criterio, para la excepción individual por persona.
+  useEffect(() => {
+    setLimitePersonalDrafts((prev) => {
+      const next = { ...prev };
+      personasLimiteAbonado.forEach((p) => {
+        if (!(p.id in next)) next[p.id] = p.limite_personal ?? '';
+      });
+      return next;
+    });
+  }, [personasLimiteAbonado]);
 
   useEffect(() => {
     if (sucursales.length && !sucursalSeleccionadaId) {
@@ -920,6 +937,23 @@ export default function Configuracion() {
       toast.error(err.response?.data?.error || 'No se pudo actualizar el límite.');
     } finally {
       setSavingLimiteAbonado('');
+    }
+  }
+
+  function loadPersonasLimiteAbonado() {
+    api.get('/limites-abonado/personas').then((res) => setPersonasLimiteAbonado(res.data)).catch(() => {});
+  }
+
+  async function handleGuardarLimitePersonal(userId, monto_maximo) {
+    setSavingLimitePersonal(userId);
+    try {
+      await api.put(`/limites-abonado/personas/${userId}`, { monto_maximo: monto_maximo === '' ? null : Number(monto_maximo) });
+      loadPersonasLimiteAbonado();
+      toast.success('Límite de crédito de esta persona actualizado.');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'No se pudo actualizar el límite.');
+    } finally {
+      setSavingLimitePersonal(null);
     }
   }
 
@@ -2985,6 +3019,71 @@ export default function Configuracion() {
                             </td>
                           </tr>
                         ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {user?.role === 'gerencia' && (
+                <div className="panel" style={{ marginTop: 24, maxWidth: 820 }}>
+                  <h3 style={{ marginTop: 0 }}>Límite de crédito por persona</h3>
+                  <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -8 }}>
+                    Excepción al límite de arriba para alguien en particular — por ejemplo, un Vendedor de confianza al
+                    que le quieres permitir más crédito que al resto de Vendedores. Mientras le pongas un monto acá, ese
+                    es el que se usa para esa persona en vez del de su categoría. Déjalo vacío para que vuelva a seguir
+                    el de su categoría.
+                  </p>
+                  <input
+                    type="text" placeholder="Buscar por nombre..." value={busquedaPersonaLimite}
+                    onChange={(e) => setBusquedaPersonaLimite(e.target.value)}
+                    style={{ maxWidth: 280, marginBottom: 12 }}
+                  />
+                  <div className="table-scroll">
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th>Nombre</th>
+                          <th>Categoría</th>
+                          <th>Sede</th>
+                          <th style={{ textAlign: 'right' }}>Deuda pendiente</th>
+                          <th style={{ textAlign: 'right' }}>Tope de su categoría</th>
+                          <th>Excepción individual (S/)</th>
+                          <th></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {personasLimiteAbonado
+                          .filter((p) => p.full_name.toLowerCase().includes(busquedaPersonaLimite.trim().toLowerCase()))
+                          .map((p) => (
+                            <tr key={p.id}>
+                              <td>{p.full_name}</td>
+                              <td>{p.categoria_staff === 'trainer' ? 'Trainer' : p.categoria_staff === 'supervisor' ? 'Supervisor' : 'Vendedor'}</td>
+                              <td>{p.sucursal_nombre || '—'}</td>
+                              <td style={{ textAlign: 'right' }}>S/ {Number(p.deuda_pendiente || 0).toFixed(2)}</td>
+                              <td style={{ textAlign: 'right' }}>{p.limite_categoria != null ? `S/ ${Number(p.limite_categoria).toFixed(2)}` : 'Sin límite'}</td>
+                              <td>
+                                <input
+                                  type="number" min="0" step="0.01" placeholder="Usa el de su categoría"
+                                  value={limitePersonalDrafts[p.id] ?? ''}
+                                  onChange={(e) => setLimitePersonalDrafts({ ...limitePersonalDrafts, [p.id]: e.target.value })}
+                                  style={{ maxWidth: 160 }}
+                                />
+                              </td>
+                              <td className="row-actions">
+                                <button
+                                  type="button" className="btn-link"
+                                  disabled={savingLimitePersonal === p.id}
+                                  onClick={() => handleGuardarLimitePersonal(p.id, limitePersonalDrafts[p.id])}
+                                >
+                                  {savingLimitePersonal === p.id ? 'Guardando...' : 'Guardar'}
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        {personasLimiteAbonado.length === 0 && (
+                          <tr><td colSpan={7} className="empty-row">No hay Trainers, Supervisores o Vendedores activos todavía.</td></tr>
+                        )}
                       </tbody>
                     </table>
                   </div>

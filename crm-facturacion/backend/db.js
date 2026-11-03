@@ -542,6 +542,19 @@ CREATE TABLE IF NOT EXISTS limites_abonado (
   updated_by INTEGER REFERENCES users(id)
 );
 
+-- Excepción al tope de limites_abonado para UNA persona puntual (en vez de
+-- toda su categoría) — p.ej. un Vendedor de confianza al que Gerencia le
+-- quiere dar más crédito que al resto de Vendedores. Mientras exista una
+-- fila acá para ese user_id, pesa más que el tope de su categoría (ver
+-- utils/limitesAbonado.js: limiteEfectivoDe). Sin fila = sigue el tope de
+-- su categoría como siempre.
+CREATE TABLE IF NOT EXISTS limites_abonado_usuario (
+  user_id INTEGER PRIMARY KEY REFERENCES users(id),
+  monto_maximo REAL NOT NULL,
+  updated_at TEXT DEFAULT (datetime('now')),
+  updated_by INTEGER REFERENCES users(id)
+);
+
 -- Mensajes que cualquier cuenta le escribe al asistente ODIN (widget
 -- flotante del CRM). Por ahora no hay respuesta automática con IA: cada
 -- mensaje llega al panel-central del dueño de la plataforma para que lo
