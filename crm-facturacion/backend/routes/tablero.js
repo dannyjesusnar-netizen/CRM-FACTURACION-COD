@@ -89,7 +89,10 @@ router.get('/ranking-personal', (req, res) => {
 // falta ver). Cada fila es un comprobante real (Boleta/Factura/Nota de
 // Crédito/Nota de Venta Interna) atribuido a un empleado de esa categoría,
 // con el mismo criterio de atribución que /ranking-personal
-// (COALESCE(atribuido_a, created_by)) y el mismo filtro de sede.
+// (COALESCE(atribuido_a, created_by)). El filtro de sede es por la sede
+// donde se emitió CADA comprobante (x.sucursal_id, igual que
+// calcularRankingPersonal) y no por la sede actual del empleado — así un
+// mes ya cerrado no cambia si después lo trasladan de sede.
 router.get('/ranking-personal/detalle', (req, res) => {
   const categoria = req.query.categoria;
   if (!['trainer', 'vendedor', 'supervisor'].includes(categoria)) {
@@ -118,7 +121,7 @@ router.get('/ranking-personal/detalle', (req, res) => {
     JOIN users u ON u.id = COALESCE(x.atribuido_a, x.created_by)
     LEFT JOIN sucursales sd ON sd.id = x.sucursal_id
     WHERE u.categoria_staff = ? AND u.activo = 1
-      AND (? IS NULL OR u.sucursal_id = ?)
+      AND (? IS NULL OR x.sucursal_id = ?)
     ORDER BY u.full_name, x.fecha, x.numero
   `).all(String(anio), mesPad, String(anio), mesPad, categoria, sucursalId, sucursalId);
   res.json(rows.map((r) => ({ ...r, total: round2(r.total) })));
