@@ -264,7 +264,17 @@ router.post('/carga-masiva', requireAccion('inventario', 'productos'), (req, res
       }
       const unidad = (r.unidad || 'NIU').toString().trim() || 'NIU';
       const tipo = tipoDesdeUnidad(unidad);
-      const stock = tipo === 'servicio' ? null : Number(r.stock || 0);
+      // stock: igual criterio que linea/proveedor — una celda vacía o la
+      // columna ausente NO toca el stock que ya tenía el producto (antes
+      // una celda vacía se leía como 0 y lo borraba sin querer, p.ej. al
+      // usar "Actualización de datos" solo para cambiar precios). Para
+      // poner el stock en 0 a propósito, hay que escribir 0 explícito.
+      const stockProvisto = r.stock !== undefined && r.stock !== null && String(r.stock).trim() !== '';
+      if (stockProvisto && Number.isNaN(Number(r.stock))) {
+        errores.push({ codigo, error: 'stock debe ser numérico (o déjalo vacío para no tocarlo).' });
+        continue;
+      }
+      const stock = tipo === 'servicio' ? null : (stockProvisto ? Number(r.stock) : undefined);
       const precioCompra = r.precio_compra === undefined || r.precio_compra === '' ? null : Number(r.precio_compra);
       const categoria = (r.categoria || 'General').toString().trim() || 'General';
       const marca = (r.marca || '').toString().trim() || null;
@@ -299,7 +309,8 @@ router.post('/carga-masiva', requireAccion('inventario', 'productos'), (req, res
         if (existing) {
           let nuevoAgregado = existing.stock;
           let sedeStockNuevo = stock;
-          if (tipo !== 'servicio' && stock !== null) {
+          const tocaStock = tipo !== 'servicio' && stock !== null && stock !== undefined;
+          if (tocaStock) {
             if (sumarStock) {
               sedeStockNuevo = round2(getStockSucursal(existing.id, req.sucursalId) + stock);
               nuevoAgregado = round2(existing.stock + stock);
@@ -314,17 +325,20 @@ router.post('/carga-masiva', requireAccion('inventario', 'productos'), (req, res
             `UPDATE products SET nombre = ?, categoria = ?, marca = ?, unidad = ?, tipo = ?, precio_unitario = ?, precio_compra = ?,
              codigo_barras = ?, stock = ?, linea = ?, proveedor_id = ?, metodo_trabajo = ? WHERE id = ?`
           ).run(nombre, categoria, marca, unidad, tipo, precioUnitario, precioCompra, codigoBarras, nuevoAgregado, lineaFinal, proveedorIdFinal, metodoTrabajoFinal, existing.id);
-          if (tipo !== 'servicio') setStockSucursal(existing.id, req.sucursalId, sedeStockNuevo);
+          if (tocaStock) setStockSucursal(existing.id, req.sucursalId, sedeStockNuevo);
           actualizados.push({ codigo, nombre });
         } else {
           const lineaFinal = lineaResultado === undefined ? null : lineaResultado;
           const metodoTrabajoFinal = metodoTrabajoResultado === undefined ? null : metodoTrabajoResultado;
           const proveedorIdFinal = proveedorIdResultado === undefined ? null : proveedorIdResultado;
+          // Producto nuevo sin columna/celda de stock: arranca en 0 (no hay
+          // stock previo que proteger, a diferencia de uno que ya existía).
+          const stockInicial = stock === undefined ? 0 : stock;
           const info = db.prepare(
             `INSERT INTO products (codigo, codigo_barras, nombre, tipo, categoria, marca, unidad, precio_compra, precio_unitario, stock, linea, proveedor_id, metodo_trabajo)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-          ).run(codigo, codigoBarras, nombre, tipo, categoria, marca, unidad, precioCompra, precioUnitario, stock, lineaFinal, proveedorIdFinal, metodoTrabajoFinal);
-          if (tipo !== 'servicio' && stock > 0) setStockSucursal(info.lastInsertRowid, req.sucursalId, stock);
+          ).run(codigo, codigoBarras, nombre, tipo, categoria, marca, unidad, precioCompra, precioUnitario, stockInicial, lineaFinal, proveedorIdFinal, metodoTrabajoFinal);
+          if (tipo !== 'servicio' && stockInicial > 0) setStockSucursal(info.lastInsertRowid, req.sucursalId, stockInicial);
           creados.push({ codigo, nombre });
         }
       } catch (err) {
