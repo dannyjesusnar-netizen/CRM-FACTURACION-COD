@@ -83,6 +83,11 @@ function construirUsuarioCliente(user) {
     // Generar/copiar/revocar el link público del Tablero de Ventas (ver
     // routes/tablero.js: requireCompartirTablero en /link-publico).
     puede_compartir_dashboard: tieneAccionSupervisor(user, 'compartir_tablero'),
+    // Elegir sede (o "Todas las sedes") en el filtro de Planilla, en vez de
+    // quedar atado a la sede activa del selector rápido — mismo permiso que
+    // ya controla si ve la Planilla de todos los empleados (ver
+    // routes/planilla.js: puedeElegirSede).
+    puede_elegir_sede_planilla: tieneAccionSupervisor(user, 'ver_todos_planilla_caja'),
     // Cambiar de sede desde el selector rápido de la barra superior (ver
     // middleware/auth.js: resolveSucursal). Gerencia/Supervisor lo tienen
     // automático; cualquier otro rol lo gana desde Configuración → Roles →

@@ -33,6 +33,11 @@ export default function Planilla() {
   const { user } = useAuth();
   const toast = useToast();
   const esGerencia = user?.role === 'gerencia';
+  // Igual que Gerencia: filtrar por sede (o "Todas las sedes") en vez de
+  // quedar atado a la sede activa del selector rápido de la barra superior
+  // — para cualquier rol con el permiso de Supervisor "Ver todos" en
+  // Planilla (Configuración → Roles → Permisos de Supervisor).
+  const puedeElegirSede = esGerencia || !!user?.puede_elegir_sede_planilla;
   const [desde, setDesde] = useState(todayStr());
   const [hasta, setHasta] = useState(todayStr());
   const [sucursalId, setSucursalId] = useState('');
@@ -44,15 +49,15 @@ export default function Planilla() {
   function load() {
     setLoading(true);
     setLoadError('');
-    api.get('/planilla', { params: { desde, hasta, sucursal_id: esGerencia ? (sucursalId || undefined) : undefined } })
+    api.get('/planilla', { params: { desde, hasta, sucursal_id: puedeElegirSede ? (sucursalId || undefined) : undefined } })
       .then((res) => setData(res.data))
       .catch((err) => setLoadError(err.response?.data?.error || 'No se pudo cargar la planilla.'))
       .finally(() => setLoading(false));
   }
 
   useEffect(() => {
-    if (esGerencia) api.get('/sucursales').then((res) => setSucursales(res.data)).catch(() => {});
-  }, [esGerencia]);
+    if (puedeElegirSede) api.get('/sucursales').then((res) => setSucursales(res.data)).catch(() => {});
+  }, [puedeElegirSede]);
   useEffect(() => { load(); }, [desde, hasta, sucursalId]);
 
   async function exportPlanilla(formato) {
@@ -90,7 +95,7 @@ export default function Planilla() {
           <label>Hasta</label>
           <input type="date" value={hasta} min={desde} onChange={(e) => setHasta(e.target.value)} />
         </div>
-        {esGerencia && (
+        {puedeElegirSede && (
           <div className="filter-field">
             <label>Sede</label>
             <select value={sucursalId} onChange={(e) => setSucursalId(e.target.value)}>
