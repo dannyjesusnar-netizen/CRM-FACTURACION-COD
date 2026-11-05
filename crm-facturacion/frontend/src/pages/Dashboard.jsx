@@ -426,32 +426,34 @@ export default function Dashboard() {
             <h3 style={{ margin: 0 }}>Últimas ventas</h3>
             <button className="btn-secondary" onClick={() => navigate('/ventas')}>Documentos Emitidos</button>
           </div>
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Comprobante</th>
-                <th>Cliente</th>
-                <th>Fecha</th>
-                <th>Estado</th>
-                <th style={{ textAlign: 'right' }}>Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {summary.ultimasVentas.map((v) => (
-                <tr key={v.id}>
-                  <td>{v.serie}-{String(v.numero).padStart(6, '0')}</td>
-                  <td>{v.cliente_nombre}</td>
-                  <td>{v.fecha_emision}</td>
-                  <td>
-                    <span className={'badge ' + (v.estado === 'anulado' ? 'badge-critical' : 'badge-good')}>
-                      {v.estado}
-                    </span>
-                  </td>
-                  <td style={{ textAlign: 'right' }}>{money(v.total)}</td>
+          <div className="table-scroll">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Comprobante</th>
+                  <th>Cliente</th>
+                  <th>Fecha</th>
+                  <th>Estado</th>
+                  <th style={{ textAlign: 'right' }}>Total</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {summary.ultimasVentas.map((v) => (
+                  <tr key={v.id}>
+                    <td>{v.serie}-{String(v.numero).padStart(6, '0')}</td>
+                    <td>{v.cliente_nombre}</td>
+                    <td>{v.fecha_emision}</td>
+                    <td>
+                      <span className={'badge ' + (v.estado === 'anulado' ? 'badge-critical' : 'badge-good')}>
+                        {v.estado}
+                      </span>
+                    </td>
+                    <td style={{ textAlign: 'right' }}>{money(v.total)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       </>
     )
@@ -654,24 +656,26 @@ export default function Dashboard() {
                                     toast
                                   )}
                                 >Total por Línea (Organic / Fit)</PanelHeader>
-                                <table className="data-table">
-                                  <thead>
-                                    <tr><th>Línea</th><th style={{ textAlign: 'right' }}>Cantidad</th><th style={{ textAlign: 'right' }}>Venta</th><th style={{ textAlign: 'right' }}>% Venta</th></tr>
-                                  </thead>
-                                  <tbody>
-                                    {totalLinea.map((l) => (
-                                      <tr key={l.linea}>
-                                        <td>{l.label}</td>
-                                        <td style={{ textAlign: 'right' }}>{l.cantidad}</td>
-                                        <td style={{ textAlign: 'right' }}>{money(l.venta)}</td>
-                                        <td style={{ textAlign: 'right' }}>{l.porcentaje.toFixed(2)}%</td>
-                                      </tr>
-                                    ))}
-                                    {totalLinea.length === 0 && (
-                                      <tr><td colSpan={4} className="empty-row">Sin ventas en el período.</td></tr>
-                                    )}
-                                  </tbody>
-                                </table>
+                                <div className="table-scroll">
+                                  <table className="data-table">
+                                    <thead>
+                                      <tr><th>Línea</th><th style={{ textAlign: 'right' }}>Cantidad</th><th style={{ textAlign: 'right' }}>Venta</th><th style={{ textAlign: 'right' }}>% Venta</th></tr>
+                                    </thead>
+                                    <tbody>
+                                      {totalLinea.map((l) => (
+                                        <tr key={l.linea}>
+                                          <td>{l.label}</td>
+                                          <td style={{ textAlign: 'right' }}>{l.cantidad}</td>
+                                          <td style={{ textAlign: 'right' }}>{money(l.venta)}</td>
+                                          <td style={{ textAlign: 'right' }}>{l.porcentaje.toFixed(2)}%</td>
+                                        </tr>
+                                      ))}
+                                      {totalLinea.length === 0 && (
+                                        <tr><td colSpan={4} className="empty-row">Sin ventas en el período.</td></tr>
+                                      )}
+                                    </tbody>
+                                  </table>
+                                </div>
                               </div>
                             )}
                             {panelVisible('resumen_sedes') && (
@@ -689,40 +693,42 @@ export default function Dashboard() {
                                     toast
                                   )}
                                 >Resumen Sedes</PanelHeader>
-                                <table className="data-table">
-                                  <thead>
-                                    <tr><th>Sede</th><th style={{ textAlign: 'right' }}>Venta</th><th style={{ textAlign: 'right' }}>Meta</th><th>% Meta</th></tr>
-                                  </thead>
-                                  <tbody>
-                                    {resumenSedes.sedes.map((s) => (
-                                      <tr key={s.sucursal_id}>
-                                        <td>{s.sede}</td>
-                                        <td style={{ textAlign: 'right' }}>{money(s.venta)}</td>
-                                        <td style={{ textAlign: 'right' }}>{money(s.meta)}</td>
-                                        <td>{pctBadge(s.porcentaje)}</td>
-                                      </tr>
-                                    ))}
-                                    {resumenSedes.sedes.length === 0 && (
-                                      <tr><td colSpan={4} className="empty-row">Sin sedes activas.</td></tr>
+                                <div className="table-scroll">
+                                  <table className="data-table">
+                                    <thead>
+                                      <tr><th>Sede</th><th style={{ textAlign: 'right' }}>Venta</th><th style={{ textAlign: 'right' }}>Meta</th><th>% Meta</th></tr>
+                                    </thead>
+                                    <tbody>
+                                      {resumenSedes.sedes.map((s) => (
+                                        <tr key={s.sucursal_id}>
+                                          <td>{s.sede}</td>
+                                          <td style={{ textAlign: 'right' }}>{money(s.venta)}</td>
+                                          <td style={{ textAlign: 'right' }}>{money(s.meta)}</td>
+                                          <td>{pctBadge(s.porcentaje)}</td>
+                                        </tr>
+                                      ))}
+                                      {resumenSedes.sedes.length === 0 && (
+                                        <tr><td colSpan={4} className="empty-row">Sin sedes activas.</td></tr>
+                                      )}
+                                    </tbody>
+                                    {resumenSedes.total && (
+                                      <tfoot>
+                                        <tr className="totals-footer">
+                                          <td>Total</td>
+                                          <td style={{ textAlign: 'right' }}>{money(resumenSedes.total.venta)}</td>
+                                          <td style={{ textAlign: 'right' }}>{money(resumenSedes.total.meta)}</td>
+                                          <td>{pctBadge(resumenSedes.total.porcentaje)}</td>
+                                        </tr>
+                                      </tfoot>
                                     )}
-                                  </tbody>
-                                  {resumenSedes.total && (
-                                    <tfoot>
-                                      <tr className="totals-footer">
-                                        <td>Total</td>
-                                        <td style={{ textAlign: 'right' }}>{money(resumenSedes.total.venta)}</td>
-                                        <td style={{ textAlign: 'right' }}>{money(resumenSedes.total.meta)}</td>
-                                        <td>{pctBadge(resumenSedes.total.porcentaje)}</td>
-                                      </tr>
-                                    </tfoot>
-                                  )}
-                                </table>
+                                  </table>
+                                </div>
                               </div>
                             )}
                           </div>
                         )}
                         {panelVisible('total_marca') && (
-                          <div className="panel" ref={totalMarcaRef} style={parTotalCompleto}>
+                          <div className="panel" ref={totalMarcaRef} style={{ minWidth: 0, ...parTotalCompleto }}>
                             <PanelHeader
                               color={colorTablero}
                               onCopiar={() => copiarPanelComoImagen(totalMarcaRef, 'total-por-marca.png', toast)}
@@ -733,28 +739,30 @@ export default function Dashboard() {
                                 toast
                               )}
                             >Total por Marca</PanelHeader>
-                            <table className="data-table">
-                              <thead>
-                                <tr><th>Marca</th><th style={{ textAlign: 'right' }}>Cantidad</th><th style={{ textAlign: 'right' }}>Venta</th><th style={{ textAlign: 'right' }}>% Venta</th></tr>
-                              </thead>
-                              <tbody>
-                                {totalMarca.map((m) => (
-                                  <tr key={m.marca}>
-                                    <td>{m.marca}</td>
-                                    <td style={{ textAlign: 'right' }}>{m.cantidad}</td>
-                                    <td style={{ textAlign: 'right' }}>{money(m.venta)}</td>
-                                    <td style={{ textAlign: 'right' }}>{m.porcentaje.toFixed(2)}%</td>
-                                  </tr>
-                                ))}
-                                {totalMarca.length === 0 && (
-                                  <tr><td colSpan={4} className="empty-row">Sin ventas en el período.</td></tr>
-                                )}
-                              </tbody>
-                            </table>
+                            <div className="table-scroll">
+                              <table className="data-table">
+                                <thead>
+                                  <tr><th>Marca</th><th style={{ textAlign: 'right' }}>Cantidad</th><th style={{ textAlign: 'right' }}>Venta</th><th style={{ textAlign: 'right' }}>% Venta</th></tr>
+                                </thead>
+                                <tbody>
+                                  {totalMarca.map((m) => (
+                                    <tr key={m.marca}>
+                                      <td>{m.marca}</td>
+                                      <td style={{ textAlign: 'right' }}>{m.cantidad}</td>
+                                      <td style={{ textAlign: 'right' }}>{money(m.venta)}</td>
+                                      <td style={{ textAlign: 'right' }}>{m.porcentaje.toFixed(2)}%</td>
+                                    </tr>
+                                  ))}
+                                  {totalMarca.length === 0 && (
+                                    <tr><td colSpan={4} className="empty-row">Sin ventas en el período.</td></tr>
+                                  )}
+                                </tbody>
+                              </table>
+                            </div>
                           </div>
                         )}
                         {panelVisible('total_producto') && (
-                          <div className="panel" ref={totalProductoRef} style={{ gridColumn: '1 / -1' }}>
+                          <div className="panel" ref={totalProductoRef} style={{ minWidth: 0, gridColumn: '1 / -1' }}>
                             <PanelHeader
                               color={colorTablero}
                               onCopiar={() => copiarPanelComoImagen(totalProductoRef, 'total-por-producto.png', toast)}
@@ -765,24 +773,26 @@ export default function Dashboard() {
                                 toast
                               )}
                             >Total por Producto</PanelHeader>
-                            <table className="data-table">
-                              <thead>
-                                <tr><th>Categoría</th><th style={{ textAlign: 'right' }}>Cantidad</th><th style={{ textAlign: 'right' }}>Venta</th><th style={{ textAlign: 'right' }}>% Venta</th></tr>
-                              </thead>
-                              <tbody>
-                                {totalProducto.map((p) => (
-                                  <tr key={p.categoria}>
-                                    <td>{p.categoria}</td>
-                                    <td style={{ textAlign: 'right' }}>{p.cantidad}</td>
-                                    <td style={{ textAlign: 'right' }}>{money(p.venta)}</td>
-                                    <td style={{ textAlign: 'right' }}>{p.porcentaje.toFixed(2)}%</td>
-                                  </tr>
-                                ))}
-                                {totalProducto.length === 0 && (
-                                  <tr><td colSpan={4} className="empty-row">Sin ventas en el período.</td></tr>
-                                )}
-                              </tbody>
-                            </table>
+                            <div className="table-scroll">
+                              <table className="data-table">
+                                <thead>
+                                  <tr><th>Categoría</th><th style={{ textAlign: 'right' }}>Cantidad</th><th style={{ textAlign: 'right' }}>Venta</th><th style={{ textAlign: 'right' }}>% Venta</th></tr>
+                                </thead>
+                                <tbody>
+                                  {totalProducto.map((p) => (
+                                    <tr key={p.categoria}>
+                                      <td>{p.categoria}</td>
+                                      <td style={{ textAlign: 'right' }}>{p.cantidad}</td>
+                                      <td style={{ textAlign: 'right' }}>{money(p.venta)}</td>
+                                      <td style={{ textAlign: 'right' }}>{p.porcentaje.toFixed(2)}%</td>
+                                    </tr>
+                                  ))}
+                                  {totalProducto.length === 0 && (
+                                    <tr><td colSpan={4} className="empty-row">Sin ventas en el período.</td></tr>
+                                  )}
+                                </tbody>
+                              </table>
+                            </div>
                           </div>
                         )}
                       </div>
@@ -812,28 +822,30 @@ export default function Dashboard() {
                             style={{ marginLeft: 12, width: 'auto', fontSize: 13 }}
                           />
                         </PanelHeader>
-                        <table className="data-table">
-                          <thead>
-                            <tr><th>Sede</th><th style={{ textAlign: 'right' }}>Venta</th></tr>
-                          </thead>
-                          <tbody>
-                            {ventasDiaPorSede.sedes.map((s) => (
-                              <tr key={s.sucursal_id}>
-                                <td>{s.sede}</td>
-                                <td style={{ textAlign: 'right' }}>{money(s.venta)}</td>
+                        <div className="table-scroll">
+                          <table className="data-table">
+                            <thead>
+                              <tr><th>Sede</th><th style={{ textAlign: 'right' }}>Venta</th></tr>
+                            </thead>
+                            <tbody>
+                              {ventasDiaPorSede.sedes.map((s) => (
+                                <tr key={s.sucursal_id}>
+                                  <td>{s.sede}</td>
+                                  <td style={{ textAlign: 'right' }}>{money(s.venta)}</td>
+                                </tr>
+                              ))}
+                              {ventasDiaPorSede.sedes.length === 0 && (
+                                <tr><td colSpan={2} className="empty-row">Sin sedes activas.</td></tr>
+                              )}
+                            </tbody>
+                            <tfoot>
+                              <tr className="totals-footer">
+                                <td>Total</td>
+                                <td style={{ textAlign: 'right' }}>{money(ventasDiaPorSede.total.venta)}</td>
                               </tr>
-                            ))}
-                            {ventasDiaPorSede.sedes.length === 0 && (
-                              <tr><td colSpan={2} className="empty-row">Sin sedes activas.</td></tr>
-                            )}
-                          </tbody>
-                          <tfoot>
-                            <tr className="totals-footer">
-                              <td>Total</td>
-                              <td style={{ textAlign: 'right' }}>{money(ventasDiaPorSede.total.venta)}</td>
-                            </tr>
-                          </tfoot>
-                        </table>
+                            </tfoot>
+                          </table>
+                        </div>
                       </div>
                       </div>
                     )}
@@ -841,7 +853,7 @@ export default function Dashboard() {
                     {(panelVisible('ranking_trainers') || panelVisible('ranking_vendedores') || panelVisible('ranking_supervisores')) && (
                       <div className="chart-grid" style={{ marginTop: 20 }}>
                         {panelVisible('ranking_trainers') && (
-                          <div className="panel" ref={rankingTrainersRef} style={parRankingCompleto}>
+                          <div className="panel" ref={rankingTrainersRef} style={{ minWidth: 0, ...parRankingCompleto }}>
                             <PanelHeader
                               color={colorTablero}
                               onCopiar={() => copiarPanelComoImagen(rankingTrainersRef, 'ranking-trainers.png', toast)}
@@ -860,6 +872,7 @@ export default function Dashboard() {
                                 toast
                               )}
                             >Ranking Trainers</PanelHeader>
+                            <div className="table-scroll">
                             <table className="data-table">
                               <thead>
                                 <tr><th>Trainer</th><th>Sede</th><th>Turno</th><th style={{ textAlign: 'right' }}>Venta</th><th style={{ textAlign: 'right' }}>Meta</th><th>%</th></tr>
@@ -895,11 +908,12 @@ export default function Dashboard() {
                                 );
                               })()}
                             </table>
+                            </div>
                           </div>
                         )}
 
                         {panelVisible('ranking_vendedores') && (
-                          <div className="panel" ref={rankingVendedoresRef} style={parRankingCompleto}>
+                          <div className="panel" ref={rankingVendedoresRef} style={{ minWidth: 0, ...parRankingCompleto }}>
                             <PanelHeader
                               color={colorTablero}
                               onCopiar={() => copiarPanelComoImagen(rankingVendedoresRef, 'ranking-vendedores.png', toast)}
@@ -910,6 +924,7 @@ export default function Dashboard() {
                                 toast
                               )}
                             >Ranking Vendedores</PanelHeader>
+                            <div className="table-scroll">
                             <table className="data-table">
                               <thead>
                                 <tr><th>Vendedor</th><th>Sede</th><th style={{ textAlign: 'right' }}>Venta</th><th style={{ textAlign: 'right' }}>Meta</th><th>%</th></tr>
@@ -943,18 +958,19 @@ export default function Dashboard() {
                                 );
                               })()}
                             </table>
+                            </div>
                           </div>
                         )}
 
                         {panelVisible('ranking_supervisores') && (
-                          <div className="panel" ref={rankingSupervisoresRef} style={parRankingCompleto}>
+                          <div className="panel" ref={rankingSupervisoresRef} style={{ minWidth: 0, ...parRankingCompleto }}>
                             <PanelHeader
                               color={colorTablero}
                               onCopiar={() => copiarPanelComoImagen(rankingSupervisoresRef, 'ranking-supervisores.png', toast)}
                               onDescargarExcel={() => descargarPanelComoExcel(
                                 'ranking-supervisores.xlsx',
-                                ['Supervisor', 'Sede', 'Venta', 'Meta', '%'],
-                                rankingSupervisores.map((r) => [r.nombre, r.sede || '', r.venta, r.meta, r.porcentaje ?? '']),
+                                ['Supervisor', 'Sede', 'Turno', 'Venta', 'Meta', '%'],
+                                rankingSupervisores.map((r) => [r.nombre, r.sede || '', r.turno === 'manana' ? 'Mañana' : r.turno === 'tarde' ? 'Tarde' : '', r.venta, r.meta, r.porcentaje ?? '']),
                                 toast
                               )}
                               onDescargarDetalle={() => descargarDetalleRankingComoExcel(
@@ -965,22 +981,24 @@ export default function Dashboard() {
                                 toast
                               )}
                             >Ranking Supervisores</PanelHeader>
+                            <div className="table-scroll">
                             <table className="data-table">
                               <thead>
-                                <tr><th>Supervisor</th><th>Sede</th><th style={{ textAlign: 'right' }}>Venta</th><th style={{ textAlign: 'right' }}>Meta</th><th>%</th></tr>
+                                <tr><th>Supervisor</th><th>Sede</th><th>Turno</th><th style={{ textAlign: 'right' }}>Venta</th><th style={{ textAlign: 'right' }}>Meta</th><th>%</th></tr>
                               </thead>
                               <tbody>
                                 {rankingSupervisores.map((r) => (
                                   <tr key={r.user_id} style={r.faltante ? { color: 'var(--ink-muted)', fontStyle: 'italic' } : undefined}>
                                     <td>{r.nombre}</td>
                                     <td>{r.sede || '—'}</td>
+                                    <td>{r.turno === 'manana' ? 'Mañana' : r.turno === 'tarde' ? 'Tarde' : '—'}</td>
                                     <td style={{ textAlign: 'right' }}>{money(r.venta)}</td>
                                     <td style={{ textAlign: 'right' }}>{money(r.meta)}</td>
                                     <td>{pctBadge(r.porcentaje)}</td>
                                   </tr>
                                 ))}
                                 {rankingSupervisores.length === 0 && (
-                                  <tr><td colSpan={5} className="empty-row">No hay supervisores con ventas en el período.</td></tr>
+                                  <tr><td colSpan={6} className="empty-row">No hay supervisores con ventas en el período.</td></tr>
                                 )}
                               </tbody>
                               {rankingSupervisores.length > 0 && (() => {
@@ -990,6 +1008,7 @@ export default function Dashboard() {
                                     <tr className="totals-footer">
                                       <td>Total</td>
                                       <td></td>
+                                      <td></td>
                                       <td style={{ textAlign: 'right' }}>{money(t.venta)}</td>
                                       <td style={{ textAlign: 'right' }}>{money(t.meta)}</td>
                                       <td>{pctBadge(t.porcentaje)}</td>
@@ -998,6 +1017,7 @@ export default function Dashboard() {
                                 );
                               })()}
                             </table>
+                            </div>
                           </div>
                         )}
                       </div>
