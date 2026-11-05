@@ -734,6 +734,29 @@ export default function Configuracion() {
     api.get('/metas-venta/vendedores', { params: { anio: metasAnio, mes: metasMes } }).then((res) => setFilasVendedores(res.data));
   }
 
+  async function exportarMetasCsv(formato) {
+    const header = [
+      'Sede', 'Categoría', 'Empleados activos', 'Dotación',
+      'Meta total del pool (S/)', 'Cuota individual manual (S/)', 'Meta individual (S/)',
+    ];
+    const rows = filasMetas.map((f) => {
+      const esVendedor = f.categoria_staff === 'vendedor';
+      const tieneManual = esVendedor && f.monto_individual !== null && f.monto_individual !== undefined;
+      const dotacionEfectiva = f.dotacion > 0 ? f.dotacion : f.cantidad_empleados;
+      const individual = tieneManual ? f.monto_individual : (dotacionEfectiva > 0 ? f.monto_meta / dotacionEfectiva : 0);
+      return [
+        f.sede_nombre,
+        CATEGORIA_STAFF_LABEL[f.categoria_staff] || f.categoria_staff,
+        f.cantidad_empleados,
+        f.dotacion || '',
+        f.monto_meta,
+        esVendedor && f.monto_individual != null ? f.monto_individual : '',
+        tieneManual || dotacionEfectiva > 0 ? Math.round(individual * 100) / 100 : '',
+      ];
+    });
+    await exportarTabla(`metas_venta_${metasAnio}_${String(metasMes).padStart(2, '0')}`, header, rows, formato);
+  }
+
   useEffect(() => {
     if (seccion === 'metas') { loadMetas(); loadVendedores(); }
   }, [seccion, metasAnio, metasMes]);
@@ -2652,6 +2675,7 @@ export default function Configuracion() {
             <>
               <div className="report-toolbar">
                 <h3 style={{ margin: 0 }}>Metas de venta</h3>
+                {filasMetas.length > 0 && <ExportButton onExport={exportarMetasCsv} />}
               </div>
               <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -8 }}>
                 Asigna una meta mensual (S/) por sede para Vendedores y Trainers, y opcionalmente la dotación
