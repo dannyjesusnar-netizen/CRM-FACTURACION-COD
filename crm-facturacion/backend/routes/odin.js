@@ -14,12 +14,15 @@ router.use(requireAuth);
 router.use(resolveSucursal);
 
 // Compras sugeridas para ODIN: de los productos con stock por debajo del
-// mínimo en esa sede, los 2 que más se vendieron en los últimos 30 días —
-// o sea, lo que más urge reponer porque además se está vendiendo bien (no
-// solo lo más agotado). Solo 2 para que sea un empujón puntual, no otro
-// reporte completo — el reporte completo ya existe en Compras → Compras
-// sugeridas (ver routes/reportesAvanzados.js: /compras-sugeridas). Solo
-// para Supervisor/Gerencia (mismo criterio que el Tablero de Ventas): un
+// mínimo en esa sede (o directamente en 0, aunque no tengan un mínimo
+// configurado — un producto agotado que se sigue vendiendo no debería
+// quedar fuera solo porque nadie le puso un mínimo), los 2 que más se
+// vendieron en los últimos 30 días — o sea, lo que más urge reponer
+// porque además se está vendiendo bien (no solo lo más agotado). Solo 2
+// para que sea un empujón puntual, no otro reporte completo — el reporte
+// completo ya existe en Compras → Compras sugeridas (ver
+// routes/reportesAvanzados.js: /compras-sugeridas). Solo para
+// Supervisor/Gerencia (mismo criterio que el Tablero de Ventas): un
 // vendedor no decide qué se compra.
 function comprasSugeridasOdin(sucursalId) {
   const rows = db.prepare(
@@ -28,8 +31,11 @@ function comprasSugeridasOdin(sucursalId) {
           WHERE ii.product_id = p.id AND i.estado = 'emitido' AND i.tipo_comprobante IN ('boleta', 'factura')
             AND date(i.fecha_emision) >= date('now', '-30 days') AND i.sucursal_id = ?) AS venta_30_dias
      FROM products p LEFT JOIN sucursal_stock ss ON ss.product_id = p.id AND ss.sucursal_id = ?
-     WHERE p.activo = 1 AND p.tipo = 'producto' AND p.stock_minimo > 0
-       AND COALESCE(ss.stock, 0) <= p.stock_minimo`
+     WHERE p.activo = 1 AND p.tipo = 'producto'
+       AND (
+         (p.stock_minimo > 0 AND COALESCE(ss.stock, 0) <= p.stock_minimo)
+         OR COALESCE(ss.stock, 0) = 0
+       )`
   ).all(sucursalId, sucursalId);
   return rows
     .filter((r) => r.venta_30_dias > 0)
