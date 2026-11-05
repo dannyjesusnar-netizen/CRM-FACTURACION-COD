@@ -10,6 +10,7 @@ const { tieneTurnoAbierto } = require('../utils/cajaTurno');
 const { siguienteNumero } = require('../utils/series');
 const { resolverDescuentoPct } = require('../utils/descuentos');
 const { resolverDescuentoItemPct } = require('../utils/promociones');
+const { enviarComprobanteCliente } = require('../utils/correo');
 const { usuarioAtribuible } = require('../utils/atribucion');
 const { hoyPeru } = require('../utils/fechas');
 
@@ -658,6 +659,9 @@ router.post('/', async (req, res) => {
   }
 
   res.status(201).json({ ...invoice, items: invoiceItems });
+  // Correo al cliente con el PDF adjunto — después de responder, nunca con
+  // await: si falla o tarda no debe demorar ni tumbar el registro de venta.
+  enviarComprobanteCliente(invoiceId, req.sucursalId).catch(() => {});
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });
     if (err instanceof StockInsuficienteError) return res.status(409).json({ error: err.message });
