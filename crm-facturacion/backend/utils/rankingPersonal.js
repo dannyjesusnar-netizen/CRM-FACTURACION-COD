@@ -41,14 +41,25 @@ const CATEGORIA_LABEL = { trainer: 'Entrenador', vendedor: 'Vendedor', superviso
 // contratado hoy no aparece (ni con venta 0) en el ranking de un mes
 // anterior a su ingreso, ni diluye la cuota de los que ya estaban.
 //
+// Tampoco se borra un mes cerrado si Gerencia desactiva (o "elimina", que en
+// la práctica es lo mismo — ver DELETE /users/operativos/:id, que bloquea
+// el borrado real si ya tiene venta) a alguien DESPUÉS: la fila del ranking
+// de ese empleado en un mes donde ya tuvo venta no desaparece solo porque
+// hoy esté inactivo (ver HAVING más abajo, y el bono de Trainer→Supervisor,
+// que ya no filtra por u.activo). Un inactivo de HOY sin venta en ese mes
+// viejo sigue sin aparecer — no tiene caso mostrar una fila en 0 de alguien
+// que ni siquiera trabajaba entonces.
+//
 // Esto SÍ sigue sin cubrir mover de sede a alguien que YA estaba dado de
-// alta: si además de trasladarlo cambia cuánta gente activa queda contada
-// en la sede vieja (o la nueva), el % de cumplimiento de un mes cerrado
-// puede moverse un poco por ese lado, porque el headcount se cuenta por la
-// sede ACTUAL, no por la sede donde estaba ese mes. Para que quede 100%
-// fijo incluso en ese caso, asignale una dotación a mano a esa sede/mes
-// (Configuración → Metas de venta) — con dotación puesta, el divisor queda
-// fijo sin importar cuánta gente activa haya después, ni en qué sede esté.
+// alta, ni el headcount con el que se reparte la cuota automática
+// (conteoMap) cuando alguien se desactiva: si además de trasladarlo o
+// desactivarlo cambia cuánta gente activa queda contada en una sede, el %
+// de cumplimiento de un mes cerrado puede moverse un poco por ese lado,
+// porque ese divisor se cuenta por quién está activo HOY, no por quién
+// trabajaba ahí ese mes. Para que quede 100% fijo incluso en esos casos,
+// asignale una dotación a mano a esa sede/mes (Configuración → Metas de
+// venta) — con dotación puesta, el divisor queda fijo sin importar cuánta
+// gente activa haya después, ni en qué sede esté.
 //
 // Extraído de routes/tablero.js (GET /ranking-personal) para poder
 // reutilizarlo tal cual desde el link público del Tablero de Ventas (ver
@@ -67,7 +78,8 @@ function calcularRankingPersonal(categoria, anio, mes, sucursalId) {
   const rows = db.prepare(`
     SELECT u.id AS user_id, u.full_name AS nombre, u.turno, u.sucursal_id, s.nombre AS sede,
            COALESCE(SUM(CASE WHEN ? IS NULL OR v.sucursal_id = ? THEN v.monto ELSE 0 END), 0) AS venta,
-           MAX(CASE WHEN v.sucursal_id = ? THEN 1 ELSE 0 END) AS vendio_en_sede_filtro
+           MAX(CASE WHEN v.sucursal_id = ? THEN 1 ELSE 0 END) AS vendio_en_sede_filtro,
+           MAX(CASE WHEN v.user_id IS NOT NULL THEN 1 ELSE 0 END) AS tuvo_venta_el_mes
     FROM users u
     LEFT JOIN sucursales s ON s.id = u.sucursal_id
     LEFT JOIN (
@@ -80,10 +92,17 @@ function calcularRankingPersonal(categoria, anio, mes, sucursalId) {
       FROM notas_venta
       WHERE estado = 'emitido' AND strftime('%Y', fecha_emision) = ? AND strftime('%m', fecha_emision) = ?
     ) v ON v.user_id = u.id
-    WHERE u.categoria_staff = ? AND u.activo = 1
+    WHERE u.categoria_staff = ?
       AND (u.created_at IS NULL OR date(u.created_at) < date(?, '+1 month'))
     GROUP BY u.id
-    HAVING ? IS NULL OR u.sucursal_id = ? OR vendio_en_sede_filtro = 1
+    -- No se filtra por u.activo = 1 acá arriba: a alguien que ya tuvo venta
+    -- ESE mes no se le puede borrar la fila solo porque hoy (en un mes
+    -- posterior) lo desactivaron — ver comentario grande más abajo. Un
+    -- activo de hoy sin venta ese mes viejo igual se muestra (fila en 0,
+    -- comportamiento de siempre); un inactivo de hoy SIN venta ese mes
+    -- tampoco se muestra (no tiene sentido listarlo ahí).
+    HAVING (u.activo = 1 OR tuvo_venta_el_mes = 1)
+      AND (? IS NULL OR u.sucursal_id = ? OR vendio_en_sede_filtro = 1)
   `).all(
     sucursalId, sucursalId, sucursalId,
     String(anio), mesPad, String(anio), mesPad,
@@ -110,7 +129,12 @@ function calcularRankingPersonal(categoria, anio, mes, sucursalId) {
         WHERE estado = 'emitido' AND strftime('%Y', fecha_emision) = ? AND strftime('%m', fecha_emision) = ?
       ) v
       JOIN users u ON u.id = v.user_id
-      WHERE u.categoria_staff = 'trainer' AND u.activo = 1 AND u.turno IS NOT NULL
+      -- Sin u.activo = 1: si ese Trainer vendió ese mes y después (en un mes
+      -- posterior) lo desactivan, su venta de ese mes sigue sumando al bono
+      -- del Supervisor — desactivarlo hoy no borra lo que ya pasó. "v" ya
+      -- viene filtrado a ventas reales de ese mes puntual, así que no hay
+      -- riesgo de sumar a alguien que nunca vendió.
+      WHERE u.categoria_staff = 'trainer' AND u.turno IS NOT NULL
       GROUP BY v.sucursal_id, u.turno
     `).all(String(anio), mesPad, String(anio), mesPad);
     const trainerMap = new Map(ventasTrainer.map((t) => [`${t.sucursal_id}:${t.turno}`, t.venta]));
