@@ -34,20 +34,36 @@ const CATEGORIA_LABEL = { trainer: 'Entrenador', vendedor: 'Vendedor', superviso
 // no está en esa sede pero sí vendió ahí ese mes (si no, esa venta
 // desaparecería del todo del ranking filtrado de esa sede).
 //
-// Esto NO cubre la cuota automática (pool / cantidad de gente activa HOY,
-// cuando Gerencia no asignó una dotación a mano) — si además de mover a
-// alguien de sede cambia cuánta gente activa queda contada en la sede
-// vieja, el % de cumplimiento de un mes cerrado sí puede moverse un poco
-// por ese lado. Para que quede 100% fijo incluso en ese caso, asignale una
-// dotación a mano a esa sede/mes (Configuración → Metas de venta) — con
-// dotación puesta, el divisor queda fijo sin importar cuánta gente activa
-// haya después.
+// Tampoco cambia un mes cerrado si Gerencia da de alta a un empleado nuevo
+// después: tanto la fila del ranking como el headcount con el que se
+// reparte la cuota automática (ver conteoMap) solo cuentan a quien ya
+// estaba dado de alta (users.created_at) antes de ese mes — alguien
+// contratado hoy no aparece (ni con venta 0) en el ranking de un mes
+// anterior a su ingreso, ni diluye la cuota de los que ya estaban.
+//
+// Esto SÍ sigue sin cubrir mover de sede a alguien que YA estaba dado de
+// alta: si además de trasladarlo cambia cuánta gente activa queda contada
+// en la sede vieja (o la nueva), el % de cumplimiento de un mes cerrado
+// puede moverse un poco por ese lado, porque el headcount se cuenta por la
+// sede ACTUAL, no por la sede donde estaba ese mes. Para que quede 100%
+// fijo incluso en ese caso, asignale una dotación a mano a esa sede/mes
+// (Configuración → Metas de venta) — con dotación puesta, el divisor queda
+// fijo sin importar cuánta gente activa haya después, ni en qué sede esté.
 //
 // Extraído de routes/tablero.js (GET /ranking-personal) para poder
 // reutilizarlo tal cual desde el link público del Tablero de Ventas (ver
 // routes/dashboardPublico.js) — misma lógica, sin duplicarla.
 function calcularRankingPersonal(categoria, anio, mes, sucursalId) {
   const mesPad = String(mes).padStart(2, '0');
+  // Un empleado dado de alta HOY no tiene por qué aparecer (ni con venta 0)
+  // en el ranking de un mes YA CERRADO anterior a su ingreso, ni inflar el
+  // headcount con el que se reparte automáticamente la cuota de ese mes
+  // viejo (ver conteoMap más abajo). "Fin de mes exclusivo" = el día 1 del
+  // mes siguiente al que se está consultando; se incluye a todo empleado
+  // dado de alta antes de esa fecha. u.created_at IS NULL cubre registros
+  // viejos de antes de que existiera esta columna (nunca deben excluirse
+  // por este motivo).
+  const finMesExclusivo = `${anio}-${mesPad}-01`;
   const rows = db.prepare(`
     SELECT u.id AS user_id, u.full_name AS nombre, u.turno, u.sucursal_id, s.nombre AS sede,
            COALESCE(SUM(CASE WHEN ? IS NULL OR v.sucursal_id = ? THEN v.monto ELSE 0 END), 0) AS venta,
@@ -65,12 +81,13 @@ function calcularRankingPersonal(categoria, anio, mes, sucursalId) {
       WHERE estado = 'emitido' AND strftime('%Y', fecha_emision) = ? AND strftime('%m', fecha_emision) = ?
     ) v ON v.user_id = u.id
     WHERE u.categoria_staff = ? AND u.activo = 1
+      AND (u.created_at IS NULL OR date(u.created_at) < date(?, '+1 month'))
     GROUP BY u.id
     HAVING ? IS NULL OR u.sucursal_id = ? OR vendio_en_sede_filtro = 1
   `).all(
     sucursalId, sucursalId, sucursalId,
     String(anio), mesPad, String(anio), mesPad,
-    categoria,
+    categoria, finMesExclusivo,
     sucursalId, sucursalId
   );
 
@@ -135,10 +152,16 @@ function calcularRankingPersonal(categoria, anio, mes, sucursalId) {
     ? db.prepare('SELECT user_id, monto_meta FROM metas_venta_usuario WHERE anio = ? AND mes = ?').all(anio, mes)
     : [];
   const usuarioMetaMap = new Map(usuarioMetas.map((m) => [m.user_id, m.monto_meta]));
+  // Mismo corte por fecha de alta que en la query principal: alguien
+  // contratado HOY no debe aumentar el divisor con el que se reparte la
+  // cuota automática (pool / cantidad) de un mes ya cerrado anterior a su
+  // ingreso.
   const conteos = db.prepare(
     `SELECT sucursal_id, COUNT(*) AS cantidad FROM users
-     WHERE categoria_staff = ? AND activo = 1 AND sucursal_id IS NOT NULL GROUP BY sucursal_id`
-  ).all(categoria);
+     WHERE categoria_staff = ? AND activo = 1 AND sucursal_id IS NOT NULL
+       AND (created_at IS NULL OR date(created_at) < date(?, '+1 month'))
+     GROUP BY sucursal_id`
+  ).all(categoria, finMesExclusivo);
   const conteoMap = new Map(conteos.map((c) => [c.sucursal_id, c.cantidad]));
 
   const withPct = rows.map((r) => {
