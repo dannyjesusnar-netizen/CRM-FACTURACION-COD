@@ -389,8 +389,21 @@ router.post('/operativos', (req, res) => {
   // Igual que en POST /: un DNI que solo pertenece a un empleado
   // DESACTIVADO no bloquea el alta — puede volver a ingresarse con otro
   // cargo (ej. dejó de ser Trainer y ahora se lo registra como Supervisor).
-  if (db.prepare('SELECT id FROM users WHERE dni = ? AND activo = 1').get(dni)) {
-    return res.status(409).json({ error: 'Ya existe un empleado activo (con o sin acceso al sistema) con ese DNI.' });
+  //
+  // "Doble rol": alguien puede tener una cuenta real (u otro registro
+  // operativo) activa en UNA categoría, y un registro operativo aparte en
+  // OTRA — ej. una vendedora con cuenta real que además es Supervisora
+  // operativa del gimnasio, y quiere aparecer y contar por separado en
+  // ambos Rankings del Tablero de Ventas. Eso sí se permite: solo se
+  // bloquea la categoría repetida, que es el duplicado accidental real
+  // (contaría dos veces en la dotación/headcount de ese mismo ranking).
+  const activoMismaCategoria = db.prepare(
+    'SELECT full_name FROM users WHERE dni = ? AND activo = 1 AND categoria_staff = ?'
+  ).get(dni, categoria_staff);
+  if (activoMismaCategoria) {
+    return res.status(409).json({
+      error: `Ya existe un empleado activo con ese DNI en la categoría "${categoria_staff}" (${activoMismaCategoria.full_name}) — no se puede duplicar la misma categoría. Si es para un rol distinto (ej. ya es Vendedor y ahora también Supervisor), sí se puede registrar aparte.`,
+    });
   }
   const sucursal = sucursalIdOrError(sucursal_id);
   if (sucursal.error) return res.status(400).json({ error: sucursal.error });
