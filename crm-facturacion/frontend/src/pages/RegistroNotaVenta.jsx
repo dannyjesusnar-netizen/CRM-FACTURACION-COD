@@ -53,6 +53,12 @@ export default function RegistroNotaVenta() {
   const [entrenadores, setEntrenadores] = useState([]);
   const [atribuidoAId, setAtribuidoAId] = useState('');
 
+  // Mismo mecanismo que RegistroVenta.jsx: si el cliente llegó recomendado
+  // por alguien AJENO a la empresa (no un empleado), para el reporte de
+  // Ventas - Detalle (ver routes/reports.js).
+  const [referidoExterno, setReferidoExterno] = useState(false);
+  const [referidoExternoNombre, setReferidoExternoNombre] = useState('');
+
   // Promociones vigentes en la sede activa (ver routes/promociones.js) —
   // mismo mecanismo que RegistroVenta.jsx: las ofertas de un solo producto
   // se aplican solas al agregarlo con el buscador; los combos necesitan un
@@ -214,6 +220,10 @@ export default function RegistroNotaVenta() {
         if (Number(pago || 0) > 0) payload.medio_abono = medioAbono;
       }
       if (atribuidoAId) payload.atribuido_a_id = Number(atribuidoAId);
+      if (referidoExterno) {
+        payload.referido_externo = true;
+        if (referidoExternoNombre.trim()) payload.referido_externo_nombre = referidoExternoNombre.trim();
+      }
       const res = await api.post('/notas-venta', payload);
       imprimirComprobante(ventanaImpresion, res.data.id, 'nota_venta');
       toast.success('Nota de venta interna registrada correctamente.');
@@ -382,6 +392,20 @@ export default function RegistroNotaVenta() {
                 </select>
               </div>
             )}
+            <div className="filter-field">
+              <label>
+                <input type="checkbox" checked={referidoExterno} onChange={(e) => { setReferidoExterno(e.target.checked); if (!e.target.checked) setReferidoExternoNombre(''); }} style={{ marginRight: 6 }} />
+                ¿Referido externo?
+              </label>
+              {referidoExterno && (
+                <input
+                  value={referidoExternoNombre}
+                  onChange={(e) => setReferidoExternoNombre(e.target.value)}
+                  placeholder="¿Por quién? (opcional)"
+                  style={{ marginTop: 6 }}
+                />
+              )}
+            </div>
             {cuenta === 'abonado' ? (
               <>
                 <div className="filter-field">

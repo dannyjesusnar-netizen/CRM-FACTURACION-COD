@@ -62,6 +62,12 @@ export default function RegistroVenta() {
   const [entrenadores, setEntrenadores] = useState([]);
   const [atribuidoAId, setAtribuidoAId] = useState('');
 
+  // Para el reporte de Ventas - Detalle (ver routes/reports.js): si el
+  // cliente llegó recomendado por alguien AJENO a la empresa (no un
+  // empleado — eso es atribuidoAId de arriba, para el Ranking).
+  const [referidoExterno, setReferidoExterno] = useState(false);
+  const [referidoExternoNombre, setReferidoExternoNombre] = useState('');
+
   // Promociones vigentes en la sede activa (ver routes/promociones.js). Las
   // ofertas de un solo producto se aplican solas al agregarlo con el
   // buscador; los combos necesitan un clic explícito (agregan varias líneas
@@ -316,6 +322,10 @@ export default function RegistroVenta() {
         payload.pagos = pagosMixto.map((p) => ({ medio: p.medio, monto: Number(p.monto) }));
       }
       if (atribuidoAId) payload.atribuido_a_id = Number(atribuidoAId);
+      if (referidoExterno) {
+        payload.referido_externo = true;
+        if (referidoExternoNombre.trim()) payload.referido_externo_nombre = referidoExternoNombre.trim();
+      }
     }
     return payload;
   }
@@ -558,6 +568,20 @@ export default function RegistroVenta() {
                   </select>
                 </div>
               )}
+              <div className="filter-field">
+                <label>
+                  <input type="checkbox" checked={referidoExterno} onChange={(e) => { setReferidoExterno(e.target.checked); if (!e.target.checked) setReferidoExternoNombre(''); }} style={{ marginRight: 6 }} />
+                  ¿Referido externo?
+                </label>
+                {referidoExterno && (
+                  <input
+                    value={referidoExternoNombre}
+                    onChange={(e) => setReferidoExternoNombre(e.target.value)}
+                    placeholder="¿Por quién? (opcional)"
+                    style={{ marginTop: 6 }}
+                  />
+                )}
+              </div>
               {cuenta !== 'mixto' && (
                 <>
                   <div className="filter-field">
