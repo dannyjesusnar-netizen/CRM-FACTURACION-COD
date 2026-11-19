@@ -448,11 +448,15 @@ export default function Reports() {
 
   async function exportDetalleProducto(formato) {
     if (!detalleProdProducto) return;
-    const header = ['Fecha', 'Sede', 'Tipo', 'Serie', 'Número', 'Cliente', 'Cantidad', 'Precio Unit.', '% Descuento', 'Subtotal', 'Vendedor', 'Atribuido a', 'Estado'];
+    const header = [
+      'Fecha', 'Sede', 'Tipo', 'Serie', 'Número', 'Cliente', 'Cantidad', 'Precio Unit.', '% Descuento', 'Subtotal',
+      'Vendedor', 'Atribuido a', 'Estado', 'Derivado por vendedor', 'Referido externo', 'Referido externo - Por quién',
+    ];
     const rows = detalleProdData.map((r) => [
       r.fecha_emision, r.sede, r.tipo, r.serie, r.numero, r.cliente_nombre,
       r.cantidad, r.precio_unitario, r.descuento_pct, r.subtotal_item,
       r.vendedor_nombre || '', r.atribuido_nombre || '', r.estado === 'anulado' ? 'Anulado' : 'Emitido',
+      r.derivado_por_vendedor, r.referido_externo, r.referido_externo_nombre || '',
     ]);
     await exportarTabla(`ventas_${detalleProdProducto.codigo}`, header, rows, formato);
     toast.success(`Archivo ${formato === 'excel' ? 'Excel' : 'CSV'} exportado.`);
@@ -780,6 +784,7 @@ export default function Reports() {
                         <th style={{ textAlign: 'right' }}>% Desc.</th>
                         <th style={{ textAlign: 'right' }}>Subtotal</th>
                         <th>Vendedor</th><th>Atribuido a</th><th>Estado</th>
+                        <th>Derivado por vendedor</th><th>Referido externo</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -801,10 +806,12 @@ export default function Reports() {
                               {r.estado === 'anulado' ? 'Anulado' : 'Emitido'}
                             </span>
                           </td>
+                          <td>{r.derivado_por_vendedor}</td>
+                          <td>{r.referido_externo === 'Sí' ? `Sí${r.referido_externo_nombre ? ` (${r.referido_externo_nombre})` : ''}` : 'No'}</td>
                         </tr>
                       ))}
                       {detalleProdData.length === 0 && (
-                        <tr><td colSpan={12} className="empty-row">Sin movimientos de este producto en el periodo seleccionado.</td></tr>
+                        <tr><td colSpan={14} className="empty-row">Sin movimientos de este producto en el periodo seleccionado.</td></tr>
                       )}
                     </tbody>
                     {detalleProdData.length > 0 && (
@@ -815,7 +822,7 @@ export default function Reports() {
                           <td></td>
                           <td></td>
                           <td style={{ textAlign: 'right' }}>{money(totalDetalleProdSubtotal)}</td>
-                          <td colSpan={3}></td>
+                          <td colSpan={5}></td>
                         </tr>
                       </tfoot>
                     )}

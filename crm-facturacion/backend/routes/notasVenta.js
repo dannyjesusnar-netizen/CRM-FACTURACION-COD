@@ -188,6 +188,7 @@ router.post('/', requireAccion('ventas', 'nota_venta'), requireTurnoCajaAbierto,
     client_id, items, moneda, observaciones, fecha_emision,
     descuento_id, numero: numeroManual, forma_pago,
     monto_pagado: montoPagadoBody, medio_abono, atribuido_a_id,
+    referido_externo, referido_externo_nombre,
   } = req.body || {};
 
   if (!client_id) return res.status(400).json({ error: 'client_id es requerido.' });
@@ -213,6 +214,12 @@ router.post('/', requireAccion('ventas', 'nota_venta'), requireTurnoCajaAbierto,
     atribuidoA = entrenador.id;
     atribucionTipo = 'referido';
   }
+  // referido_externo: mismo criterio que invoices.js — el cliente llegó
+  // recomendado por alguien ajeno a la empresa, no por un empleado.
+  const referidoExterno = referido_externo ? 1 : 0;
+  const referidoExternoNombre = referidoExterno && referido_externo_nombre
+    ? String(referido_externo_nombre).trim() || null
+    : null;
   for (const it of items) {
     const cantidad = Number(it.cantidad);
     const precio = Number(it.precio_unitario);
@@ -311,8 +318,8 @@ router.post('/', requireAccion('ventas', 'nota_venta'), requireTurnoCajaAbierto,
   const insertAll = db.transaction(() => {
     const numero = numeroManual ? Number(numeroManual) : numeroSugerido;
     const info = db.prepare(
-      `INSERT INTO notas_venta (serie, numero, client_id, created_by, sucursal_id, fecha_emision, moneda, descuento_global_pct, total, forma_pago, monto_pagado, estado, observaciones, atribuido_a, descuento_id, atribucion_tipo)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'emitido', ?, ?, ?, ?)`
+      `INSERT INTO notas_venta (serie, numero, client_id, created_by, sucursal_id, fecha_emision, moneda, descuento_global_pct, total, forma_pago, monto_pagado, estado, observaciones, atribuido_a, descuento_id, atribucion_tipo, referido_externo, referido_externo_nombre)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'emitido', ?, ?, ?, ?, ?, ?)`
     ).run(
       serie,
       numero,
@@ -328,7 +335,9 @@ router.post('/', requireAccion('ventas', 'nota_venta'), requireTurnoCajaAbierto,
       observaciones || null,
       atribuidoA,
       descuento_id || null,
-      atribucionTipo
+      atribucionTipo,
+      referidoExterno,
+      referidoExternoNombre
     );
     const notaVentaId = info.lastInsertRowid;
     const insertItem = db.prepare(

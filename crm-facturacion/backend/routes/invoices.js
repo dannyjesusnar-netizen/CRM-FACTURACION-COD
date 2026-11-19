@@ -288,6 +288,7 @@ router.post('/', async (req, res) => {
     numero: numeroManual, descuento_global_pct, descuento_id,
     modifica_tipo, modifica_serie, modifica_numero, tipo_nota,
     monto_pagado: montoPagadoBody, medio_abono, pagos, atribuido_a_id,
+    referido_externo, referido_externo_nombre,
   } = req.body || {};
 
   if (!['factura', 'boleta', 'nota_credito'].includes(tipo_comprobante)) {
@@ -371,6 +372,15 @@ router.post('/', async (req, res) => {
     atribucionTipo = 'referido';
   }
 
+  // referido_externo: el cliente llegó recomendado por alguien AJENO a la
+  // empresa (no por un empleado — eso es atribucion_tipo, arriba). El
+  // nombre de quién refirió es opcional; sin el flag prendido se ignora
+  // aunque lo manden.
+  let referidoExterno = referido_externo ? 1 : 0;
+  let referidoExternoNombre = referidoExterno && referido_externo_nombre
+    ? String(referido_externo_nombre).trim() || null
+    : null;
+
   if (tipo_comprobante === 'factura' && client.tipo_documento !== 'RUC') {
     return res.status(400).json({ error: 'Para emitir factura el cliente debe tener RUC.' });
   }
@@ -401,6 +411,8 @@ router.post('/', async (req, res) => {
     // "restarle" la venta; debe restarse a quien se la llevó originalmente.
     atribuidoA = notaCreditoOriginal.atribuido_a;
     atribucionTipo = notaCreditoOriginal.atribucion_tipo;
+    referidoExterno = notaCreditoOriginal.referido_externo;
+    referidoExternoNombre = notaCreditoOriginal.referido_externo_nombre;
   }
 
   const esAbonado = forma_pago === 'abonado';
@@ -523,8 +535,9 @@ router.post('/', async (req, res) => {
       `INSERT INTO invoices (
          tipo_comprobante, serie, numero, client_id, created_by, fecha_emision, moneda,
          subtotal, igv, descuento_global_pct, total, estado, observaciones, forma_pago, monto_pagado,
-         modifica_tipo, modifica_serie, modifica_numero, tipo_nota, sucursal_id, atribuido_a, descuento_id, atribucion_tipo
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'emitido', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         modifica_tipo, modifica_serie, modifica_numero, tipo_nota, sucursal_id, atribuido_a, descuento_id, atribucion_tipo,
+         referido_externo, referido_externo_nombre
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'emitido', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       tipo_comprobante,
       serie,
@@ -547,7 +560,9 @@ router.post('/', async (req, res) => {
       req.sucursalId,
       atribuidoA,
       descuento_id || null,
-      atribucionTipo
+      atribucionTipo,
+      referidoExterno,
+      referidoExternoNombre
     );
     const invoiceId = info.lastInsertRowid;
     const insertItem = db.prepare(
