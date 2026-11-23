@@ -117,13 +117,28 @@ export default function Traslados() {
       });
       if (res.data.estado === 'pendiente') {
         toast.success('Traslado enviado — queda pendiente de aprobación de Gerencia o un Supervisor. El stock se moverá recién cuando lo aprueben.');
+        setShowForm(false);
+        load();
       } else {
         toast.success('Traslado registrado correctamente.');
+        setShowForm(false);
+        await irAConstancia(res.data.id);
       }
-      setShowForm(false);
-      load();
     } catch (err) {
       setError(err.response?.data?.error || 'Error al registrar el traslado.');
+    }
+  }
+
+  // El stock ya se movió (traslado completado, de una vez o recién
+  // aprobado) — se trae el detalle con los productos ya unidos (ver GET
+  // /traslados/:id) para armar la constancia, mismo criterio que
+  // ConstanciaMovimiento.jsx con "Registrar Movimiento".
+  async function irAConstancia(id) {
+    try {
+      const res = await api.get(`/traslados/${id}`);
+      navigate('/traslados/constancia', { state: { traslado: res.data } });
+    } catch {
+      load();
     }
   }
 
@@ -143,7 +158,7 @@ export default function Traslados() {
     try {
       await api.post(`/traslados/${id}/aprobar`);
       toast.success('Traslado aprobado. El stock ya se movió.');
-      load();
+      await irAConstancia(id);
     } catch (err) {
       toast.error(err.response?.data?.error || 'No se pudo aprobar el traslado.');
     }

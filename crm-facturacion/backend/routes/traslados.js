@@ -8,6 +8,34 @@ const router = express.Router();
 router.use(requireAuth);
 router.use(requirePermiso('inventario'));
 
+// Un traslado NUNCA cambia products.stock (el total de la empresa no se
+// mueve, solo pasa de una sede a otra) — por eso usa setStockSucursal
+// directo, no consumirStock/incrementarStock (que sí tocan el agregado).
+// Pero el Kardex (ver routes/reports.js) solo lee de stock_movements, así
+// que sin esto un traslado quedaba invisible ahí. motivo lleva el detalle
+// de "a dónde"/"de dónde" (lo único que el Kardex muestra de esto), y
+// referencia el código del traslado para poder ubicarlo.
+function registrarMovimientoTraslado({ productId, loteId, sucursalId, cantidad, tipo, motivo, referencia, userId }) {
+  db.prepare(
+    `INSERT INTO stock_movements (product_id, lote_id, tipo, cantidad, motivo, referencia, created_by, sucursal_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(productId, loteId || null, tipo, cantidad, motivo, referencia, userId || null, sucursalId);
+}
+
+function registrarMovimientosTrasladoCompletado({ codigo, origen, destino, items, userId }) {
+  const referencia = `Traslado ${codigo}`;
+  for (const it of items) {
+    registrarMovimientoTraslado({
+      productId: it.product_id, loteId: it.lote_id, sucursalId: origen.id, cantidad: -it.cantidad,
+      tipo: 'traslado_salida', motivo: `Traslado a ${destino.nombre}`, referencia, userId,
+    });
+    registrarMovimientoTraslado({
+      productId: it.product_id, loteId: it.lote_id, sucursalId: destino.id, cantidad: it.cantidad,
+      tipo: 'traslado_entrada', motivo: `Traslado desde ${origen.nombre}`, referencia, userId,
+    });
+  }
+}
+
 const requireAprobadorTraslados = requireAccionSupervisor(
   'aprobar_traslados',
   'No tienes permiso para aprobar o rechazar traslados.'
@@ -41,10 +69,13 @@ router.get('/', (req, res) => {
 
 router.get('/:id', (req, res) => {
   const traslado = db.prepare(
-    `SELECT t.*, so.nombre AS sucursal_origen_nombre, sd.nombre AS sucursal_destino_nombre
+    `SELECT t.*, so.nombre AS sucursal_origen_nombre, sd.nombre AS sucursal_destino_nombre,
+            u.full_name AS emisor_nombre, ua.full_name AS aprobador_nombre
      FROM traslados t
      JOIN sucursales so ON so.id = t.sucursal_origen_id
      JOIN sucursales sd ON sd.id = t.sucursal_destino_id
+     LEFT JOIN users u ON u.id = t.created_by
+     LEFT JOIN users ua ON ua.id = t.aprobado_por
      WHERE t.id = ?`
   ).get(req.params.id);
   if (!traslado) return res.status(404).json({ error: 'Traslado no encontrado.' });
@@ -129,12 +160,19 @@ router.post('/', requireAccion('inventario', 'traslados'), (req, res) => {
     ).run(maxCodigo + 1, sucursal_origen_id, sucursal_destino_id, estadoInicial, observaciones || null, req.user?.id || null);
     const trasladoId = info.lastInsertRowid;
     const insertItem = db.prepare('INSERT INTO traslado_items (traslado_id, product_id, cantidad, lote_id) VALUES (?, ?, ?, ?)');
+    const itemsParaMovimiento = [];
     for (const it of items) {
       insertItem.run(trasladoId, it.product_id, Number(it.cantidad), it.lote_id || null);
       if (!requiereAprobacion) {
         setStockSucursal(it.product_id, sucursal_origen_id, getStockSucursal(it.product_id, sucursal_origen_id) - Number(it.cantidad));
         setStockSucursal(it.product_id, sucursal_destino_id, getStockSucursal(it.product_id, sucursal_destino_id) + Number(it.cantidad));
+        itemsParaMovimiento.push({ product_id: it.product_id, cantidad: Number(it.cantidad), lote_id: it.lote_id || null });
       }
+    }
+    if (itemsParaMovimiento.length > 0) {
+      registrarMovimientosTrasladoCompletado({
+        codigo: maxCodigo + 1, origen, destino, items: itemsParaMovimiento, userId: req.user?.id,
+      });
     }
     return trasladoId;
   });
@@ -166,11 +204,15 @@ router.post('/:id/aprobar', requireAccion('inventario', 'traslados'), requireApr
     }
   }
 
+  const origen = db.prepare('SELECT id, nombre FROM sucursales WHERE id = ?').get(traslado.sucursal_origen_id);
+  const destino = db.prepare('SELECT id, nombre FROM sucursales WHERE id = ?').get(traslado.sucursal_destino_id);
+
   const run = db.transaction(() => {
     for (const it of items) {
       setStockSucursal(it.product_id, traslado.sucursal_origen_id, getStockSucursal(it.product_id, traslado.sucursal_origen_id) - it.cantidad);
       setStockSucursal(it.product_id, traslado.sucursal_destino_id, getStockSucursal(it.product_id, traslado.sucursal_destino_id) + it.cantidad);
     }
+    registrarMovimientosTrasladoCompletado({ codigo: traslado.codigo, origen, destino, items, userId: req.user?.id });
     db.prepare(
       "UPDATE traslados SET estado = 'completado', aprobado_por = ?, aprobado_at = datetime('now') WHERE id = ?"
     ).run(req.user.id, req.params.id);
@@ -202,10 +244,21 @@ router.post('/:id/anular', requireAccion('inventario', 'traslados'), (req, res) 
   }
 
   const items = db.prepare('SELECT * FROM traslado_items WHERE traslado_id = ?').all(req.params.id);
+  const origen = db.prepare('SELECT id, nombre FROM sucursales WHERE id = ?').get(traslado.sucursal_origen_id);
+  const destino = db.prepare('SELECT id, nombre FROM sucursales WHERE id = ?').get(traslado.sucursal_destino_id);
+  const referencia = `Traslado ${traslado.codigo}`;
   const run = db.transaction(() => {
     for (const it of items) {
       setStockSucursal(it.product_id, traslado.sucursal_origen_id, getStockSucursal(it.product_id, traslado.sucursal_origen_id) + it.cantidad);
       setStockSucursal(it.product_id, traslado.sucursal_destino_id, getStockSucursal(it.product_id, traslado.sucursal_destino_id) - it.cantidad);
+      registrarMovimientoTraslado({
+        productId: it.product_id, loteId: it.lote_id, sucursalId: traslado.sucursal_origen_id, cantidad: it.cantidad,
+        tipo: 'traslado_anulacion', motivo: `Anulación de traslado — vuelve de ${destino.nombre}`, referencia, userId: req.user?.id,
+      });
+      registrarMovimientoTraslado({
+        productId: it.product_id, loteId: it.lote_id, sucursalId: traslado.sucursal_destino_id, cantidad: -it.cantidad,
+        tipo: 'traslado_anulacion', motivo: `Anulación de traslado — sale hacia ${origen.nombre}`, referencia, userId: req.user?.id,
+      });
     }
     db.prepare("UPDATE traslados SET estado = 'anulado' WHERE id = ?").run(req.params.id);
   });

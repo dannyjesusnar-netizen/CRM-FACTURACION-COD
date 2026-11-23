@@ -23,6 +23,8 @@ const KARDEX_TIPO_LABEL = {
   compra: 'Compra', anulacion_compra: 'Anulación de compra',
   nota_credito_devolucion: 'Devolución (Nota de crédito)',
   produccion_consumo: 'Consumo (Producción)', produccion_ingreso: 'Ingreso (Producción)',
+  traslado_salida: 'Traslado (salida)', traslado_entrada: 'Traslado (entrada)',
+  traslado_anulacion: 'Anulación de traslado',
 };
 const KARDEX_TIPO_BADGE = {
   venta: 'badge-critical', anulacion: 'badge-good', ajuste: 'badge-neutral',
@@ -30,6 +32,8 @@ const KARDEX_TIPO_BADGE = {
   compra: 'badge-good', anulacion_compra: 'badge-critical',
   nota_credito_devolucion: 'badge-good',
   produccion_consumo: 'badge-critical', produccion_ingreso: 'badge-good',
+  traslado_salida: 'badge-critical', traslado_entrada: 'badge-good',
+  traslado_anulacion: 'badge-neutral',
 };
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 const CURRENT_YEAR = new Date().getFullYear();
