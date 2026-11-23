@@ -24,6 +24,7 @@ import Caja from './pages/Caja';
 import MiCierreCaja from './pages/MiCierreCaja';
 import Planilla from './pages/Planilla';
 import Traslados from './pages/Traslados';
+import ConstanciaTraslado from './pages/ConstanciaTraslado';
 import Invoices from './pages/Invoices';
 import CuentasPorCobrar from './pages/CuentasPorCobrar';
 import RegistroVenta from './pages/RegistroVenta';
@@ -90,6 +91,7 @@ export default function App() {
             <Route path="/planilla" element={<RequirePermiso modulo="caja"><Planilla /></RequirePermiso>} />
             <Route path="/caja/cuentas-por-cobrar" element={<RequirePermiso modulo="caja"><CuentasPorCobrar /></RequirePermiso>} />
             <Route path="/traslados" element={<RequirePermiso modulo="inventario"><Traslados /></RequirePermiso>} />
+            <Route path="/traslados/constancia" element={<RequirePermiso modulo="inventario"><ConstanciaTraslado /></RequirePermiso>} />
             <Route path="/ventas" element={<RequirePermiso modulo="ventas"><Invoices /></RequirePermiso>} />
             <Route path="/ventas/nuevo/:tipo" element={<RequirePermiso modulo="ventas"><RegistroVenta /></RequirePermiso>} />
             <Route path="/ventas/nota-credito/nueva" element={<RequirePermiso modulo="ventas"><RegistroNotaCredito /></RequirePermiso>} />
