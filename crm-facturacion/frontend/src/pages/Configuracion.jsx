@@ -1789,6 +1789,12 @@ export default function Configuracion() {
     || (estadoUsuarios === 'inactivo' && !u.activo)
   ));
 
+  // Para el resumen de "Límite de crédito por persona" — quiénes tienen una
+  // excepción individual puesta (distinto de null, que es "sin excepción,
+  // sigue el de su categoría"), para verlos de un vistazo sin tener que
+  // buscarlos uno por uno en la tabla de abajo.
+  const excepcionesLimiteAbonado = personasLimiteAbonado.filter((p) => p.limite_personal != null);
+
   return (
     <div>
       <h1 className="page-title" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -3060,6 +3066,25 @@ export default function Configuracion() {
                     paga su deuda — queda bloqueada hasta que le cambies el número. Déjalo vacío para quitar la
                     excepción y que vuelva a seguir el de su categoría.
                   </p>
+                  {excepcionesLimiteAbonado.length > 0 && (
+                    <div className="panel" style={{ background: 'var(--surface-hover)', marginBottom: 16 }}>
+                      <h4 style={{ margin: '0 0 8px' }}>
+                        Excepciones activas ({excepcionesLimiteAbonado.length})
+                      </h4>
+                      <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -4, marginBottom: 10 }}>
+                        A quiénes se les ha modificado el límite de crédito respecto al de su categoría — de un
+                        vistazo, sin tener que buscarlos uno por uno abajo.
+                      </p>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                        {excepcionesLimiteAbonado.map((p) => (
+                          <span key={p.id} className={'badge ' + (Number(p.limite_personal) === 0 ? 'badge-critical' : 'badge-good')}>
+                            {p.full_name} ({p.categoria_staff === 'trainer' ? 'Trainer' : p.categoria_staff === 'supervisor' ? 'Supervisor' : 'Vendedor'}) —{' '}
+                            {Number(p.limite_personal) === 0 ? 'Sin crédito' : `S/ ${Number(p.limite_personal).toFixed(2)}`}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   <input
                     type="text" placeholder="Buscar por nombre..." value={busquedaPersonaLimite}
                     onChange={(e) => setBusquedaPersonaLimite(e.target.value)}
