@@ -99,8 +99,15 @@ router.get('/personas', requireGerencia, (req, res) => {
 });
 
 // PUT /api/limites-abonado/personas/:id { monto_maximo } -> excepción
-// individual de esa persona. null/vacío = quitarla (vuelve a seguir el
-// tope de su categoría). Exclusivo de Gerencia.
+// individual de esa persona. null/vacío = quitarla (vuelve a seguir el tope
+// de su categoría). 0 es un valor válido y distinto de vacío: deja a esa
+// persona SIN crédito del todo (a diferencia del tope de categoría, que no
+// acepta 0 — acá sí se permite a propósito, para poder cortarle el crédito
+// a una sola persona puntual, sin importar su cargo, sin tener que crearle
+// un rol aparte solo para quitarle el permiso de "Abonado" — ver
+// utils/limitesAbonado.js:validarLimiteAbonado, que ya bloquea cualquier
+// venta nueva en cuanto deudaTotal > limite, y 0 hace que cualquier saldo
+// nuevo, por mínimo que sea, dispare ese bloqueo). Exclusivo de Gerencia.
 router.put('/personas/:id', requireGerencia, (req, res) => {
   const userId = Number(req.params.id);
   const persona = db.prepare(
@@ -113,8 +120,8 @@ router.put('/personas/:id', requireGerencia, (req, res) => {
     return res.json({ user_id: userId, monto_maximo: null });
   }
   const monto = Number(monto_maximo);
-  if (!Number.isFinite(monto) || monto <= 0) {
-    return res.status(400).json({ error: 'El monto máximo debe ser un número mayor a 0.' });
+  if (!Number.isFinite(monto) || monto < 0) {
+    return res.status(400).json({ error: 'El monto máximo debe ser un número mayor o igual a 0.' });
   }
   db.prepare(
     `INSERT INTO limites_abonado_usuario (user_id, monto_maximo, updated_by) VALUES (?, ?, ?)

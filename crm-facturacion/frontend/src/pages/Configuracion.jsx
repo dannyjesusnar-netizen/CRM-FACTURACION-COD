@@ -3055,8 +3055,10 @@ export default function Configuracion() {
                   <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: -8 }}>
                     Excepción al límite de arriba para alguien en particular — por ejemplo, un Vendedor de confianza al
                     que le quieres permitir más crédito que al resto de Vendedores. Mientras le pongas un monto acá, ese
-                    es el que se usa para esa persona en vez del de su categoría. Déjalo vacío para que vuelva a seguir
-                    el de su categoría.
+                    es el que se usa para esa persona en vez del de su categoría. Pon <strong>0</strong> para que esa
+                    persona no pueda abonar ni un sol, sin importar su cargo (Trainer, Supervisor o Vendedor) ni si
+                    paga su deuda — queda bloqueada hasta que le cambies el número. Déjalo vacío para quitar la
+                    excepción y que vuelva a seguir el de su categoría.
                   </p>
                   <input
                     type="text" placeholder="Buscar por nombre..." value={busquedaPersonaLimite}
