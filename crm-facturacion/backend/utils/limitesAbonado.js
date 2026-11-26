@@ -70,18 +70,24 @@ function validarLimiteAbonado(userId, saldoPendienteNuevo) {
   if (!(saldoPendienteNuevo > 0)) return null;
   const categoria = categoriaDe(userId);
   if (!categoria) return null;
-  const { limite, esPersonal } = limiteEfectivoDe(userId, categoria);
+  const { limite } = limiteEfectivoDe(userId, categoria);
   if (limite == null) return null;
   const deudaActual = deudaPendienteDe(userId);
   const deudaTotal = round2(deudaActual + saldoPendienteNuevo);
   if (deudaTotal > limite + 0.005) {
     const persona = db.prepare('SELECT full_name FROM users WHERE id = ?').get(userId);
-    const etiquetaCategoria = categoria === 'trainer' ? 'Trainer' : categoria === 'supervisor' ? 'Supervisor' : 'Vendedor';
-    const etiquetaCategoriaPlural = categoria === 'trainer' ? 'Trainers' : categoria === 'supervisor' ? 'Supervisores' : 'Vendedores';
-    const origenTope = esPersonal
-      ? 'que Gerencia le puso a esta persona en particular'
-      : `que Gerencia puso para ${etiquetaCategoriaPlural}`;
-    return `${persona?.full_name || 'Esta persona'} (${etiquetaCategoria}) ya tiene S/ ${deudaActual.toFixed(2)} en ventas abonadas sin cobrar — con esta venta llegaría a S/ ${deudaTotal.toFixed(2)}, por encima del tope de S/ ${limite.toFixed(2)} ${origenTope}.`;
+    const nombre = persona?.full_name || 'Esta persona';
+    // A pedido: mensaje corto y accionable para quien está registrando la
+    // venta (un vendedor/cajero cualquiera, no solo Gerencia) — sin el
+    // detalle técnico de deuda/tope de antes, que no le servía para saber
+    // qué hacer. "Sin crédito" cuando ya no le queda nada disponible (ej.
+    // tope en 0, o ya alcanzó su tope); si todavía le queda algo pero no
+    // alcanza para ESTA venta, se le dice cuánto le queda.
+    const creditoRestante = round2(limite - deudaActual);
+    if (creditoRestante <= 0) {
+      return `${nombre} no tiene crédito disponible — cambia la forma de pago.`;
+    }
+    return `A ${nombre} no le quedan más de S/ ${creditoRestante.toFixed(2)} de crédito disponible — cambia la forma de pago o reduce el monto.`;
   }
   return null;
 }
