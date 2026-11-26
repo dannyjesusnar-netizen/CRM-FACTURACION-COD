@@ -1012,6 +1012,27 @@ CREATE TABLE IF NOT EXISTS metas_venta_usuario (
   if (!notaVentaColumns.includes('atribucion_tipo')) {
     db.exec('ALTER TABLE notas_venta ADD COLUMN atribucion_tipo TEXT');
   }
+  // referido_externo: a diferencia de atribucion_tipo (que es sobre A QUIÉN
+  // se le atribuye la venta para el Ranking, SIEMPRE un empleado), esto es
+  // sobre DE DÓNDE salió el cliente — alguien AJENO a la empresa (un
+  // cliente, un conocido, etc., no un vendedor/entrenador) lo recomendó. Se
+  // elige al registrar la venta (ver routes/invoices.js POST / y
+  // routes/notasVenta.js POST /), para el reporte de Ventas - Detalle (ver
+  // routes/reports.js). referido_externo_nombre es opcional (0/1 sin
+  // nombre si no se indicó quién). Una nota de crédito hereda ambos del
+  // comprobante que modifica, igual que atribucion_tipo.
+  if (!invoiceColumns.includes('referido_externo')) {
+    db.exec('ALTER TABLE invoices ADD COLUMN referido_externo INTEGER NOT NULL DEFAULT 0');
+  }
+  if (!invoiceColumns.includes('referido_externo_nombre')) {
+    db.exec('ALTER TABLE invoices ADD COLUMN referido_externo_nombre TEXT');
+  }
+  if (!notaVentaColumns.includes('referido_externo')) {
+    db.exec('ALTER TABLE notas_venta ADD COLUMN referido_externo INTEGER NOT NULL DEFAULT 0');
+  }
+  if (!notaVentaColumns.includes('referido_externo_nombre')) {
+    db.exec('ALTER TABLE notas_venta ADD COLUMN referido_externo_nombre TEXT');
+  }
   const purchaseColumns = db.prepare("PRAGMA table_info(purchases)").all().map((c) => c.name);
   if (!purchaseColumns.includes('sucursal_id')) {
     db.exec('ALTER TABLE purchases ADD COLUMN sucursal_id INTEGER REFERENCES sucursales(id)');

@@ -362,7 +362,10 @@ router.get('/ventas-detalle', requireAlgunPermiso(['ventas', 'reportes']), (req,
       CASE WHEN i.tipo_comprobante = 'nota_credito' THEN -i.total ELSE i.total END AS total_venta,
       i.estado,
       u.full_name AS vendedor_nombre, au.full_name AS atribuido_nombre,
-      ${ATRIBUIDO_CATEGORIA_EXPR('au')} AS atribuido_categoria
+      ${ATRIBUIDO_CATEGORIA_EXPR('au')} AS atribuido_categoria,
+      CASE WHEN i.atribucion_tipo = 'referido' THEN 'Sí' ELSE 'No' END AS derivado_por_vendedor,
+      CASE WHEN i.referido_externo = 1 THEN 'Sí' ELSE 'No' END AS referido_externo,
+      COALESCE(i.referido_externo_nombre, '') AS referido_externo_nombre
     FROM invoice_items ii
     JOIN invoices i ON i.id = ii.invoice_id
     JOIN sucursales suc ON suc.id = i.sucursal_id
@@ -384,7 +387,10 @@ router.get('/ventas-detalle', requireAlgunPermiso(['ventas', 'reportes']), (req,
       nvi.cantidad, nvi.precio_unitario, nvi.descuento_pct, nvi.subtotal AS subtotal_item,
       nv.forma_pago, nv.descuento_global_pct, nv.total AS total_venta, nv.estado,
       u2.full_name AS vendedor_nombre, au2.full_name AS atribuido_nombre,
-      ${ATRIBUIDO_CATEGORIA_EXPR('au2')} AS atribuido_categoria
+      ${ATRIBUIDO_CATEGORIA_EXPR('au2')} AS atribuido_categoria,
+      CASE WHEN nv.atribucion_tipo = 'referido' THEN 'Sí' ELSE 'No' END AS derivado_por_vendedor,
+      CASE WHEN nv.referido_externo = 1 THEN 'Sí' ELSE 'No' END AS referido_externo,
+      COALESCE(nv.referido_externo_nombre, '') AS referido_externo_nombre
     FROM nota_venta_items nvi
     JOIN notas_venta nv ON nv.id = nvi.nota_venta_id
     JOIN sucursales suc2 ON suc2.id = nv.sucursal_id
