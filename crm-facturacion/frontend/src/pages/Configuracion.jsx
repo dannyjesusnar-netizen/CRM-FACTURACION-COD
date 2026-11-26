@@ -198,8 +198,8 @@ const EXPORTADORES_MASIVOS = [
     // nombre), pero en soles — Gerencia lo quiere así para saber cuánto se
     // descontó realmente, no solo el % configurado (ver routes/reports.js).
     endpoint: '/reports/ventas-detalle',
-    columnas: ['fecha_emision', 'sede', 'tipo', 'serie', 'numero', 'cliente_documento', 'cliente_nombre', 'producto_codigo', 'producto_nombre', 'categoria', 'marca', 'linea', 'proveedor', 'cantidad', 'precio_unitario', 'descuento_pct', 'subtotal_item', 'forma_pago', 'descuento_global_pct', 'total_venta', 'estado', 'vendedor_nombre', 'atribuido_nombre', 'atribuido_categoria'],
-    headers: ['Fecha', 'Sede', 'Tipo', 'Serie', 'Número', 'Doc. Cliente', 'Cliente', 'Cód. Producto', 'Producto', 'Categoría', 'Marca', 'Línea', 'Proveedor', 'Cantidad', 'Precio Unit.', '% Descuento', 'Subtotal Ítem', 'Forma de Pago', 'Descuento Venta (S/)', 'Total Venta', 'Estado', 'Vendedor', 'Atribuido a', 'Categoría Atribuido'],
+    columnas: ['fecha_emision', 'sede', 'tipo', 'serie', 'numero', 'cliente_documento', 'cliente_nombre', 'producto_codigo', 'producto_nombre', 'categoria', 'marca', 'linea', 'proveedor', 'cantidad', 'precio_unitario', 'descuento_pct', 'subtotal_item', 'forma_pago', 'detalle_pago_mixto', 'descuento_global_pct', 'total_venta', 'estado', 'vendedor_nombre', 'atribuido_nombre', 'atribuido_categoria'],
+    headers: ['Fecha', 'Sede', 'Tipo', 'Serie', 'Número', 'Doc. Cliente', 'Cliente', 'Cód. Producto', 'Producto', 'Categoría', 'Marca', 'Línea', 'Proveedor', 'Cantidad', 'Precio Unit.', '% Descuento', 'Subtotal Ítem', 'Forma de Pago', 'Detalle Pago Mixto', 'Descuento Venta (S/)', 'Total Venta', 'Estado', 'Vendedor', 'Atribuido a', 'Categoría Atribuido'],
     descripcion: 'Detalle de cada producto vendido (Boletas, Facturas, Notas de Crédito y Notas de Venta Interna), con marca, línea (Organic/Fit) y proveedor por separado, el % de descuento del ítem, el descuento global de la venta en soles, categoría, vendedor y a quién se atribuyó — sin filtro de fecha salvo que elijas un rango abajo.',
     permiteTodasSedes: true,
     // Rango de fecha opcional (el endpoint ya lo soporta, ver

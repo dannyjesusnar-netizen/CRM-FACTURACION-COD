@@ -345,6 +345,11 @@ router.get('/ventas-detalle', requireAlgunPermiso(['ventas', 'reportes']), (req,
   const filtroInvoices = condicionesInvoices.join(' AND ');
   const filtroNotasVenta = condicionesNV.join(' AND ');
 
+  // detalle_pago_mixto: cuando forma_pago = 'mixto', el tramo por cada medio
+  // (ej. "Efectivo S/50.00 + Yape S/20.00") queda en la tabla `cobros` (ver
+  // routes/invoices.js POST /), no en invoices.forma_pago, que solo guarda
+  // el texto "mixto". Solo aplica a Boletas/Facturas/Notas de Crédito — las
+  // Notas de Venta Interna no tienen pago mixto, por eso NULL en esa mitad.
   const sql = `
     SELECT i.fecha_emision, suc.nombre AS sede,
       CASE i.tipo_comprobante WHEN 'factura' THEN 'Factura' WHEN 'boleta' THEN 'Boleta' WHEN 'nota_credito' THEN 'Nota de crédito' ELSE i.tipo_comprobante END AS tipo,
@@ -362,7 +367,10 @@ router.get('/ventas-detalle', requireAlgunPermiso(['ventas', 'reportes']), (req,
       CASE WHEN i.tipo_comprobante = 'nota_credito' THEN -i.total ELSE i.total END AS total_venta,
       i.estado,
       u.full_name AS vendedor_nombre, au.full_name AS atribuido_nombre,
-      ${ATRIBUIDO_CATEGORIA_EXPR('au')} AS atribuido_categoria
+      ${ATRIBUIDO_CATEGORIA_EXPR('au')} AS atribuido_categoria,
+      (SELECT GROUP_CONCAT(COALESCE(mp.nombre, c.medio) || ' S/' || printf('%.2f', c.monto), ' + ')
+       FROM cobros c LEFT JOIN metodos_pago mp ON mp.codigo = c.medio
+       WHERE c.invoice_id = i.id) AS detalle_pago_mixto
     FROM invoice_items ii
     JOIN invoices i ON i.id = ii.invoice_id
     JOIN sucursales suc ON suc.id = i.sucursal_id
@@ -384,7 +392,8 @@ router.get('/ventas-detalle', requireAlgunPermiso(['ventas', 'reportes']), (req,
       nvi.cantidad, nvi.precio_unitario, nvi.descuento_pct, nvi.subtotal AS subtotal_item,
       nv.forma_pago, nv.descuento_global_pct, nv.total AS total_venta, nv.estado,
       u2.full_name AS vendedor_nombre, au2.full_name AS atribuido_nombre,
-      ${ATRIBUIDO_CATEGORIA_EXPR('au2')} AS atribuido_categoria
+      ${ATRIBUIDO_CATEGORIA_EXPR('au2')} AS atribuido_categoria,
+      NULL AS detalle_pago_mixto
     FROM nota_venta_items nvi
     JOIN notas_venta nv ON nv.id = nvi.nota_venta_id
     JOIN sucursales suc2 ON suc2.id = nv.sucursal_id
