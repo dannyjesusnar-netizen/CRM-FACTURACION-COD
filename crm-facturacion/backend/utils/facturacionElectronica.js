@@ -166,7 +166,11 @@ function construirPayload(invoice, items, client) {
     total: round2(invoice.total),
     observaciones: invoice.observaciones || '',
     enviar_automaticamente_a_la_sunat: true,
-    enviar_automaticamente_al_cliente: false,
+    // A pedido: que las boletas/facturas le lleguen por correo al cliente
+    // (socio) — Nubefact ya lo hace solo, con el mismo cliente_email de
+    // arriba, sin que este CRM tenga que mandar nada por su cuenta. Solo si
+    // el cliente tiene correo registrado; si no, no hay a quién mandarlo.
+    enviar_automaticamente_al_cliente: !!client.email,
     items: itemsPayload,
   };
 
